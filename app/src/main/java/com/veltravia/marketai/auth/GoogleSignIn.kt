@@ -1,6 +1,6 @@
 package com.veltravia.marketai.auth
 
-import android.app.Activity
+import android.content.Context
 import android.util.Base64
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
@@ -16,12 +16,12 @@ import org.json.JSONObject
  */
 object GoogleSignIn {
 
-    suspend fun signIn(activity: Activity, webClientId: String): GoogleUser {
+    suspend fun signIn(context: Context, webClientId: String): GoogleUser {
         require(webClientId.isNotBlank()) {
             "Google sign-in is not configured yet — missing the Market Ai OAuth client ID."
         }
 
-        val credentialManager = CredentialManager.create(activity)
+        val credentialManager = CredentialManager.create(context)
         val googleIdOption = GetGoogleIdOption.Builder()
             .setServerClientId(webClientId)
             .setFilterByAuthorizedAccounts(false)
@@ -30,7 +30,7 @@ object GoogleSignIn {
             .addCredentialOption(googleIdOption)
             .build()
 
-        val response = credentialManager.getCredential(activity, request)
+        val response = credentialManager.getCredential(context, request)
         val credential = response.credential
 
         if (credential is CustomCredential &&
