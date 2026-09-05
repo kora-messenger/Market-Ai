@@ -12,13 +12,21 @@ android {
         applicationId = "com.veltravia.marketai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Google Sign-In: Web OAuth client ID (Google Cloud Console). Injected via
+        // -PGOOGLE_WEB_CLIENT_ID=... at build time or gradle.properties; empty until configured.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"${project.findProperty("GOOGLE_WEB_CLIENT_ID") ?: ""}\""
+        )
     }
 
     buildTypes {
@@ -39,6 +47,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {
@@ -62,6 +71,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("androidx.navigation:navigation-compose:2.7.7")
+
+    // Google Sign-In (Credential Manager + Google ID)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

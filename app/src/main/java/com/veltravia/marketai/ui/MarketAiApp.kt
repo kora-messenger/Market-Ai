@@ -22,19 +22,32 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
+import com.veltravia.marketai.ui.screens.InstrumentPickerScreen
 import com.veltravia.marketai.ui.screens.ProfileScreen
+import com.veltravia.marketai.ui.screens.QuestionnaireScreen
 import com.veltravia.marketai.ui.screens.SavedScreen
 import com.veltravia.marketai.ui.screens.SignalsScreen
+import com.veltravia.marketai.ui.screens.WelcomeScreen
 
 private data class Tab(
     val label: String,
@@ -52,7 +65,69 @@ private val tabs = listOf(
 
 @Composable
 fun MarketAiApp() {
+    val navController = rememberNavController()
+    val context = LocalContext.current
+
+    val startDestination = remember {
+        when {
+            SessionManager.currentUser(context) == null -> "welcome"
+            !SessionManager.questionnaireDone(context) -> "questionnaire"
+            else -> "main"
+        }
+    }
+
+    NavHost(
+        navController = navController,
+        startDestination = startDestination
+    ) {
+        composable("welcome") {
+            WelcomeScreen(
+                onSignedIn = {
+                    navController.navigate("questionnaire") {
+                        popUpTo("welcome") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("questionnaire") {
+            QuestionnaireScreen(
+                onDone = {
+                    navController.navigate("main") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("main") {
+            MainTabs(navController)
+        }
+        composable("picker") {
+            InstrumentPickerScreen(
+                onSelected = { instrument ->
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("selected_instrument", instrument.display)
+                    navController.popBackStack()
+                },
+                onCancel = { navController.popBackStack() }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MainTabs(navController: NavHostController) {
     var currentTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedInstrument by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    LaunchedEffect(navBackStackEntry) {
+        val result = navBackStackEntry?.savedStateHandle
+            ?.remove<String>("selected_instrument")
+        if (result != null) {
+            selectedInstrument = result
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -96,11 +171,21 @@ fun MarketAiApp() {
                 .padding(innerPadding)
         ) {
             when (currentTab) {
-                0 -> HomeScreen()
+                0 -> HomeScreen(
+                    selectedInstrument = selectedInstrument,
+                    onPickInstrument = { navController.navigate("picker") }
+                )
                 1 -> SignalsScreen()
                 2 -> CommunityScreen()
                 3 -> SavedScreen()
-                else -> ProfileScreen()
+                else -> ProfileScreen(
+                    onSignOut = {
+                        SessionManager.signOut(navController.context)
+                        navController.navigate("welcome") {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
             }
         }
     }

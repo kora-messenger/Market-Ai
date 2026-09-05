@@ -40,7 +40,10 @@ private val popularInstruments = listOf(
 )
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(
+    selectedInstrument: String?,
+    onPickInstrument: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -67,7 +70,12 @@ fun HomeScreen() {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    brush = Brush.linearGradient(listOf(AccentViolet.copy(alpha = 0.25f), AccentCyan.copy(alpha = 0.12f))),
+                    brush = Brush.linearGradient(
+                        listOf(
+                            AccentViolet.copy(alpha = 0.25f),
+                            AccentCyan.copy(alpha = 0.12f)
+                        )
+                    ),
                     shape = RoundedCornerShape(20.dp)
                 )
                 .padding(22.dp)
@@ -98,10 +106,23 @@ fun HomeScreen() {
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
+
+            selectedInstrument?.let { instrument ->
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Selected: $instrument",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
             Spacer(Modifier.height(18.dp))
             Button(
-                onClick = { /* TODO: analysis flow */ },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                onClick = onPickInstrument,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = AccentCyan,
@@ -125,7 +146,7 @@ fun HomeScreen() {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(popularInstruments) { symbol ->
                 OutlinedButton(
-                    onClick = { /* TODO: instrument selection */ },
+                    onClick = onPickInstrument,
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(symbol, style = MaterialTheme.typography.labelMedium)
