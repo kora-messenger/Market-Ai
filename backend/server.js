@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || "";
 const JWT_SECRET = process.env.SESSION_JWT_SECRET || "";
-const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL || "google/gemini-2.0-flash-001";
+const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL || "google/gemini-3.8-flash";
 
 // --- Database (Render Postgres) ---
 const pool = process.env.DATABASE_URL
