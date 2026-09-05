@@ -1,0 +1,1 @@
+# Market Ai proguard rules
