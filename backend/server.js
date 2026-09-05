@@ -187,6 +187,7 @@ app.post("/api/analyze", async (req, res) => {
       },
       body: JSON.stringify({
         model: ANALYSIS_MODEL,
+        max_tokens: 2000,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
