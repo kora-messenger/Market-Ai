@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.veltravia.marketai"
+    namespace = "com.veltravia.marketscopeai"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.veltravia.marketai"
+        applicationId = "com.veltravia.marketscopeai"
         minSdk = 24
         targetSdk = 34
         versionCode = 5
@@ -31,7 +31,7 @@ android {
 
     signingConfigs {
         create("stableDebug") {
-            storeFile = file("marketai-debug.keystore")
+            storeFile = file("marketscopeai-debug.keystore")
             storePassword = "MarketAi2026!"
             keyAlias = "marketai"
             keyPassword = "MarketAi2026!"
