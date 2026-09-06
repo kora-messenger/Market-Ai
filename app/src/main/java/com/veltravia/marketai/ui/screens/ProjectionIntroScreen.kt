@@ -128,7 +128,7 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
             horizontalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Continue",
+                text = "Analyze Now!",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = NavyBlack
