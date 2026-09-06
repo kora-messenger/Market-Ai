@@ -14,10 +14,14 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -28,7 +32,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -102,7 +105,21 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
             .imePadding()
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(20.dp))
+
+        if (page > 0) {
+            Icon(
+                Icons.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = TextPrimary,
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { page -= 1 }
+            )
+            Spacer(Modifier.height(16.dp))
+        } else {
+            Spacer(Modifier.height(20.dp))
+        }
 
         if (page == 0) {
             Text(
@@ -335,18 +352,6 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
             )
         }
 
-        if (page > 0) {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Back",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .clickable { page -= 1 }
-                    .padding(vertical = 8.dp, horizontal = 20.dp)
-            )
-        }
 
         Spacer(Modifier.height(30.dp))
     }
