@@ -71,6 +71,7 @@ import com.veltravia.marketai.ui.screens.ScreenshotGuideScreen
 import com.veltravia.marketai.ui.screens.QuestionnaireScreen
 import com.veltravia.marketai.ui.screens.SavedScreen
 import com.veltravia.marketai.ui.screens.SignalsScreen
+import com.veltravia.marketai.ui.screens.AdminSignalsScreen
 import com.veltravia.marketai.ui.screens.WelcomeScreen
 
 private data class Tab(
@@ -246,6 +247,9 @@ fun MarketAiApp() {
         composable("notifications") {
             NotificationsScreen(onBack = { navController.popBackStack() })
         }
+        composable("signals_admin") {
+            AdminSignalsScreen(onBack = { navController.popBackStack() })
+        }
         composable("create_trade_plan") {
             CreateTradePlanScreen(
                 onBack = { navController.popBackStack() },
@@ -348,7 +352,9 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenNotifications = { navController.navigate("notifications") },
                     onCreateTradePlan = { navController.navigate("create_trade_plan") }
                 )
-                1 -> SignalsScreen()
+                1 -> SignalsScreen(
+                    onOpenAdmin = { navController.navigate("signals_admin") }
+                )
                 2 -> CommunityScreen()
                 3 -> SavedScreen(
                     onOpenAnalysis = { id ->

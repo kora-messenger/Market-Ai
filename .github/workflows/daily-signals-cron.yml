@@ -1,0 +1,52 @@
+name: Daily Signals cron
+
+# Automatic outcome resolution + AI daily signal for Market Ai.
+# The repo is public (free Actions minutes); secrets live in GitHub Secrets.
+
+on:
+  schedule:
+    # every 15 minutes — resolve live signal outcomes via price checks
+    - cron: "*/15 * * * *"
+    # 06:00 UTC = 07:00 Africa/Lagos — AI daily signal
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run"
+        required: true
+        default: "price-check"
+        type: choice
+        options:
+          - price-check
+          - auto-signal
+
+jobs:
+  price-check:
+    if: github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'price-check')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run price check
+        run: |
+          curl -sS -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "$RENDER_URL/api/daily-signals/price-check"
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+
+  auto-signal:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'auto-signal')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Generate AI daily signal
+        run: |
+          curl -sS -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "$RENDER_URL/api/daily-signals/auto"
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}

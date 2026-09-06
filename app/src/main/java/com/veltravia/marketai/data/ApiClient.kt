@@ -201,6 +201,83 @@ object ApiClient {
         request(request)
     }
 
+    /** Public daily-signals aggregate stats ("at a glance" card). */
+    suspend fun fetchSignalStats(range: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/daily-signals/stats?range=$range")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Admin flag + feed entitlement for the signed-in user. */
+    suspend fun fetchSignalAccess(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/daily-signals/access")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** The daily signals feed (entitled users only — 402 MarketAiException when locked). */
+    suspend fun fetchDailySignals(sessionToken: String, limit: Int = 50): JSONArray = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/daily-signals?limit=$limit")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(
+                    json.optString("error", "Could not load daily signals (${response.code})")
+                )
+            }
+            json.optJSONArray("signals") ?: JSONArray()
+        }
+    }
+
+    /** Admin: publish a curated daily signal. */
+    suspend fun publishDailySignal(
+        sessionToken: String,
+        instrumentId: String,
+        direction: String,
+        entry: Double,
+        stopLoss: Double,
+        takeProfits: List<Double>,
+        thesis: String?,
+        strength: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("instrumentId", instrumentId)
+            put("direction", direction)
+            put("entry", entry)
+            put("stopLoss", stopLoss)
+            put("takeProfits", JSONArray(takeProfits))
+            if (!thesis.isNullOrBlank()) put("thesis", thesis)
+            put("strength", strength)
+        }
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/daily-signals")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Admin: manually close a signal with an outcome (for no-feed instruments). */
+    suspend fun closeDailySignal(sessionToken: String, id: String, outcome: String): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("outcome", outcome)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/daily-signals/$id/close")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Deletes a trade plan owned by the signed-in user. */
     suspend fun deleteTradePlan(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
