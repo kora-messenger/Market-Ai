@@ -36,41 +36,43 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      - name: Enable KVM
+      - name: Enable KVM group perms
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
-          sudo udevadm trigger /dev/kvm
+          sudo udevadm trigger --name-match=kvm
 
       - name: Run install-and-launch smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
           arch: x86_64
+          target: default
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-none -no-snapshot -no-snapshot-save -accel on
           disable-animations: false
+          emulator-boot-timeout: 900
           script: |
             set -x
+            adb devices
             adb install -r app/build/outputs/apk/debug/app-debug.apk
 
             # Clear logcat, then launch the app
             adb logcat -c
             adb shell am start -W -n com.veltravia.marketai/.MainActivity
-            sleep 12
+            sleep 15
+
+            # Save diagnostics FIRST — before any exit decision
+            adb logcat -d > "$GITHUB_WORKSPACE/diag-logcat.txt"
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/diag-screenshot.png"
 
             # Is the process still alive?
             if adb shell pidof com.veltravia.marketai; then
               echo "APP IS RUNNING - no launch crash"
-              adb exec-out screencap -p > /home/runner/work/screenshot-launch.png
             else
-              echo "APP CRASHED ON LAUNCH"
-              adb exec-out screencap -p > /home/runner/work/screenshot-crashed.png || true
+              echo "APP CRASHED ON LAUNCH - see diag-logcat.txt"
               exit 1
             fi
-
-            # Save full logcat either way for diagnosis
-            adb logcat -d > /home/runner/work/logcat-launch.txt
 
       - name: Always upload smoke-test diagnostics
         if: always()
@@ -78,7 +80,7 @@ jobs:
         with:
           name: smoke-test-diagnostics
           path: |
-            /home/runner/work/logcat-launch.txt
-            /home/runner/work/screenshot-*.png
+            diag-logcat.txt
+            diag-screenshot.png
           retention-days: 30
           if-no-files-found: ignore
