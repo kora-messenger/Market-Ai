@@ -6,7 +6,7 @@ import kotlin.random.Random
 /**
  * Generates the "illustrative 12-trade projection" shown during onboarding.
  *
- * This is Market Ai's own original implementation — real math, not hardcoded numbers.
+ * This is MarketScope AI's own original implementation — real math, not hardcoded numbers.
  * It is NOT ported from any third-party app: only the general concept (compound a
  * risk-profile-based equity curve over N trades toward a size-based target growth,
  * search a bounded parameter space if the raw profile falls short) is a generic,

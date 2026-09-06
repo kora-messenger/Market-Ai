@@ -219,7 +219,7 @@ fun MarketAiApp() {
                     }
                 },
                 onOpenBrokerInfo = { navController.navigate("broker_info") },
-                continueCta = "Continue to Market Ai" to {
+                continueCta = "Continue to MarketScope AI" to {
                     navController.navigate("main") {
                         popUpTo(0) { inclusive = true }
                     }

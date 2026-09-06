@@ -53,7 +53,7 @@ import com.veltravia.marketai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
- * Shown right after sign-in: onboards the trader into Market Ai's free community —
+ * Shown right after sign-in: onboards the trader into MarketScope AI's free community —
  * live signal drops and trader posts. "Join" is a real, backend-persisted action
  * (POST /api/community/join), not a cosmetic transition.
  */
@@ -118,7 +118,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "Finish setup and you're automatically part of the free Market Ai community — real trader posts and select signal drops.",
+            text = "Finish setup and you're automatically part of the free MarketScope AI community — real trader posts and select signal drops.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )

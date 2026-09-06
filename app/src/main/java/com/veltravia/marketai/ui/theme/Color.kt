@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// Market Ai design language — always-light "clean terminal" look.
+// MarketScope AI design language — always-light "clean terminal" look.
 // Brand/semantic colors: accents are tuned slightly darker than the old
 // dark-theme values so they stay legible on white/light-gray surfaces.
 val AccentCyan = Color(0xFF0891B2)     // primary accent (dark cyan — readable on white)
@@ -13,7 +13,7 @@ val BullGreen = Color(0xFF16A34A)
 val BearRed = Color(0xFFDC2626)
 val GoldAmber = Color(0xFFD97706)
 
-/** The one and only palette: Market Ai is always light/white (like the FxLens reference). */
+/** The one and only palette: MarketScope AI is always light/white (like the FxLens reference). */
 data class MarketAiPalette(
     val background: Color,
     val surface: Color,

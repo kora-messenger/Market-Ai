@@ -1,5 +1,5 @@
 /**
- * Market Ai API — Google auth verification, instrument catalog, AI chart analysis.
+ * MarketScope AI API — Google auth verification, instrument catalog, AI chart analysis.
  * Runs server-side so the app holds zero AI provider keys.
  */
 const express = require("express");
@@ -653,7 +653,7 @@ app.delete("/api/trade-plans/:id", requireAuth, async (req, res) => {
 });
 
 // ============================================================
-// Daily Signals — curated signals published by the Market Ai team
+// Daily Signals — curated signals published by the MarketScope AI team
 // (owner posts manually + an AI-generated daily call), with
 // AUTOMATIC outcome resolution via live price checks.
 // ============================================================
@@ -776,7 +776,7 @@ app.get("/api/daily-signals", requireAuth, async (req, res) => {
     const entitled = trial.trialActive || userRows[0].is_premium || admin;
     if (!entitled) {
       return res.status(402).json({
-        error: "Daily Signals is part of Market Ai Premium. Your free trial has ended.",
+        error: "Daily Signals is part of MarketScope AI Premium. Your free trial has ended.",
         locked: true,
         trialExpired: true
       });
@@ -796,7 +796,7 @@ app.get("/api/daily-signals", requireAuth, async (req, res) => {
 app.post("/api/daily-signals", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!(await isAdminRequest(req))) {
-    return res.status(403).json({ error: "Only the Market Ai team can publish daily signals." });
+    return res.status(403).json({ error: "Only the MarketScope AI team can publish daily signals." });
   }
   const { instrumentId, direction, entry, stopLoss, takeProfits, thesis, strength } = req.body || {};
   const instrument = byId[(instrumentId || "").toLowerCase()];
@@ -836,7 +836,7 @@ app.post("/api/daily-signals", requireAuth, async (req, res) => {
   }
 });
 
-const DAILY_SIGNAL_SYSTEM_PROMPT = `You are the senior market analyst behind Market Ai's Daily Signals. You receive recent OHLC candles for a set of instruments from live public market data. Pick the single best trade setup among them — one with a clearly-defined invalidation (tight, logical stop) and realistic targets. Respond ONLY with JSON:
+const DAILY_SIGNAL_SYSTEM_PROMPT = `You are the senior market analyst behind MarketScope AI's Daily Signals. You receive recent OHLC candles for a set of instruments from live public market data. Pick the single best trade setup among them — one with a clearly-defined invalidation (tight, logical stop) and realistic targets. Respond ONLY with JSON:
 {
   "instrumentId": "one of the provided ids",
   "direction": "long" | "short",
@@ -1028,7 +1028,7 @@ app.post("/api/daily-signals/price-check", async (req, res) => {
 app.post("/api/daily-signals/:id/close", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!(await isAdminRequest(req))) {
-    return res.status(403).json({ error: "Only the Market Ai team can close signals." });
+    return res.status(403).json({ error: "Only the MarketScope AI team can close signals." });
   }
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
@@ -1344,7 +1344,7 @@ app.post("/api/community/posts/:id/pin", requireAuth, async (req, res) => {
   try {
     const me = await currentUser(req);
     const isAdmin = ADMIN_EMAIL && me && (me.email || "").toLowerCase() === ADMIN_EMAIL;
-    if (!isAdmin) return res.status(403).json({ error: "Only the Market Ai team can pin posts." });
+    if (!isAdmin) return res.status(403).json({ error: "Only the MarketScope AI team can pin posts." });
     const { rows } = await pool.query(
       `UPDATE community_posts SET is_pinned = NOT is_pinned WHERE id = $1::uuid RETURNING id, is_pinned`,
       [req.params.id]

@@ -1,5 +1,5 @@
 /**
- * Live price feeds for Market Ai daily signals — used for (1) automatic
+ * Live price feeds for MarketScope AI daily signals — used for (1) automatic
  * outcome resolution (did price hit SL / TP?) and (2) market data for the
  * AI-generated daily signal. Free public APIs, no keys, with fallback
  * chains because Yahoo/CoinGecko sometimes block datacenter IPs:

@@ -60,13 +60,13 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Daily Signals — mirrors the FxLens reference layout:
- *  - header: Market Ai logo, "Daily Signals", real today date line
+ *  - header: MarketScope AI logo, "Daily Signals", real today date line
  *  - "at a glance" stats card (public, real aggregates from the backend)
  *    with a Month/Week toggle
  *  - entitled users (premium/trial/admin): the real live feed of curated
  *    signals; non-entitled: the honest locked PRO card.
  *
- * Signals are real: the Market Ai team publishes curated calls (owner posts
+ * Signals are real: the MarketScope AI team publishes curated calls (owner posts
  * manually via the admin screen) plus one AI-generated call per day, and a
  * GitHub Actions cron resolves outcomes automatically against live prices.
  */
@@ -307,7 +307,7 @@ private fun DailySignalCard(item: JSONObject) {
     val dirColor = if (isLong) BullGreen else BearRed
     val dirLabel = if (isLong) "LONG" else "SHORT"
     val author = item.optString("author", "owner")
-    val authorLabel = if (author == "ai") "AI-Generated" else "Market Ai Team"
+    val authorLabel = if (author == "ai") "AI-Generated" else "MarketScope AI Team"
     val entry = item.optDouble("entry", Double.NaN)
     val sl = item.optDouble("stopLoss", Double.NaN)
     val tps = item.optJSONArray("takeProfits")
@@ -416,7 +416,7 @@ private fun LockedSignalsCard() {
     if (showDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("Market Ai Premium", fontWeight = FontWeight.Bold) },
+            title = { Text("MarketScope AI Premium", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
                     "Daily Signals is a premium feature. Your 7-day free trial has ended. " +
@@ -460,7 +460,7 @@ private fun LockedSignalsCard() {
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "Every day, the Market Ai team curates trade setups and shares live updates on each one until it closes — right here, for premium members. One AI-generated call is published daily too, and every outcome is resolved against live market prices.",
+            "Every day, the MarketScope AI team curates trade setups and shares live updates on each one until it closes — right here, for premium members. One AI-generated call is published daily too, and every outcome is resolved against live market prices.",
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )

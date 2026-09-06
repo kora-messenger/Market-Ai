@@ -36,7 +36,7 @@ object CrashReporter {
                     append(" (SDK ").append(android.os.Build.VERSION.SDK_INT).append(")\n")
                     append("Model: ").append(android.os.Build.MANUFACTURER)
                     append(" ").append(android.os.Build.MODEL).append("\n")
-                    append("App: Market Ai ").append(BuildConfig.VERSION_NAME)
+                    append("App: MarketScope AI ").append(BuildConfig.VERSION_NAME)
                     append(" (").append(BuildConfig.VERSION_CODE).append(")\n")
                 }
                 File(context.filesDir, CRASH_FILE).writeText(trace)
@@ -67,7 +67,7 @@ object CrashReporter {
             setBackgroundColor(Color.parseColor("#14100F"))
         }
         root.addView(TextView(context).apply {
-            text = "MARKET AI STOPPED LAST TIME — send a screenshot of this report"
+            text = "MARKETSCOPE AI STOPPED LAST TIME — send a screenshot of this report"
             setTextColor(Color.parseColor("#FF5252"))
             textSize = 16f
             setPadding(48, 64, 48, 32)
@@ -84,12 +84,12 @@ object CrashReporter {
             text = "Copy crash report"
             setOnClickListener {
                 val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                cm.setPrimaryClip(ClipData.newPlainText("Market Ai crash", trace))
+                cm.setPrimaryClip(ClipData.newPlainText("MarketScope AI crash", trace))
                 Toast.makeText(context, "Copied — paste it to the team in chat", Toast.LENGTH_LONG).show()
             }
         })
         root.addView(Button(context).apply {
-            text = "Continue to Market Ai"
+            text = "Continue to MarketScope AI"
             setOnClickListener {
                 (context as? android.app.Activity)?.recreate()
             }

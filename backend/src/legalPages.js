@@ -1,5 +1,5 @@
 /**
- * Terms of Service & Privacy Policy — Market Ai, by Veltravia Technologies.
+ * Terms of Service & Privacy Policy — MarketScope AI, by Veltravia Technologies.
  * Served as real static pages from the live API so the app's welcome-screen
  * links open genuine, current legal text (not placeholders).
  */
@@ -24,7 +24,7 @@ function page(title, body) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${title} — Market Ai</title>
+<title>${title} — MarketScope AI</title>
 <style>${baseStyle}</style>
 </head>
 <body>
@@ -42,12 +42,12 @@ function termsOfServiceHtml() {
 <h1>Terms of Service</h1>
 <p class="updated">Effective ${EFFECTIVE_DATE}</p>
 
-<p>These Terms of Service ("Terms") govern your use of Market Ai (the "App"), provided by
+<p>These Terms of Service ("Terms") govern your use of MarketScope AI (the "App"), provided by
 Veltravia Technologies ("Veltravia", "we", "us"). By creating an account or using the App,
 you agree to these Terms. If you do not agree, do not use the App.</p>
 
-<h2>1. What Market Ai Is</h2>
-<p>Market Ai lets you upload chart screenshots of financial instruments (forex, metals,
+<h2>1. What MarketScope AI Is</h2>
+<p>MarketScope AI lets you upload chart screenshots of financial instruments (forex, metals,
 indices, crypto, and synthetic instruments) and receive an AI-generated technical analysis,
 including a suggested trade direction, entry zone, stop loss, take-profit levels, and a
 written rationale ("Signals").</p>
@@ -129,7 +129,7 @@ function privacyPolicyHtml() {
 <h1>Privacy Policy</h1>
 <p class="updated">Effective ${EFFECTIVE_DATE}</p>
 
-<p>This Privacy Policy explains what data Market Ai (the "App"), provided by Veltravia
+<p>This Privacy Policy explains what data MarketScope AI (the "App"), provided by Veltravia
 Technologies ("Veltravia", "we", "us"), collects, why, and how it is used.</p>
 
 <h2>1. Information We Collect</h2>

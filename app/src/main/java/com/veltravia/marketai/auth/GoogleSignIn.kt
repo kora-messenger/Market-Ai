@@ -18,7 +18,7 @@ data class GoogleSignInResult(
 
 /**
  * Real Google Sign-In via Android Credential Manager (Google ID token).
- * Requires the Market Ai Web OAuth client ID (Google Cloud Console) at build time.
+ * Requires the MarketScope AI Web OAuth client ID (Google Cloud Console) at build time.
  * The returned idToken must be sent to the backend (/api/auth/google) for verification —
  * this class only reads the local credential, it never trusts the token itself.
  */
@@ -26,7 +26,7 @@ object GoogleSignIn {
 
     suspend fun signIn(context: Context, webClientId: String): GoogleSignInResult {
         require(webClientId.isNotBlank()) {
-            "Google sign-in is not configured yet — missing the Market Ai OAuth client ID."
+            "Google sign-in is not configured yet — missing the MarketScope AI OAuth client ID."
         }
 
         val credentialManager = CredentialManager.create(context)

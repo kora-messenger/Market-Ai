@@ -1,7 +1,7 @@
 {
   "name": "market-ai-api",
   "version": "1.0.0",
-  "description": "Market Ai backend — Google auth verification, instrument catalog and AI chart analysis. By Veltravia Technologies.",
+  "description": "MarketScope AI backend — Google auth verification, instrument catalog and AI chart analysis. By Veltravia Technologies.",
   "main": "server.js",
   "engines": {
     "node": ">=18"

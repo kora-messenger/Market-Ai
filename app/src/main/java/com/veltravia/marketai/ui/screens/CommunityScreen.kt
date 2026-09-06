@@ -436,7 +436,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "Market Ai Community",
+                            "MarketScope AI Community",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground
@@ -959,7 +959,7 @@ private fun PostCard(
                             Spacer(Modifier.width(6.dp))
                             Surface(color = AccentViolet.copy(alpha = 0.12f), shape = RoundedCornerShape(6.dp)) {
                                 Text(
-                                    "Market Ai Team",
+                                    "MarketScope AI Team",
                                     fontSize = 9.5.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = AccentViolet,

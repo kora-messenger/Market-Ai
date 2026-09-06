@@ -56,7 +56,7 @@ import kotlin.math.roundToInt
  * Illustrative "next 12 trades" consistency pitch shown once, right after the
  * notifications soft-ask. Uses the trader's real capital/experience/style from
  * the questionnaire (already completed earlier in onboarding). All numbers are
- * computed live by ProjectionEngine — this is Market Ai's own math, not hardcoded copy.
+ * computed live by ProjectionEngine — this is MarketScope AI's own math, not hardcoded copy.
  */
 @Composable
 fun ProjectionIntroScreen(onContinue: () -> Unit) {
@@ -98,7 +98,7 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
         Spacer(Modifier.height(28.dp))
 
         Text(
-            text = "Now imagine your next 12 trades with Market AI",
+            text = "Now imagine your next 12 trades with MarketScope AI",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground

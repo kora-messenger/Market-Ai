@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 
 /**
- * Market Ai's theme is ALWAYS light/white (per Ijezie's decision, matching the
+ * MarketScope AI's theme is ALWAYS light/white (per Ijezie's decision, matching the
  * FxLens reference look) — regardless of the device's dark-mode setting.
  *
  * All screens read colors either through MaterialTheme.colorScheme.* or

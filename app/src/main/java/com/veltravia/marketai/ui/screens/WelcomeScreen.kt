@@ -80,7 +80,7 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
         ) {
             Image(
                 painter = painterResource(R.drawable.app_logo),
-                contentDescription = "Market Ai",
+                contentDescription = "MarketScope AI",
                 modifier = Modifier
                     .size(120.dp)
                     .clip(RoundedCornerShape(28.dp))
@@ -89,7 +89,7 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
             Spacer(Modifier.height(28.dp))
 
             Text(
-                text = "WELCOME TO MARKET AI",
+                text = "WELCOME TO MARKETSCOPE AI",
                 style = MaterialTheme.typography.labelMedium,
                 letterSpacing = 2.sp,
                 color = TextSecondary
@@ -187,7 +187,7 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
             if (clientId.isBlank()) {
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    "Google sign-in activates as soon as your Market Ai OAuth client is configured.",
+                    "Google sign-in activates as soon as your MarketScope AI OAuth client is configured.",
                     style = MaterialTheme.typography.labelMedium,
                     color = TextSecondary,
                     textAlign = TextAlign.Center

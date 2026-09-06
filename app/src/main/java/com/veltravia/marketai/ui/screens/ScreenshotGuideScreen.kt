@@ -117,7 +117,7 @@ fun ScreenshotGuideScreen(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            "A clear screenshot helps Market AI read your charts precisely and return stronger entries, SL, and TP.",
+            "A clear screenshot helps MarketScope AI read your charts precisely and return stronger entries, SL, and TP.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -379,7 +379,7 @@ private fun ChecklistCard() {
         ChecklistItem(
             Icons.Filled.CameraAlt,
             "Show recent price action",
-            "Include a slice of history so Market AI can read swing highs/lows, structure shifts, and nearby levels."
+            "Include a slice of history so MarketScope AI can read swing highs/lows, structure shifts, and nearby levels."
         ),
         ChecklistItem(
             Icons.Filled.Contrast,

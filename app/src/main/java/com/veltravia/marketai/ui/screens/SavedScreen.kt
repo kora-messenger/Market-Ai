@@ -69,7 +69,7 @@ private enum class SignalFilter(val label: String) { ALL("All signals"), SCALP("
  * via the backend) plus the real Saved Signals history (AI analyses).
  *
  * Note: FxLens's reference filters are "All signals / Generated / Daily
- * signals" — Market Ai has no distinct "daily push" signal feature (no
+ * signals" — MarketScope AI has no distinct "daily push" signal feature (no
  * separate signal source exists), so filtering by that would be dishonest.
  * Instead the filters are grounded in a real field we do have: `mode`
  * (Scalp / Swing), which every saved analysis genuinely carries.
@@ -138,7 +138,7 @@ fun SavedScreen(
                     modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Market Ai", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                Text("MarketScope AI", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
             }
             Spacer(Modifier.height(16.dp))
             Box(

@@ -187,7 +187,7 @@ fun SignalCardScreen(
 
         Spacer(Modifier.height(8.dp))
         Text(
-            "Market Ai provides AI-generated analysis for educational purposes only and is not financial advice. Trade at your own risk.",
+            "MarketScope AI provides AI-generated analysis for educational purposes only and is not financial advice. Trade at your own risk.",
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
             modifier = Modifier.padding(vertical = 16.dp)
@@ -235,11 +235,11 @@ private fun TradeAnalysisBody(
     ) {
         Image(
             painter = painterResource(R.drawable.app_logo),
-            contentDescription = "Market Ai",
+            contentDescription = "MarketScope AI",
             modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp))
         )
         Spacer(Modifier.width(8.dp))
-        Text("Market Ai", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("MarketScope AI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 
     Spacer(Modifier.height(14.dp))
@@ -274,12 +274,12 @@ private fun TradeAnalysisBody(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Recommended broker for Market Ai",
+                    "Recommended broker for MarketScope AI",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    "Executions similar to what we test Market Ai's analysis against.",
+                    "Executions similar to what we test MarketScope AI's analysis against.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -567,7 +567,7 @@ private fun LotSizeSheet(
                 SheetField(rate, { rate = it; result = null }, "Exchange rate ($quoteCurrency → USD)", Modifier.fillMaxWidth())
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Market Ai has no live FX feed for $quoteCurrency — enter your broker's current $quoteCurrency/USD rate for exact sizing.",
+                    "MarketScope AI has no live FX feed for $quoteCurrency — enter your broker's current $quoteCurrency/USD rate for exact sizing.",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted
                 )

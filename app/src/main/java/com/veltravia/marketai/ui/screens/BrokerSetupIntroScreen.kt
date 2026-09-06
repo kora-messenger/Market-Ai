@@ -112,7 +112,7 @@ fun BrokerSetupIntroScreen(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            "Use a broker that feels close to the environment Market AI is tested against when reading your charts.",
+            "Use a broker that feels close to the environment MarketScope AI is tested against when reading your charts.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -145,7 +145,7 @@ fun BrokerSetupIntroScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "Recommended broker for Market AI",
+                        "Recommended broker for MarketScope AI",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
@@ -170,7 +170,7 @@ fun BrokerSetupIntroScreen(
             BrokerBulletRow(
                 icon = Icons.Filled.ShowChart,
                 iconTint = BullGreen,
-                text = "Great fit for Market AI-style 4H & 15M chart analysis."
+                text = "Great fit for MarketScope AI-style 4H & 15M chart analysis."
             )
             Spacer(Modifier.height(10.dp))
             BrokerBulletRow(
@@ -182,7 +182,7 @@ fun BrokerSetupIntroScreen(
             BrokerBulletRow(
                 icon = Icons.Filled.FiberManualRecord,
                 iconTint = GoldAmber,
-                text = "Less mismatch between what Market AI expects and your broker's pricing."
+                text = "Less mismatch between what MarketScope AI expects and your broker's pricing."
             )
 
             Spacer(Modifier.height(14.dp))
@@ -199,7 +199,7 @@ fun BrokerSetupIntroScreen(
             Icon(Icons.Filled.Public, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text(
-                "Market AI works with any major broker (including US brokers). This recommendation only applies where our partner is available.",
+                "MarketScope AI works with any major broker (including US brokers). This recommendation only applies where our partner is available.",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
@@ -253,8 +253,8 @@ fun BrokerSetupIntroScreen(
         Spacer(Modifier.height(16.dp))
 
         Text(
-            "Market AI is not a broker and does not provide financial advice. Trading involves risk. " +
-                "This broker recommendation is optional and provided for closer alignment with how Market AI is tested and tuned.",
+            "MarketScope AI is not a broker and does not provide financial advice. Trading involves risk. " +
+                "This broker recommendation is optional and provided for closer alignment with how MarketScope AI is tested and tuned.",
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted.copy(alpha = 0.7f)
         )
@@ -275,7 +275,7 @@ private fun BrokerBulletRow(icon: ImageVector, iconTint: Color, text: String) {
 @Composable
 private fun buildAnnotatedTested(): androidx.compose.ui.text.AnnotatedString {
     return androidx.compose.ui.text.buildAnnotatedString {
-        append("Market AI has been ")
+        append("MarketScope AI has been ")
         withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) {
             append("tested heavily with spreads & execution")
         }

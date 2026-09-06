@@ -17,7 +17,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
 /**
- * Real HTTP client for the Market Ai backend.
+ * Real HTTP client for the MarketScope AI backend.
  * All calls run on Dispatchers.IO; failures throw MarketAiException with the server message.
  */
 object ApiClient {

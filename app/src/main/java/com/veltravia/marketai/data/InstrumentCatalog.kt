@@ -1,7 +1,7 @@
 package com.veltravia.marketai.data
 
 /**
- * Market Ai instrument catalog — mirrors the reference app's full symbol set
+ * MarketScope AI instrument catalog — mirrors the reference app's full symbol set
  * (27 forex, 2 metals, 20 indices, 33 synthetics, 20 crypto = 102 instruments)
  * with the contract-size / point-size specs used by the risk calculator.
  */

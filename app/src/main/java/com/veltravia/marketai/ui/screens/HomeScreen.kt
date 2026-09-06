@@ -145,9 +145,9 @@ fun HomeScreen(
         QuickAction("Share", Icons.Filled.Share) {
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, "I'm using Market Ai for AI-powered chart analysis — check it out.")
+                putExtra(Intent.EXTRA_TEXT, "I'm using MarketScope AI for AI-powered chart analysis — check it out.")
             }
-            context.startActivity(Intent.createChooser(send, "Share Market Ai"))
+            context.startActivity(Intent.createChooser(send, "Share MarketScope AI"))
         }
     )
     val moreActions = listOf(
@@ -168,7 +168,7 @@ fun HomeScreen(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painter = painterResource(R.drawable.app_logo),
-                contentDescription = "Market Ai",
+                contentDescription = "MarketScope AI",
                 modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp))
             )
             Spacer(Modifier.width(12.dp))
@@ -333,7 +333,7 @@ fun HomeScreen(
 
         // --- Recommended tools ---
         Text(
-            "Market Ai Recommended Tools",
+            "MarketScope AI Recommended Tools",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
@@ -361,7 +361,7 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Our recommended broker for testing Market Ai's analysis.",
+                    "Our recommended broker for testing MarketScope AI's analysis.",
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.75f)
                 )

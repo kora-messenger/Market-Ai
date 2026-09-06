@@ -71,7 +71,7 @@ import kotlinx.coroutines.launch
  * Onboarding "first analysis" screen — mirrors the reference app's combined
  * instrument + chart-upload + trade-focus screen shown right after the broker
  * setup / screenshot guide. Key difference from the reference (which offers a
- * single free analysis, "This is on us!"): Market Ai gives every new account a
+ * single free analysis, "This is on us!"): MarketScope AI gives every new account a
  * real 7-day full-access free trial, enforced server-side.
  */
 @OptIn(ExperimentalMaterial3Api::class)

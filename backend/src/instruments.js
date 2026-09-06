@@ -1,5 +1,5 @@
 /**
- * Market Ai instrument catalog — mirrors the app's picker (102 instruments)
+ * MarketScope AI instrument catalog — mirrors the app's picker (102 instruments)
  * with the contract-size / point-size specs used by the risk calculator.
  */
 

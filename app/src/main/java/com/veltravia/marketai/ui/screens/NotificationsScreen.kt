@@ -24,7 +24,7 @@ import com.veltravia.marketai.ui.theme.TextMuted
 import com.veltravia.marketai.ui.theme.TextSecondary
 
 /**
- * Honest empty state — Market Ai does not yet generate any real notification
+ * Honest empty state — MarketScope AI does not yet generate any real notification
  * events, so this deliberately shows a genuine "nothing here" state instead
  * of fabricated sample notifications.
  */
