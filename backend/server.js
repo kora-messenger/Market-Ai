@@ -265,11 +265,12 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "stopLoss": number,
   "takeProfits": [number, number, number],
   "riskReward": number,
+  "estimatedDuration": "your best estimate of how long this setup may take to play out, as a short human string like '2h - 3h 30m', based on the timeframe and momentum shown",
   "thesis": "3-5 sentence reasoning grounded in what is visible on the charts",
   "invalidation": "what would invalidate this setup",
   "keyLevels": [number]
 }
-Prices must be plausible for the instrument shown on the charts. If the setup is not clean, choose NO_TRADE with a clear thesis.`;
+Prices must be plausible for the instrument shown on the charts. Provide a realistic estimated duration based on timeframe and momentum. If the setup is not clean, choose NO_TRADE with a clear thesis.`;
 
 function extractJson(text) {
   let t = (text || "").trim();
