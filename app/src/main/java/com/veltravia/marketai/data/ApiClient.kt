@@ -135,6 +135,15 @@ object ApiClient {
         request(request)
     }
 
+    /** Public real total of users who have joined the community (no auth needed). */
+    suspend fun fetchCommunityStats(): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/community/stats")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Trial status for the signed-in user: trialActive, trialDaysRemaining, isPremium, etc. */
     suspend fun fetchTrialStatus(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

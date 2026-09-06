@@ -212,6 +212,22 @@ app.post("/api/community/join", requireAuth, async (req, res) => {
   }
 });
 
+// Public: total real member count (used on the Home screen community card —
+// no fabricated numbers, this is a literal COUNT of users who have joined).
+app.get("/api/community/stats", async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM users WHERE community_joined = true`
+    );
+    return res.json({ totalMembers: rows[0]?.total ?? 0 });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load community stats", detail: String(err.message || err) });
+  }
+});
+
 app.get("/api/community/status", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });

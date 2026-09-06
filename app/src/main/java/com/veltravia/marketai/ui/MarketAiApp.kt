@@ -1,9 +1,12 @@
 package com.veltravia.marketai.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Home
@@ -30,22 +33,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.veltravia.marketai.data.SessionManager
+import com.veltravia.marketai.ui.theme.AccentCyan
+import com.veltravia.marketai.ui.theme.AccentViolet
 import com.veltravia.marketai.ui.screens.CommunityIntroScreen
 import com.veltravia.marketai.ui.screens.NotificationsIntroScreen
 import com.veltravia.marketai.ui.screens.ProjectionIntroScreen
 import com.veltravia.marketai.ui.screens.BrokerSetupIntroScreen
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
+import com.veltravia.marketai.ui.screens.RiskCalculatorScreen
+import com.veltravia.marketai.ui.screens.NotificationsScreen
 import com.veltravia.marketai.ui.screens.ChartUploadScreen
 import com.veltravia.marketai.ui.screens.FirstAnalysisScreen
 import com.veltravia.marketai.ui.screens.InstrumentPickerScreen
@@ -224,6 +238,12 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable("risk_calculator") {
+            RiskCalculatorScreen(onBack = { navController.popBackStack() })
+        }
+        composable("notifications") {
+            NotificationsScreen(onBack = { navController.popBackStack() })
+        }
         composable("questionnaire") {
             QuestionnaireScreen(
                 onDone = {
@@ -314,7 +334,10 @@ private fun MainTabs(navController: NavHostController) {
         ) {
             when (currentTab) {
                 0 -> HomeScreen(
-                    onPickInstrument = { navController.navigate("picker") }
+                    onPickInstrument = { navController.navigate("picker") },
+                    onSwitchTab = { index -> currentTab = index },
+                    onOpenRiskCalculator = { navController.navigate("risk_calculator") },
+                    onOpenNotifications = { navController.navigate("notifications") }
                 )
                 1 -> SignalsScreen()
                 2 -> CommunityScreen()
@@ -332,6 +355,37 @@ private fun MainTabs(navController: NavHostController) {
                     },
                     onOpenScreenshotGuide = { navController.navigate("screenshot_guide") }
                 )
+            }
+
+            // Floating "Start Analysis" button — only on Home, matching the
+            // FxLens reference layout. Same real destination as the Home
+            // screen's own CTA: the instrument picker → chart upload flow.
+            if (currentTab == 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = 34.dp)
+                        .size(92.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(AccentCyan, AccentViolet)))
+                        .clickable { navController.navigate("picker") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.Bolt,
+                            contentDescription = null,
+                            tint = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            "Start Analysis",
+                            color = androidx.compose.ui.graphics.Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
         }
     }
