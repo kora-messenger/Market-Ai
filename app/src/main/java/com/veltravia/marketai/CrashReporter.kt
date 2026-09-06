@@ -58,30 +58,31 @@ class CrashReportActivity : Activity() {
         val trace = intent.getStringExtra(CrashReporter.EXTRA_TRACE)
             ?: File(filesDir, "last-crash.txt").readText()
 
-        val root = LinearLayout(this).apply {
+        val ctx = this
+        val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#14100F"))
         }
-        root.addView(TextView(this).apply {
+        root.addView(TextView(ctx).apply {
             text = "MARKET AI STOPPED — send a screenshot of this report"
             setTextColor(Color.parseColor("#FF5252"))
             textSize = 16f
             setPadding(48, 64, 48, 32)
         })
-        root.addView(ScrollView(this).apply {
-            addView(TextView(this).apply {
+        root.addView(ScrollView(ctx).apply {
+            addView(TextView(this@CrashReportActivity).apply {
                 text = trace
                 setTextColor(Color.parseColor("#E0E0E0"))
                 textSize = 12f
                 setPadding(48, 16, 48, 16)
             })
         })
-        root.addView(Button(this).apply {
+        root.addView(Button(ctx).apply {
             text = "Copy crash report"
             setOnClickListener {
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("Market Ai crash", trace))
-                Toast.makeText(this@CrashReportActivity, "Copied — paste it to the team in chat", Toast.LENGTH_LONG).show()
+                Toast.makeText(ctx, "Copied — paste it to the team in chat", Toast.LENGTH_LONG).show()
             }
         })
         setContentView(root)
