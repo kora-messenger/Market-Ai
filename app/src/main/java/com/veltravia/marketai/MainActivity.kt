@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.core.view.WindowCompat
 import com.veltravia.marketai.ui.MarketAiApp
 import com.veltravia.marketai.ui.theme.MarketAiTheme
@@ -33,7 +34,16 @@ class MainActivity : ComponentActivity() {
                     controller.isAppearanceLightStatusBars = true
                     controller.isAppearanceLightNavigationBars = true
                 }
-                MarketAiApp()
+                // Defensive full-bleed white surface: guarantees every screen —
+                // even ones that don't paint every pixel themselves — always
+                // shows the app's real white background, never the old dark
+                // window background (android:windowBackground) underneath.
+                androidx.compose.material3.Surface(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                ) {
+                    MarketAiApp()
+                }
             }
         }
     }
