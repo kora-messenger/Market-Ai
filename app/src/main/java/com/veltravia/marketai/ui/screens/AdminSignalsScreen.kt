@@ -61,6 +61,7 @@ import com.veltravia.marketai.ui.theme.TextPrimary
 import com.veltravia.marketai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import org.json.JSONObject
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
