@@ -59,7 +59,7 @@ async function fetchJson(url) {
   const res = await fetch(url, {
     signal: AbortSignal.timeout(TIMEOUT_MS),
     headers: {
-      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+      "User-Agent": "Mozilla/5.0 (compatible; MarketAiBot/1.0)",
       Accept: "application/json"
     }
   });
@@ -192,7 +192,7 @@ async function fetchHistory(instrumentId, { interval = "1h", range = "5d" } = {}
   if (COINGECKO_IDS[id]) {
     try {
       const data = await fetchJson(
-        `https://api.coingecko.com/api/v3/coins/${COINGECKO_IDS[id]}/ohlc?vs_currency=usd&days=5`
+        `https://api.coingecko.com/api/v3/coins/${COINGECKO_IDS[id]}/ohlc?vs_currency=usd&days=7`
       );
       const candles = (data || [])
         .filter((r) => Array.isArray(r) && r.length === 5)
