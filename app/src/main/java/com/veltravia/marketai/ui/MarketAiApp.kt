@@ -79,42 +79,42 @@ fun MarketAiApp() {
     val startDestination = remember {
         val hasSession = SessionManager.currentUser(context) != null
         val questionnaireDone = SessionManager.questionnaireDone(context)
-        // Only gate on community_intro if the backend session exists (i.e. joining is
-        // actually possible) and the user hasn't already joined or finished onboarding.
+        // Real FxLens order: the questionnaire is the FIRST thing a new user sees right
+        // after sign-in — before community/notifications/projection/broker/screenshot-guide.
         val needsCommunityIntro = hasSession &&
+            questionnaireDone &&
             SessionManager.sessionToken(context) != null &&
-            !SessionManager.communityJoined(context) &&
-            !questionnaireDone
+            !SessionManager.communityJoined(context)
         val needsNotificationsIntro = hasSession &&
+            questionnaireDone &&
             !needsCommunityIntro &&
-            !SessionManager.notificationsPromptShown(context) &&
-            !questionnaireDone
+            !SessionManager.notificationsPromptShown(context)
         val needsProjectionIntro = hasSession &&
+            questionnaireDone &&
             !needsCommunityIntro &&
             !needsNotificationsIntro &&
-            !SessionManager.projectionIntroShown(context) &&
-            !questionnaireDone
+            !SessionManager.projectionIntroShown(context)
         val needsBrokerSetupIntro = hasSession &&
+            questionnaireDone &&
             !needsCommunityIntro &&
             !needsNotificationsIntro &&
             !needsProjectionIntro &&
-            !SessionManager.brokerSetupShown(context) &&
-            !questionnaireDone
+            !SessionManager.brokerSetupShown(context)
         val needsScreenshotGuideIntro = hasSession &&
+            questionnaireDone &&
             !needsCommunityIntro &&
             !needsNotificationsIntro &&
             !needsProjectionIntro &&
             !needsBrokerSetupIntro &&
-            !SessionManager.screenshotGuideShown(context) &&
-            !questionnaireDone
+            !SessionManager.screenshotGuideShown(context)
         when {
             !hasSession -> "welcome"
+            !questionnaireDone -> "questionnaire"
             needsCommunityIntro -> "community_intro"
             needsNotificationsIntro -> "notifications_intro"
             needsProjectionIntro -> "projection_intro"
             needsBrokerSetupIntro -> "broker_setup_intro"
             needsScreenshotGuideIntro -> "screenshot_guide_intro"
-            !questionnaireDone -> "questionnaire"
             else -> "main"
         }
     }
@@ -126,7 +126,7 @@ fun MarketAiApp() {
         composable("welcome") {
             WelcomeScreen(
                 onSignedIn = {
-                    navController.navigate("community_intro") {
+                    navController.navigate("questionnaire") {
                         popUpTo("welcome") { inclusive = true }
                     }
                 }
@@ -193,8 +193,8 @@ fun MarketAiApp() {
             SignalCardScreen(
                 analysisId = entry.arguments?.getString("analysisId") ?: "",
                 onBack = { navController.popBackStack() },
-                continueCta = "Continue" to {
-                    navController.navigate("questionnaire") {
+                continueCta = "Continue to Market Ai" to {
+                    navController.navigate("main") {
                         popUpTo(0) { inclusive = true }
                     }
                 }
@@ -210,8 +210,8 @@ fun MarketAiApp() {
         composable("questionnaire") {
             QuestionnaireScreen(
                 onDone = {
-                    navController.navigate("main") {
-                        popUpTo(0) { inclusive = true }
+                    navController.navigate("community_intro") {
+                        popUpTo("questionnaire") { inclusive = true }
                     }
                 }
             )
