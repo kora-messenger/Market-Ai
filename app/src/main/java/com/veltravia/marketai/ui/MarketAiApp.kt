@@ -192,7 +192,14 @@ fun MarketAiApp() {
         composable("first_signal/{analysisId}") { entry ->
             SignalCardScreen(
                 analysisId = entry.arguments?.getString("analysisId") ?: "",
-                onBack = { navController.popBackStack() },
+                // Back from the very first analysis result goes straight Home —
+                // there's nothing useful behind it (the upload screen is a dead
+                // end at this point in onboarding), matching FxLens's behavior.
+                onBack = {
+                    navController.navigate("main") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
                 continueCta = "Continue to Market Ai" to {
                     navController.navigate("main") {
                         popUpTo(0) { inclusive = true }
