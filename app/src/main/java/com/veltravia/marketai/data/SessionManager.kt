@@ -26,7 +26,9 @@ data class QuestionnaireAnswers(
     val assets: List<String>,
     val style: String,
     val timeframes: List<String>,
-    val entryCriteria: String
+    val entryCriteria: String,
+    val emotionalStruggles: String,
+    val dailyRoutine: String
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("experience", experience)
@@ -36,6 +38,8 @@ data class QuestionnaireAnswers(
         put("style", style)
         put("timeframes", JSONArray(timeframes))
         put("entryCriteria", entryCriteria)
+        put("emotionalStruggles", emotionalStruggles)
+        put("dailyRoutine", dailyRoutine)
     }
 
     companion object {
@@ -53,7 +57,9 @@ data class QuestionnaireAnswers(
             timeframes = json.optJSONArray("timeframes")?.let { arr ->
                 List(arr.length()) { arr.optString(it) }
             } ?: emptyList(),
-            entryCriteria = json.optString("entryCriteria", "")
+            entryCriteria = json.optString("entryCriteria", ""),
+            emotionalStruggles = json.optString("emotionalStruggles", ""),
+            dailyRoutine = json.optString("dailyRoutine", "")
         )
     }
 }
@@ -191,6 +197,16 @@ object SessionManager {
 
     /** Personalized coaching line derived from the real questionnaire answers. */
     fun coachingLine(answers: QuestionnaireAnswers): String {
+        val emotions = answers.emotionalStruggles.lowercase()
+        if (emotions.contains("impatience")) {
+            return "Slow is smooth, smooth becomes fast. Your edge is in waiting for A-setups, not more trades."
+        }
+        if (emotions.contains("fear")) {
+            return "Fear shrinks with a plan. Define your risk before you enter and the fear has nothing to grip."
+        }
+        if (emotions.contains("revenge")) {
+            return "The market doesn't remember your last loss. Walk away, reset, come back with a plan."
+        }
         if (answers.experience.equals("Beginner", ignoreCase = true)) {
             return "Clarity beats speed. One A-setup repeated consistently is how discipline compounds."
         }

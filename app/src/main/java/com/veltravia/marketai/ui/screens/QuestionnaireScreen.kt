@@ -45,7 +45,7 @@ import com.veltravia.marketai.ui.theme.TextMuted
 import com.veltravia.marketai.ui.theme.TextPrimary
 import com.veltravia.marketai.ui.theme.TextSecondary
 
-// Reference app's real questionnaire — 2 screens, no more, no less.
+// Reference app's real questionnaire — exactly 3 screens.
 private val experienceOptions = listOf("Beginner", "Intermediate", "Advanced")
 private val goalOptions = listOf(
     "Consistent monthly income", "Account growth", "Funded trader status",
@@ -57,12 +57,14 @@ private val timeframeOptions = listOf("1M", "5M", "15M", "1H", "4H", "1D")
 private const val MAX_TIMEFRAMES = 3
 
 /**
- * The real 2-screen questionnaire shown right after sign-in.
+ * The real 3-screen questionnaire shown right after sign-in.
  *
  * Screen 1 — "Welcome {NAME}": experience level, primary trading goal,
  * current capital (USD).
  * Screen 2 — "Nice! {NAME}": assets traded, trading style, preferred
  * timeframes (max 3), entry criteria.
+ * Screen 3 — "Now lastly {NAME}": emotional struggles, ideal daily
+ * routine. CTA reads "Save and Test Analysis Now" instead of "Next".
  */
 @Composable
 fun QuestionnaireScreen(onDone: () -> Unit) {
@@ -85,8 +87,13 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
     val timeframes = remember { mutableStateListOf<String>() }
     var entryCriteria by remember { mutableStateOf("") }
 
+    // Screen 3 answers
+    var emotionalStruggles by remember { mutableStateOf("") }
+    var dailyRoutine by remember { mutableStateOf("") }
+
     val page1Valid = experience.isNotBlank() && goal.isNotBlank() && capital.isNotBlank()
     val page2Valid = assets.isNotEmpty() && style.isNotBlank() && timeframes.isNotEmpty()
+    val page3Valid = emotionalStruggles.isNotBlank() && dailyRoutine.isNotBlank()
 
     Column(
         modifier = Modifier
@@ -149,7 +156,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     cursorColor = AccentCyan
                 )
             )
-        } else {
+        } else if (page == 1) {
             Text(
                 "Nice! $firstName,",
                 style = MaterialTheme.typography.headlineSmall,
@@ -232,31 +239,85 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     cursorColor = AccentCyan
                 )
             )
+        } else {
+            Text(
+                "Now lastly $firstName,",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Before our first analysis, let's understand your psychology and routine so we can help you better.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            Spacer(Modifier.height(32.dp))
+
+            QuestionLabel("What are some of your emotional struggles?")
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = emotionalStruggles,
+                onValueChange = { emotionalStruggles = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("e.g. Impatience, Fear, Revenge", color = TextMuted) },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentCyan,
+                    unfocusedBorderColor = BorderSubtle,
+                    cursorColor = AccentCyan
+                )
+            )
+
+            Spacer(Modifier.height(28.dp))
+            QuestionLabel("What is your ideal daily routine?")
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = dailyRoutine,
+                onValueChange = { dailyRoutine = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                placeholder = { Text("Honestly describe what your usual days are like right now..", color = TextMuted) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = AccentCyan,
+                    unfocusedBorderColor = BorderSubtle,
+                    cursorColor = AccentCyan
+                )
+            )
         }
 
         Spacer(Modifier.height(36.dp))
 
         Button(
             onClick = {
-                if (page == 0) {
-                    page = 1
-                } else {
-                    SessionManager.saveQuestionnaire(
-                        context,
-                        QuestionnaireAnswers(
-                            experience = experience,
-                            goal = goal,
-                            capitalUsd = capital,
-                            assets = assets.toList(),
-                            style = style,
-                            timeframes = timeframes.toList(),
-                            entryCriteria = entryCriteria.trim()
+                when (page) {
+                    0 -> page = 1
+                    1 -> page = 2
+                    else -> {
+                        SessionManager.saveQuestionnaire(
+                            context,
+                            QuestionnaireAnswers(
+                                experience = experience,
+                                goal = goal,
+                                capitalUsd = capital,
+                                assets = assets.toList(),
+                                style = style,
+                                timeframes = timeframes.toList(),
+                                entryCriteria = entryCriteria.trim(),
+                                emotionalStruggles = emotionalStruggles.trim(),
+                                dailyRoutine = dailyRoutine.trim()
+                            )
                         )
-                    )
-                    onDone()
+                        onDone()
+                    }
                 }
             },
-            enabled = if (page == 0) page1Valid else page2Valid,
+            enabled = when (page) {
+                0 -> page1Valid
+                1 -> page2Valid
+                else -> page3Valid
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(54.dp),
@@ -268,10 +329,13 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                 disabledContentColor = TextMuted
             )
         ) {
-            Text("Next", fontWeight = FontWeight.Bold)
+            Text(
+                if (page == 2) "Save and Test Analysis Now" else "Next",
+                fontWeight = FontWeight.Bold
+            )
         }
 
-        if (page == 1) {
+        if (page > 0) {
             Spacer(Modifier.height(12.dp))
             Text(
                 "Back",
@@ -279,7 +343,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                 color = TextSecondary,
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .clickable { page = 0 }
+                    .clickable { page -= 1 }
                     .padding(vertical = 8.dp, horizontal = 20.dp)
             )
         }

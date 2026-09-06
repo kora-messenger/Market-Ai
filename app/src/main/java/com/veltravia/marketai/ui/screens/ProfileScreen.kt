@@ -107,6 +107,12 @@ fun ProfileScreen(onSignOut: () -> Unit, onOpenScreenshotGuide: () -> Unit) {
                     if (profile.entryCriteria.isNotBlank()) {
                         ProfileRow("Entry criteria", profile.entryCriteria)
                     }
+                    if (profile.emotionalStruggles.isNotBlank()) {
+                        ProfileRow("Emotional struggles", profile.emotionalStruggles)
+                    }
+                    if (profile.dailyRoutine.isNotBlank()) {
+                        ProfileRow("Daily routine", profile.dailyRoutine)
+                    }
                 }
             }
 
