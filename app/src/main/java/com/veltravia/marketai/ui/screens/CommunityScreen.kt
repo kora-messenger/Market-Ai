@@ -256,21 +256,6 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
         }
     }
 
-    fun togglePin(post: CommunityPost) {
-        if (token == null) return
-        posts = posts.map {
-            if (it.id == post.id) it.copy(isPinned = !it.isPinned) else it
-        }
-        scope.launch {
-            try {
-                ApiClient.pinCommunityPost(token, post.id)
-            } catch (e: Exception) {
-                error = e.message ?: "Could not pin the post"
-                load(reset = true)
-            }
-        }
-    }
-
     fun load(reset: Boolean) {
         if (token == null) return
         if (reset) loading = true else loadingMore = true
@@ -292,6 +277,21 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
             } finally {
                 loading = false
                 loadingMore = false
+            }
+        }
+    }
+
+    fun togglePin(post: CommunityPost) {
+        if (token == null) return
+        posts = posts.map {
+            if (it.id == post.id) it.copy(isPinned = !it.isPinned) else it
+        }
+        scope.launch {
+            try {
+                ApiClient.pinCommunityPost(token, post.id)
+            } catch (e: Exception) {
+                error = e.message ?: "Could not pin the post"
+                load(reset = true)
             }
         }
     }
@@ -765,7 +765,7 @@ private fun PostComposer(
                     enabled = !imageProcessing && pickedImages.size < 4
                 ) {
                     Text(
-                        if (pickedImages.isEmpty) "＋ Add post images (share your win 🎉)" else "＋ Add more (${pickedImages.size}/4)",
+                        if (pickedImages.isEmpty()) "＋ Add post images (share your win 🎉)" else "＋ Add more (${pickedImages.size}/4)",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = if (pickedImages.size < 4) AccentCyan else TextMuted,
