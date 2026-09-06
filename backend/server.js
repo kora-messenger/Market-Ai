@@ -99,6 +99,16 @@ async function initDb() {
       is_team BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS post_type TEXT NOT NULL DEFAULT 'text';
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS poll_options JSONB;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS allow_comments BOOLEAN NOT NULL DEFAULT true;
+    CREATE TABLE IF NOT EXISTS post_poll_votes (
+      poll_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      option_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (poll_id, user_id)
+    );
     CREATE TABLE IF NOT EXISTS post_reactions (
       post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
       user_id UUID NOT NULL,
@@ -1046,17 +1056,61 @@ async function currentUser(req) {
   return rows[0] || null;
 }
 
-function postToApi(row, reactions, commentCount) {
+function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor) {
   return {
     id: row.id,
     authorName: row.author_name,
     authorEmail: row.author_email,
     isTeam: row.is_team,
+    isTopContributor: isTopContributor || false,
     body: row.body,
     createdAt: row.created_at,
     commentCount,
+    allowComments: row.allow_comments !== false,
+    postType: row.post_type || "text",
+    poll: poll ? {
+      options: poll.options,
+      totalVotes: poll.totalVotes,
+      counts: poll.counts,
+      myVote: myVote || null
+    } : null,
     reactions: reactions.map((r) => ({ emoji: r.emoji, count: r.count, mine: r.mine }))
   };
+}
+
+// Weekly competition scoring — computed from real engagement, resets weekly.
+// post=5, comment=2, reaction given=1, reaction received=1, poll vote=1.
+function isoWeekBounds(d = new Date()) {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Monday = 0
+  const weekStart = new Date(date.getTime() - dayNum * 86400000);
+  const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
+  return { weekStart, weekEnd };
+}
+
+async function weeklyScores(from, to) {
+  const { rows } = await pool.query(
+    `SELECT author_email AS email, author_name AS name,
+            (SELECT COUNT(*)::int FROM community_posts p WHERE p.author_email = e.email AND p.created_at >= $1 AND p.created_at < $2) * 5 +
+            (SELECT COUNT(*)::int FROM post_comments c WHERE c.author_email = e.email AND c.created_at >= $1 AND c.created_at < $2) * 2 +
+            (SELECT COUNT(*)::int FROM post_reactions r JOIN community_posts p ON p.id = r.post_id WHERE r.created_at >= $1 AND r.created_at < $2 AND p.author_email = e.email) +
+            (SELECT COUNT(*)::int FROM post_reactions r WHERE r.created_at >= $1 AND r.created_at < $2 AND r.user_id IN (SELECT id FROM users WHERE email = e.email)) +
+            (SELECT COUNT(*)::int FROM post_poll_votes v WHERE v.created_at >= $1 AND v.created_at < $2 AND v.user_id IN (SELECT id FROM users WHERE email = e.email)) AS score,
+            (SELECT COUNT(*)::int FROM community_posts p WHERE p.author_email = e.email AND p.created_at >= $1 AND p.created_at < $2) AS posts,
+            (SELECT COUNT(*)::int FROM post_comments c WHERE c.author_email = e.email AND c.created_at >= $1 AND c.created_at < $2) AS comments,
+            (SELECT COUNT(*)::int FROM post_reactions r JOIN community_posts p ON p.id = r.post_id WHERE r.created_at >= $1 AND r.created_at < $2 AND p.author_email = e.email) AS reactionsReceived,
+            (SELECT COUNT(*)::int FROM post_reactions r WHERE r.created_at >= $1 AND r.created_at < $2 AND r.user_id IN (SELECT id FROM users WHERE email = e.email)) AS reactionsGiven,
+            (SELECT COUNT(*)::int FROM post_poll_votes v WHERE v.created_at >= $1 AND v.created_at < $2 AND v.user_id IN (SELECT id FROM users WHERE email = e.email)) AS pollVotes
+     FROM (SELECT DISTINCT author_email AS email, MAX(author_name) AS author_name
+           FROM (
+             SELECT author_email, author_name FROM community_posts
+             UNION ALL SELECT author_email, author_name FROM post_comments
+           ) a WHERE author_email <> ''
+           GROUP BY author_email) e
+     ORDER BY score DESC, name ASC LIMIT 50`,
+    [from, to]
+  );
+  return rows;
 }
 
 // Feed: paginated posts newest-first with reaction rollups + comment counts.
@@ -1092,14 +1146,48 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
        GROUP BY post_id`,
       [ids]
     );
+    const { rows: votes } = await pool.query(
+      `SELECT poll_id, option_id, COUNT(*)::int AS c,
+              COALESCE(BOOL_OR(user_id = $2), false) AS mine
+       FROM post_poll_votes WHERE poll_id = ANY($1::uuid[])
+       GROUP BY poll_id, option_id`,
+      [ids, meId]
+    );
+    const myVoteOption = {};
+    for (const v of votes) if (v.mine) myVoteOption[v.poll_id] = v.option_id;
+
+    // Last week's top-5 badge holders (weekly competition).
+    const now = new Date();
+    const { weekStart: thisWeekStart } = isoWeekBounds(now);
+    const lastWeek = isoWeekBounds(new Date(thisWeekStart.getTime() - 3 * 86400000));
+    const badgeRows = (await weeklyScores(lastWeek.weekStart, lastWeek.weekEnd))
+      .filter((r) => r.score > 0).slice(0, 5);
+    const badgeEmails = new Set(badgeRows.map((r) => (r.email || "").toLowerCase()));
 
     const byPost = {};
     for (const r of reactions) (byPost[r.post_id] = byPost[r.post_id] || []).push(r);
     const cByPost = {};
     for (const c of comments) cByPost[c.post_id] = c.c;
+    const votesByPoll = {};
+    for (const v of votes) (votesByPoll[v.poll_id] = votesByPoll[v.poll_id] || []).push(v);
 
     return res.json({
-      posts: posts.map((p) => postToApi(p, byPost[p.id] || [], cByPost[p.id] || 0)),
+      posts: posts.map((p) => {
+        let poll = null;
+        if (p.post_type === "poll" && Array.isArray(p.poll_options)) {
+          const options = p.poll_options;
+          const pv = votesByPoll[p.id] || [];
+          const counts = {};
+          let totalVotes = 0;
+          for (const v of pv) {
+            counts[v.option_id] = v.c;
+            totalVotes += v.c;
+          }
+          poll = { options, counts, totalVotes };
+        }
+        const isBadge = badgeEmails.has((p.author_email || "").toLowerCase());
+        return postToApi(p, byPost[p.id] || [], cByPost[p.id] || 0, poll, myVoteOption[p.id] || null, isBadge);
+      }),
       total: total[0].c,
       hasMore: offset + posts.length < total[0].c
     });
@@ -1108,24 +1196,137 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
   }
 });
 
-// Create a text post. Posts by the admin email are flagged as team posts.
+// Create a text post or a poll. Posts by the admin email are flagged as team posts.
 app.post("/api/community/posts", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   const body = String(req.body.body || "").trim();
-  if (!body) return res.status(400).json({ error: "Write something first." });
+  const postType = req.body.postType === "poll" ? "poll" : "text";
+  if (!body) return res.status(400).json({ error: postType === "poll" ? "Write the poll question first." : "Write something first." });
   if (body.length > 2000) return res.status(400).json({ error: "Posts are limited to 2000 characters." });
+
+  let pollOptions = null;
+  if (postType === "poll") {
+    const raw = Array.isArray(req.body.pollOptions) ? req.body.pollOptions : [];
+    pollOptions = raw
+      .map((o) => ({ id: String((o && o.id) || Math.random().toString(36).slice(2, 10)), label: String((o && o.label) || "").trim() }))
+      .filter((o) => o.label.length > 0)
+      .slice(0, 6);
+    if (pollOptions.length < 2) {
+      return res.status(400).json({ error: "A poll needs at least two options." });
+    }
+    if (pollOptions.length !== raw.length) {
+      return res.status(400).json({ error: "Every poll option needs a label." });
+    }
+  }
+  const allowComments = req.body.allowComments !== false;
+
   try {
     const me = await currentUser(req);
     if (!me) return res.status(404).json({ error: "User not found" });
     const isTeam = ADMIN_EMAIL && (me.email || "").toLowerCase() === ADMIN_EMAIL;
     const { rows } = await pool.query(
-      `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [me.id, me.name || "Trader", me.email || "", body, isTeam]
+      `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) RETURNING *`,
+      [me.id, me.name || "Trader", me.email || "", body, isTeam, postType, JSON.stringify(pollOptions), allowComments]
     );
-    return res.json({ post: postToApi(rows[0], [], 0) });
+    const row = rows[0];
+    const poll = postType === "poll"
+      ? { options: row.poll_options, counts: {}, totalVotes: 0 }
+      : null;
+    return res.json({ post: postToApi(row, [], 0, poll, null, false) });
   } catch (err) {
     return res.status(500).json({ error: "Could not publish the post", detail: String(err.message || err) });
+  }
+});
+
+// Cast or switch a poll vote (one vote per user per poll).
+app.post("/api/community/posts/:id/vote", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const optionId = String(req.body.optionId || "");
+  if (!optionId) return res.status(400).json({ error: "Pick an option first." });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const postId = req.params.id;
+    const { rows: posts } = await pool.query(
+      `SELECT id, post_type, poll_options FROM community_posts WHERE id = $1::uuid`,
+      [postId]
+    );
+    const post = posts[0];
+    if (!post || post.post_type !== "poll" || !Array.isArray(post.poll_options)) {
+      return res.status(404).json({ error: "Poll not found" });
+    }
+    if (!post.poll_options.some((o) => o.id === optionId)) {
+      return res.status(400).json({ error: "That option is not part of this poll." });
+    }
+    await pool.query(
+      `INSERT INTO post_poll_votes (poll_id, user_id, option_id)
+       VALUES ($1::uuid, $2::uuid, $3)
+       ON CONFLICT (poll_id, user_id) DO UPDATE SET option_id = $3, created_at = now()`,
+      [postId, me.id, optionId]
+    );
+    const { rows: votes } = await pool.query(
+      `SELECT option_id, COUNT(*)::int AS c FROM post_poll_votes WHERE poll_id = $1::uuid GROUP BY option_id`,
+      [postId]
+    );
+    const counts = {};
+    let totalVotes = 0;
+    for (const v of votes) { counts[v.option_id] = v.c; totalVotes += v.c; }
+    return res.json({ optionId, counts, totalVotes, myVote: optionId });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not record the vote", detail: String(err.message || err) });
+  }
+});
+
+// Weekly competition leaderboard: current standings + last week's top 5.
+app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    const { weekStart, weekEnd } = isoWeekBounds(new Date());
+    const rows = (await weeklyScores(weekStart, weekEnd)).filter((r) => r.score > 0);
+
+    const lastWeekBounds = isoWeekBounds(new Date(weekStart.getTime() - 3 * 86400000));
+    const lastWeekRows = (await weeklyScores(lastWeekBounds.weekStart, lastWeekBounds.weekEnd))
+      .filter((r) => r.score > 0).slice(0, 5);
+
+    const myEmail = (me ? me.email : "") .toLowerCase();
+    let myRank = null;
+    let myScore = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if ((rows[i].email || "").toLowerCase() === myEmail) {
+        myRank = i + 1;
+        myScore = rows[i].score;
+        break;
+      }
+    }
+
+    return res.json({
+      weekStart,
+      nextReset: weekEnd,
+      standings: rows.slice(0, 10).map((r, i) => ({
+        rank: i + 1,
+        name: r.name,
+        email: r.email,
+        score: r.score,
+        posts: r.posts,
+        comments: r.comments,
+        reactionsReceived: r.reactionsReceived,
+        reactionsGiven: r.reactionsGiven,
+        pollVotes: r.pollVotes
+      })),
+      myRank,
+      myScore,
+      lastWeekWinners: lastWeekRows.map((r, i) => ({
+        rank: i + 1,
+        name: r.name,
+        email: r.email,
+        score: r.score,
+        badge: true
+      }))
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load the standings", detail: String(err.message || err) });
   }
 });
 

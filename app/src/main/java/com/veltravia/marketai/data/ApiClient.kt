@@ -135,6 +135,50 @@ object ApiClient {
         request(request)
     }
 
+    /** Publish a poll: 2-6 options with labels. Returns { post: {...} }. */
+    suspend fun createCommunityPoll(
+        sessionToken: String,
+        question: String,
+        options: List<String>,
+        allowComments: Boolean
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val arr = JSONArray()
+        options.forEach { label -> arr.put(JSONObject().put("id", java.util.UUID.randomUUID().toString()).put("label", label)) }
+        val payload = JSONObject()
+            .put("body", question)
+            .put("postType", "poll")
+            .put("pollOptions", arr)
+            .put("allowComments", allowComments)
+        val request = Request.Builder()
+            .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts")
+            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Cast or switch a poll vote. Returns { optionId, counts, totalVotes, myVote }. */
+    suspend fun votePoll(sessionToken: String, postId: String, optionId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("optionId", optionId)
+            val request = Request.Builder()
+                .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/vote")
+                .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Weekly competition standings: { weekStart, nextReset, standings, myRank, myScore, lastWeekWinners }. */
+    suspend fun fetchLeaderboard(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${'$'}{ApiConfig.BASE_URL}/api/community/leaderboard")
+            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Community feed page: { posts: [...], total, hasMore } — newest first. */
     suspend fun fetchCommunityFeed(
         sessionToken: String,
