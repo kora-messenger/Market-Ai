@@ -135,4 +135,75 @@ object InstrumentCatalog {
 
     fun byDisplay(display: String): Instrument? =
         all.firstOrNull { it.display.equals(display, ignoreCase = true) }
+
+    // Real ISO 4217 currency names, used to build the readable "Euro / United
+    // States Dollar" style subtitle shown next to each forex/metal pair.
+    private val currencyNames = mapOf(
+        "USD" to "United States Dollar",
+        "EUR" to "Euro",
+        "GBP" to "British Pound",
+        "JPY" to "Japanese Yen",
+        "AUD" to "Australian Dollar",
+        "CAD" to "Canadian Dollar",
+        "CHF" to "Swiss Franc",
+        "NZD" to "New Zealand Dollar",
+        "HKD" to "Hong Kong Dollar",
+        "SEK" to "Swedish Krona"
+    )
+
+    private val indexNames = mapOf(
+        "us30" to "Dow Jones 30",
+        "us500" to "S&P 500",
+        "nas100" to "Nasdaq 100",
+        "ger40" to "Germany 40 (DAX)",
+        "uk100" to "FTSE 100",
+        "jp225" to "Nikkei 225",
+        "hk50" to "Hang Seng 50",
+        "aus200" to "Australia 200",
+        "eu50" to "Euro Stoxx 50",
+        "fra40" to "France 40 (CAC)",
+        "spa35" to "Spain 35 (IBEX)",
+        "it40" to "Italy 40 (FTSE MIB)",
+        "swi20" to "Switzerland 20 (SMI)",
+        "ned25" to "Netherlands 25 (AEX)",
+        "se30" to "Sweden 30",
+        "us2000" to "Russell 2000",
+        "vix" to "Volatility Index",
+        "ndx" to "Nasdaq 100 Index",
+        "spx" to "S&P 500 Index",
+        "dji" to "Dow Jones Industrial Average"
+    )
+
+    private val cryptoNames = mapOf(
+        "btc" to "Bitcoin", "eth" to "Ethereum", "sol" to "Solana",
+        "bnb" to "Binance Coin", "xrp" to "Ripple", "ada" to "Cardano",
+        "doge" to "Dogecoin", "dot" to "Polkadot", "ltc" to "Litecoin",
+        "bch" to "Bitcoin Cash", "avax" to "Avalanche", "link" to "Chainlink",
+        "matic" to "Polygon", "trx" to "TRON", "xlm" to "Stellar",
+        "etc" to "Ethereum Classic", "atom" to "Cosmos", "fil" to "Filecoin",
+        "uni" to "Uniswap", "aave" to "Aave"
+    )
+
+    /**
+     * Human-readable subtitle for an instrument, mirroring how a real broker
+     * platform lists pairs (e.g. "Euro / United States Dollar").
+     */
+    fun fullNameFor(instrument: Instrument): String = when (instrument.kind) {
+        "forex" -> {
+            val base = instrument.id.substring(0, 3).uppercase()
+            val quote = instrument.id.substring(3, 6).uppercase()
+            "${currencyNames[base] ?: base} / ${currencyNames[quote] ?: quote}"
+        }
+        "metal" -> {
+            val metal = if (instrument.id.startsWith("xau")) "Gold" else "Silver"
+            "$metal / ${currencyNames[instrument.quoteCurrency] ?: instrument.quoteCurrency}"
+        }
+        "index" -> indexNames[instrument.id] ?: "Stock Market Index"
+        "crypto" -> {
+            val code = instrument.id.removeSuffix("usd")
+            "${cryptoNames[code] ?: code.uppercase()} / US Dollar"
+        }
+        "synthetic" -> "Synthetic Index · 24/7 market"
+        else -> instrument.category
+    }
 }

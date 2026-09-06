@@ -327,38 +327,100 @@ fun FirstAnalysisScreen(
             containerColor = SurfaceDark
         ) {
             var query by rememberSaveable { mutableStateOf("") }
-            val filtered = remember(query) {
+            var categoryFilter by rememberSaveable { mutableStateOf("All") }
+            var categoryMenuOpen by remember { mutableStateOf(false) }
+
+            val filtered = remember(query, categoryFilter) {
                 InstrumentCatalog.all.filter {
-                    it.display.contains(query.trim(), ignoreCase = true)
+                    (categoryFilter == "All" || it.category == categoryFilter) &&
+                        it.display.contains(query.trim(), ignoreCase = true)
                 }
             }
+
             Column(Modifier.padding(horizontal = 20.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search ${InstrumentCatalog.all.size} instruments") },
-                    singleLine = true
+                Text(
+                    "Select Instrument",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Search instruments…") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
+                                .clickable { categoryMenuOpen = true }
+                                .padding(horizontal = 12.dp, vertical = 14.dp)
+                        ) {
+                            Text(categoryFilter, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.Filled.ExpandMore,
+                                contentDescription = "Filter category",
+                                modifier = Modifier.size(18.dp),
+                                tint = TextSecondary
+                            )
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = categoryMenuOpen,
+                            onDismissRequest = { categoryMenuOpen = false }
+                        ) {
+                            (listOf("All") + InstrumentCatalog.categories).forEach { option ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(option) },
+                                    onClick = {
+                                        categoryFilter = option
+                                        categoryMenuOpen = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
                 LazyColumn {
                     items(filtered) { inst ->
-                        Column(
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
                                 .clickable {
                                     instrument = inst
                                     pickerOpen = false
                                 }
-                                .padding(horizontal = 4.dp, vertical = 13.dp)
+                                .padding(horizontal = 16.dp, vertical = 16.dp)
                         ) {
-                            Text(inst.display, fontWeight = FontWeight.SemiBold)
                             Text(
-                                inst.category,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextSecondary
+                                inst.display,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                InstrumentCatalog.fullNameFor(inst),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                         }
+                        Spacer(Modifier.height(10.dp))
                     }
                     item { Spacer(Modifier.height(28.dp)) }
                 }
