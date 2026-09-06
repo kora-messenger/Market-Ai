@@ -798,10 +798,21 @@ const DAILY_SIGNAL_SYSTEM_PROMPT = `You are the senior market analyst behind Mar
 Rules: entry must sit within a few percent of the latest close; stop loss must be on the wrong side of entry (below for long, above for short); every take profit must be on the profitable side, ordered nearest first; risk:reward to the final target should be at least 1.5. If nothing qualifies, set strength "weak" and pick the least-bad setup anyway — never invent prices outside the data range shown.`;
 
 /** AI-generated daily call (cron or admin). Runs at most once per UTC day. */
-app.post("/api/daily-signals/auto", requireAuth, async (req, res) => {
+app.post("/api/daily-signals/auto", async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
-  if (!(await isAdminRequest(req)) && !isCronRequest(req)) {
-    return res.status(403).json({ error: "Not authorized to trigger the daily AI signal." });
+  if (!isCronRequest(req)) {
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Missing session token" });
+    }
+    try {
+      req.session = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    } catch (_e) {
+      return res.status(401).json({ error: "Invalid or expired session" });
+    }
+    if (!(await isAdminRequest(req))) {
+      return res.status(403).json({ error: "Not authorized to trigger the daily AI signal." });
+    }
   }
   if (!OPENROUTER_API_KEY) return res.status(503).json({ error: "Analysis engine is not configured yet." });
   try {
