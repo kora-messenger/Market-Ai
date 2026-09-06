@@ -249,7 +249,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
                 )
             } else {
                 Text(
-                    text = if (alreadyJoined) "Continue" else "Join the community",
+                    text = if (alreadyJoined) "Continue" else "Start your trading journey",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = NavyBlack
