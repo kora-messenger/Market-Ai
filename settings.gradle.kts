@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Market Ai"
-include(":app")
+include(":composeApp")

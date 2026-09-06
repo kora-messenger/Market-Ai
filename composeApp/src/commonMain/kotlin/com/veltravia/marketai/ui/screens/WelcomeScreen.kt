@@ -68,7 +68,7 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
             verticalArrangement = Arrangement.Center
         ) {
             Image(
-                painter = painterResource(R.drawable.app_logo),
+                painter = painterResource(R.mipmap.ic_launcher),
                 contentDescription = "Market Ai",
                 modifier = Modifier
                     .size(120.dp)
@@ -112,7 +112,7 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
                         scope.launch {
                             try {
                                 val user = GoogleSignIn.signIn(context, clientId)
-                                SessionManager.saveUser(context, user)
+                                SessionManager.saveUser(user)
                                 onSignedIn()
                             } catch (e: Exception) {
                                 error = e.message ?: "Login failed. Please try again."

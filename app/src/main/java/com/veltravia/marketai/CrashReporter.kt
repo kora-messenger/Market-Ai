@@ -1,13 +1,9 @@
 package com.veltravia.marketai
 
-import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
-import android.os.Bundle
-import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -16,11 +12,17 @@ import android.widget.Toast
 import java.io.File
 
 /**
- * Debug crash reporter: when the app crashes, shows the full stack trace on
- * screen so it can be screenshotted/copied and reported. Debug builds only.
+ * Debug crash reporter. Design note: we do NOT try to launch a rescue Activity
+ * from inside the crash handler itself — if the crash left the app/Looper in a
+ * bad state, that risky mid-crash Activity.start can silently fail too, which is
+ * exactly what was happening (Android's own crash dialog appeared instead of ours).
+ * Instead: write the trace to disk synchronously (nearly always succeeds), then
+ * show it as the very first thing on the NEXT cold start — a fresh onCreate that
+ * is guaranteed to render normally.
  */
 object CrashReporter {
-    const val EXTRA_TRACE = "crash_trace"
+
+    private const val CRASH_FILE = "last-crash.txt"
 
     fun install(context: Context) {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -37,57 +39,61 @@ object CrashReporter {
                     append("App: Market Ai ").append(BuildConfig.VERSION_NAME)
                     append(" (").append(BuildConfig.VERSION_CODE).append(")\n")
                 }
-                File(context.filesDir, "last-crash.txt").writeText(trace)
-                val intent = Intent(context, CrashReportActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                    .putExtra(EXTRA_TRACE, trace)
-                context.startActivity(intent)
-                Thread.sleep(1200) // give the report screen a moment to appear
+                File(context.filesDir, CRASH_FILE).writeText(trace)
             } catch (_: Throwable) {
-                // never let the reporter itself loop
+                // never let the reporter itself throw
             }
             previous?.uncaughtException(thread, throwable)
         }
     }
-}
 
-/** Full-screen report shown after a crash: scrollable trace + copy button. */
-class CrashReportActivity : Activity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val trace = intent.getStringExtra(CrashReporter.EXTRA_TRACE)
-            ?: File(filesDir, "last-crash.txt").readText()
+    /** Reads and clears the last crash trace, if any — call once on cold start. */
+    fun consumeLastCrash(context: Context): String? {
+        val file = File(context.filesDir, CRASH_FILE)
+        if (!file.exists()) return null
+        return try {
+            val text = file.readText()
+            file.delete()
+            text
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
-        val ctx = this
-        val root = LinearLayout(ctx).apply {
+    /** Builds the full-screen crash report view (trace + copy button). */
+    fun buildReportView(context: Context, trace: String): LinearLayout {
+        val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#14100F"))
         }
-        root.addView(TextView(ctx).apply {
-            text = "MARKET AI STOPPED — send a screenshot of this report"
+        root.addView(TextView(context).apply {
+            text = "MARKET AI STOPPED LAST TIME — send a screenshot of this report"
             setTextColor(Color.parseColor("#FF5252"))
             textSize = 16f
             setPadding(48, 64, 48, 32)
         })
-        root.addView(ScrollView(ctx).apply {
-            addView(TextView(this@CrashReportActivity).apply {
+        root.addView(ScrollView(context).apply {
+            addView(TextView(context).apply {
                 text = trace
                 setTextColor(Color.parseColor("#E0E0E0"))
                 textSize = 12f
                 setPadding(48, 16, 48, 16)
             })
         })
-        root.addView(Button(ctx).apply {
+        root.addView(Button(context).apply {
             text = "Copy crash report"
             setOnClickListener {
-                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("Market Ai crash", trace))
-                Toast.makeText(ctx, "Copied — paste it to the team in chat", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Copied — paste it to the team in chat", Toast.LENGTH_LONG).show()
             }
         })
-        setContentView(root)
-
-        actionBar?.hide()
-        window.statusBarColor = Color.parseColor("#14100F")
+        root.addView(Button(context).apply {
+            text = "Continue to Market Ai"
+            setOnClickListener {
+                (context as? android.app.Activity)?.recreate()
+            }
+        })
+        return root
     }
 }
