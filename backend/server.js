@@ -1379,9 +1379,26 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
       }
     }
 
+    // Featured proof of the week: most-reacted image post published this week.
+    const { rows: proofRows } = await pool.query(
+      `SELECT p.id, p.author_name, p.body,
+              (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
+              (SELECT COUNT(*)::int FROM post_reactions r WHERE r.post_id = p.id AND r.created_at >= $1 AND r.created_at < $2) AS week_reactions
+       FROM community_posts p
+       WHERE p.created_at >= $1 AND p.created_at < $2
+         AND EXISTS (SELECT 1 FROM community_post_images i WHERE i.post_id = p.id)
+       ORDER BY week_reactions DESC, p.created_at DESC LIMIT 1`,
+      [weekStart, weekEnd]
+    );
+    const proof = proofRows.length
+      ? { postId: proofRows[0].id, authorName: proofRows[0].author_name, body: proofRows[0].body,
+          imageCount: proofRows[0].image_count, weekReactions: proofRows[0].week_reactions }
+      : null;
+
     return res.json({
       weekStart,
       nextReset: weekEnd,
+      proof,
       standings: rows.slice(0, 10).map((r, i) => ({
         rank: i + 1,
         name: r.name,

@@ -102,6 +102,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
     var lastWeekWinners by remember { mutableStateOf<List<StandingsEntry>>(emptyList()) }
     var weekStart by remember { mutableStateOf("") }
     var nextReset by remember { mutableStateOf("") }
+    var proof by remember { mutableStateOf<JSONObject?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -116,6 +117,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                 myScore = lb.optInt("myScore", 0)
                 weekStart = lb.optString("weekStart")
                 nextReset = lb.optString("nextReset")
+                proof = if (lb.has("proof") && !lb.isNull("proof")) lb.getJSONObject("proof") else null
                 val winners = lb.optJSONArray("lastWeekWinners") ?: org.json.JSONArray()
                 lastWeekWinners = (0 until winners.length()).map { i ->
                     val o = winners.getJSONObject(i)
@@ -222,6 +224,62 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(12.dp))
+
+                // Featured proof of the week (most-reacted image post this week)
+                proof?.let { pr ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text(
+                                "Weekly Proof \uD83D\uDCC8 — featured trader proof from the week",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            coil.compose.AsyncImage(
+                                model = ApiClient.communityImageUrl(pr.optString("postId"), 0),
+                                contentDescription = "Featured proof",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    pr.optString("authorName").ifBlank { "Trader" },
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    if (pr.optInt("weekReactions", 0) == 1) "1 reaction this week"
+                                    else "${pr.optInt("weekReactions", 0)} reactions this week",
+                                    fontSize = 11.sp,
+                                    color = TextMuted
+                                )
+                            }
+                            if (pr.optString("body").isNotBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    pr.optString("body"),
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                    color = TextMuted,
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
 
                 // Last week's winners
                 if (lastWeekWinners.isNotEmpty()) {
