@@ -54,8 +54,9 @@ import kotlin.math.roundToInt
 
 /**
  * Illustrative "next 12 trades" consistency pitch shown once, right after the
- * notifications soft-ask (before the questionnaire). All numbers are computed live
- * by ProjectionEngine — this is Market Ai's own math, not hardcoded copy.
+ * notifications soft-ask. Uses the trader's real capital/experience/style from
+ * the questionnaire (already completed earlier in onboarding). All numbers are
+ * computed live by ProjectionEngine — this is Market Ai's own math, not hardcoded copy.
  */
 @Composable
 fun ProjectionIntroScreen(onContinue: () -> Unit) {
@@ -63,10 +64,13 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
     val user = SessionManager.currentUser(context)
     val answers = SessionManager.questionnaireAnswers(context)
 
-    val defaultCapital = 50_000.0
-    val projection = remember {
+    // Use the trader's own capital from the questionnaire (screen 1: "How much
+    // capital do you currently have?"). Only fall back to a sane default if
+    // that's somehow missing/zero (e.g. this screen was reached out of order).
+    val userCapital = answers?.capitalUsd?.toDoubleOrNull()?.takeIf { it > 0 } ?: 1_000.0
+    val projection = remember(userCapital) {
         ProjectionEngine.computeProjection(
-            capital = defaultCapital,
+            capital = userCapital,
             experience = answers?.experience ?: "",
             style = answers?.style ?: "",
             seedKey = user?.email ?: "market-ai-guest"
