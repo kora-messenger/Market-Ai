@@ -176,7 +176,11 @@ app.post("/api/auth/google", async (req, res) => {
 
     return res.json({ user, sessionToken });
   } catch (err) {
-    return res.status(401).json({ error: "Google token verification failed" });
+    console.error("[auth/google] verification failed:", err && err.message, err && err.stack);
+    return res.status(401).json({
+      error: "Google token verification failed",
+      reason: err && err.message ? String(err.message) : "unknown"
+    });
   }
 });
 

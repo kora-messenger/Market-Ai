@@ -35,8 +35,10 @@ object ApiClient {
             val body = response.body?.string() ?: "{}"
             val json = JSONObject(body)
             if (!response.isSuccessful) {
+                val baseError = json.optString("error", "Request failed (${response.code})")
+                val reason = json.optString("reason", "")
                 throw MarketAiException(
-                    json.optString("error", "Request failed (${response.code})")
+                    if (reason.isNotBlank()) "$baseError: $reason" else baseError
                 )
             }
             return json
