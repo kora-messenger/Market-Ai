@@ -97,10 +97,16 @@ fun ProfileScreen(onSignOut: () -> Unit, onOpenScreenshotGuide: () -> Unit) {
                     )
                     Spacer(Modifier.height(12.dp))
                     ProfileRow("Experience", profile.experience)
-                    ProfileRow("Style", profile.style)
                     ProfileRow("Primary goal", profile.goal)
-                    ProfileRow("Markets", profile.markets.joinToString(", "))
+                    if (profile.capitalUsd.isNotBlank()) {
+                        ProfileRow("Capital (USD)", profile.capitalUsd)
+                    }
+                    ProfileRow("Assets traded", profile.assets.joinToString(", "))
+                    ProfileRow("Style", profile.style)
                     ProfileRow("Timeframes", profile.timeframes.joinToString(", "))
+                    if (profile.entryCriteria.isNotBlank()) {
+                        ProfileRow("Entry criteria", profile.entryCriteria)
+                    }
                 }
             }
 

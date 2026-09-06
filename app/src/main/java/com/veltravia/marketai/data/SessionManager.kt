@@ -21,42 +21,39 @@ data class UserSession(
 
 data class QuestionnaireAnswers(
     val experience: String,
-    val style: String,
     val goal: String,
-    val markets: List<String>,
+    val capitalUsd: String,
+    val assets: List<String>,
+    val style: String,
     val timeframes: List<String>,
-    val losingPlan: String,
-    val emotions: String,
-    val routine: String,
-    val avoidConditions: String
+    val entryCriteria: String
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("experience", experience)
-        put("style", style)
         put("goal", goal)
-        put("markets", JSONArray(markets))
+        put("capitalUsd", capitalUsd)
+        put("assets", JSONArray(assets))
+        put("style", style)
         put("timeframes", JSONArray(timeframes))
-        put("losingPlan", losingPlan)
-        put("emotions", emotions)
-        put("routine", routine)
-        put("avoidConditions", avoidConditions)
+        put("entryCriteria", entryCriteria)
     }
 
     companion object {
         fun fromJson(json: JSONObject): QuestionnaireAnswers = QuestionnaireAnswers(
             experience = json.optString("experience", ""),
-            style = json.optString("style", ""),
             goal = json.optString("goal", ""),
-            markets = json.optJSONArray("markets")?.let { arr ->
+            capitalUsd = json.optString("capitalUsd", ""),
+            assets = json.optJSONArray("assets")?.let { arr ->
+                List(arr.length()) { arr.optString(it) }
+            } ?: json.optJSONArray("markets")?.let { arr ->
+                // tolerate answers saved by the pre-rebuild questionnaire
                 List(arr.length()) { arr.optString(it) }
             } ?: emptyList(),
+            style = json.optString("style", ""),
             timeframes = json.optJSONArray("timeframes")?.let { arr ->
                 List(arr.length()) { arr.optString(it) }
             } ?: emptyList(),
-            losingPlan = json.optString("losingPlan", ""),
-            emotions = json.optString("emotions", ""),
-            routine = json.optString("routine", ""),
-            avoidConditions = json.optString("avoidConditions", "")
+            entryCriteria = json.optString("entryCriteria", "")
         )
     }
 }
@@ -192,14 +189,13 @@ object SessionManager {
     fun questionnaireDone(context: Context): Boolean =
         prefs(context).getBoolean(KEY_QUESTIONNAIRE_DONE, false)
 
-    /** Personalized coaching line, same logic as the reference app. */
+    /** Personalized coaching line derived from the real questionnaire answers. */
     fun coachingLine(answers: QuestionnaireAnswers): String {
-        val emotions = answers.emotions.lowercase()
-        if (emotions.contains("impatience")) {
-            return "Slow is smooth, smooth becomes fast. Your edge is in waiting for A-setups, not more trades."
-        }
         if (answers.experience.equals("Beginner", ignoreCase = true)) {
             return "Clarity beats speed. One A-setup repeated consistently is how discipline compounds."
+        }
+        if (answers.style.contains("Scalping", ignoreCase = true)) {
+            return "Scalping rewards precision, not frequency. Protect your focus like it's capital."
         }
         return "Consistency is a system: same checklist, same risk, same trigger—again and again."
     }
