@@ -170,7 +170,13 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = AccentCyan,
                     unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan
+                    cursorColor = AccentCyan,
+                    // Explicit text colors — don't rely on the M3 default,
+                    // which was rendering typed digits invisible against the
+                    // dark background on Ijezie's device.
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    disabledTextColor = TextMuted
                 )
             )
         } else if (page == 1) {
@@ -253,7 +259,13 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = AccentCyan,
                     unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan
+                    cursorColor = AccentCyan,
+                    // Explicit text colors — don't rely on the M3 default,
+                    // which was rendering typed digits invisible against the
+                    // dark background on Ijezie's device.
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    disabledTextColor = TextMuted
                 )
             )
         } else {
@@ -282,7 +294,13 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = AccentCyan,
                     unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan
+                    cursorColor = AccentCyan,
+                    // Explicit text colors — don't rely on the M3 default,
+                    // which was rendering typed digits invisible against the
+                    // dark background on Ijezie's device.
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    disabledTextColor = TextMuted
                 )
             )
 
@@ -299,7 +317,13 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = AccentCyan,
                     unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan
+                    cursorColor = AccentCyan,
+                    // Explicit text colors — don't rely on the M3 default,
+                    // which was rendering typed digits invisible against the
+                    // dark background on Ijezie's device.
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary,
+                    disabledTextColor = TextMuted
                 )
             )
         }

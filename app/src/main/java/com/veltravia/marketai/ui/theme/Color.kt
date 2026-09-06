@@ -1,21 +1,19 @@
 package com.veltravia.marketai.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// Market Ai design language — "Terminal Luxury".
-// Brand/semantic colors stay constant across light & dark (accent, bull/bear,
-// gold) — only surfaces, backgrounds, text and borders adapt to the device's
-// theme, same convention most real apps use (green stays green either way).
-val AccentCyan = Color(0xFF22D3EE)
-val AccentViolet = Color(0xFF8B5CF6)
-val BullGreen = Color(0xFF22C55E)
-val BearRed = Color(0xFFEF4444)
-val GoldAmber = Color(0xFFF59E0B)
+// Market Ai design language — always-light "clean terminal" look.
+// Brand/semantic colors: accents are tuned slightly darker than the old
+// dark-theme values so they stay legible on white/light-gray surfaces.
+val AccentCyan = Color(0xFF0891B2)     // primary accent (dark cyan — readable on white)
+val AccentViolet = Color(0xFF7C3AED)  // secondary accent (deep violet)
+val BullGreen = Color(0xFF16A34A)
+val BearRed = Color(0xFFDC2626)
+val GoldAmber = Color(0xFFD97706)
 
-/** Theme-dependent roles: background, surfaces, text, borders. */
+/** The one and only palette: Market Ai is always light/white (like the FxLens reference). */
 data class MarketAiPalette(
     val background: Color,
     val surface: Color,
@@ -26,35 +24,24 @@ data class MarketAiPalette(
     val border: Color
 )
 
-val DarkPalette = MarketAiPalette(
-    background = Color(0xFF0B0E14),
-    surface = Color(0xFF131826),
-    surfaceElevated = Color(0xFF1B2233),
-    textPrimary = Color(0xFFF1F5F9),
-    textSecondary = Color(0xFF94A3B8),
-    textMuted = Color(0xFF64748B),
-    border = Color(0xFF232B3E)
-)
-
 val LightPalette = MarketAiPalette(
-    background = Color(0xFFFFFFFF),
-    surface = Color(0xFFFFFFFF),
-    surfaceElevated = Color(0xFFF2F4F8),
-    textPrimary = Color(0xFF0B0E14),
+    background = Color(0xFFFFFFFF),      // app canvas: pure white
+    surface = Color(0xFFF3F4F7),        // cards: soft light gray (visible on white)
+    surfaceElevated = Color(0xFFEAECF1),// elevated/secondary surfaces
+    textPrimary = Color(0xFF0B0E14),    // near-black text
     textSecondary = Color(0xFF4B5567),
     textMuted = Color(0xFF8A93A6),
     border = Color(0xFFE2E5EC)
 )
 
-val LocalMarketAiPalette = staticCompositionLocalOf { DarkPalette }
+val LocalMarketAiPalette = staticCompositionLocalOf { LightPalette }
 
 /**
  * Backward-compatible aliases: every existing screen already writes
- * `.background(NavyBlack)`, `color = TextSecondary`, etc. Turning these into
- * @Composable-getter properties backed by [LocalMarketAiPalette] means every
- * one of those call sites (all inside @Composable functions already) keeps
- * compiling unchanged, but now resolves to the correct light/dark value
- * automatically — no per-screen edits required.
+ * `.background(NavyBlack)`, `color = TextSecondary`, etc. These resolve to
+ * the light palette above, so all call sites keep compiling unchanged while
+ * the whole app renders white. (The old names are kept deliberately — they
+ * are referenced across ~20 screen files.)
  */
 val NavyBlack: Color
     @Composable get() = LocalMarketAiPalette.current.background
@@ -76,7 +63,3 @@ val TextMuted: Color
 
 val BorderSubtle: Color
     @Composable get() = LocalMarketAiPalette.current.border
-
-/** Convenience: is the app currently rendering in dark mode (follows the device). */
-val isMarketAiDark: Boolean
-    @Composable get() = isSystemInDarkTheme()
