@@ -69,6 +69,8 @@ object SessionManager {
     private const val KEY_NOTIFICATIONS_PROMPT_SHOWN = "notifications_prompt_shown"
     private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
     private const val KEY_PROJECTION_INTRO_SHOWN = "projection_intro_shown"
+    private const val KEY_BROKER_SETUP_SHOWN = "broker_setup_shown"
+    private const val KEY_BROKER_CHOICE = "broker_choice"
     private const val KEY_QUESTIONNAIRE = "questionnaire_json"
     private const val KEY_QUESTIONNAIRE_DONE = "questionnaire_done"
 
@@ -123,6 +125,20 @@ object SessionManager {
 
     fun setProjectionIntroShown(context: Context, shown: Boolean) {
         prefs(context).edit().putBoolean(KEY_PROJECTION_INTRO_SHOWN, shown).apply()
+    }
+
+    fun brokerSetupShown(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_BROKER_SETUP_SHOWN, false)
+
+    fun setBrokerSetupShown(context: Context, shown: Boolean) {
+        prefs(context).edit().putBoolean(KEY_BROKER_SETUP_SHOWN, shown).apply()
+    }
+
+    fun brokerChoice(context: Context): String? =
+        prefs(context).getString(KEY_BROKER_CHOICE, null)
+
+    fun setBrokerChoice(context: Context, choice: String) {
+        prefs(context).edit().putString(KEY_BROKER_CHOICE, choice).apply()
     }
 
     fun signOut(context: Context) {

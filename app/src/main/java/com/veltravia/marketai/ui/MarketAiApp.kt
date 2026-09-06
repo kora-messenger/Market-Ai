@@ -43,6 +43,7 @@ import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.ui.screens.CommunityIntroScreen
 import com.veltravia.marketai.ui.screens.NotificationsIntroScreen
 import com.veltravia.marketai.ui.screens.ProjectionIntroScreen
+import com.veltravia.marketai.ui.screens.BrokerSetupIntroScreen
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
 import com.veltravia.marketai.ui.screens.ChartUploadScreen
@@ -91,11 +92,18 @@ fun MarketAiApp() {
             !needsNotificationsIntro &&
             !SessionManager.projectionIntroShown(context) &&
             !questionnaireDone
+        val needsBrokerSetupIntro = hasSession &&
+            !needsCommunityIntro &&
+            !needsNotificationsIntro &&
+            !needsProjectionIntro &&
+            !SessionManager.brokerSetupShown(context) &&
+            !questionnaireDone
         when {
             !hasSession -> "welcome"
             needsCommunityIntro -> "community_intro"
             needsNotificationsIntro -> "notifications_intro"
             needsProjectionIntro -> "projection_intro"
+            needsBrokerSetupIntro -> "broker_setup_intro"
             !questionnaireDone -> "questionnaire"
             else -> "main"
         }
@@ -136,8 +144,17 @@ fun MarketAiApp() {
             ProjectionIntroScreen(
                 onContinue = {
                     SessionManager.setProjectionIntroShown(context, true)
-                    navController.navigate("questionnaire") {
+                    navController.navigate("broker_setup_intro") {
                         popUpTo("projection_intro") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("broker_setup_intro") {
+            BrokerSetupIntroScreen(
+                onDone = {
+                    navController.navigate("questionnaire") {
+                        popUpTo("broker_setup_intro") { inclusive = true }
                     }
                 }
             )
