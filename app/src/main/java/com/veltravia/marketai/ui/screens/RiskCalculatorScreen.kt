@@ -87,7 +87,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
     var distance by remember { mutableStateOf("") }
     var riskPct by remember { mutableStateOf("1") }
     var rate by remember { mutableStateOf("1") }
-    var result by remember { mutableStateOf<LotResult?>(null) }
+    var result by remember { mutableStateOf<CalcResult?>(null) }
 
     val quoteCurrency = instrument?.quoteCurrency ?: "USD"
     val needsRate = quoteCurrency != "USD"
@@ -250,7 +250,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
                 val pipValueInQuote = cs * ps
                 val pipValueUsd = if (needsRate) pipValueInQuote / ex else pipValueInQuote
                 val lots = riskAmount / (d * pipValueUsd)
-                result = LotResult(lots = lots, units = lots * cs, riskAmount = riskAmount)
+                result = CalcResult(lots = lots, units = lots * cs, riskAmount = riskAmount)
             },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
@@ -286,7 +286,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
     }
 }
 
-private data class LotResult(val lots: Double, val units: Double, val riskAmount: Double)
+private data class CalcResult(val lots: Double, val units: Double, val riskAmount: Double)
 
 @Composable
 private fun NumberField(value: String, onChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
