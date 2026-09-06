@@ -12,8 +12,8 @@ android {
         applicationId = "com.veltravia.marketai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -29,7 +29,18 @@ android {
         )
     }
 
+    signingConfigs {
+        create("stableDebug") {
+            storeFile = file("marketai-debug.keystore")
+            storePassword = "MarketAi2026!"
+            keyAlias = "marketai"
+            keyPassword = "MarketAi2026!"
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("stableDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
