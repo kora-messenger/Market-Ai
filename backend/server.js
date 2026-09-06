@@ -422,7 +422,8 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
       },
       body: JSON.stringify({
         model: ANALYSIS_MODEL,
-        max_tokens: 2000,
+        max_tokens: 4000,
+        reasoning: { effort: "low" },
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -879,7 +880,8 @@ app.post("/api/daily-signals/auto", async (req, res) => {
       },
       body: JSON.stringify({
         model: ANALYSIS_MODEL,
-        max_tokens: 1200,
+        max_tokens: 2500,
+        reasoning: { effort: "low" },
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: DAILY_SIGNAL_SYSTEM_PROMPT },
