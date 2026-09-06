@@ -41,6 +41,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.ui.screens.CommunityIntroScreen
+import com.veltravia.marketai.ui.screens.NotificationsIntroScreen
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
 import com.veltravia.marketai.ui.screens.ChartUploadScreen
@@ -73,16 +74,22 @@ fun MarketAiApp() {
 
     val startDestination = remember {
         val hasSession = SessionManager.currentUser(context) != null
+        val questionnaireDone = SessionManager.questionnaireDone(context)
         // Only gate on community_intro if the backend session exists (i.e. joining is
         // actually possible) and the user hasn't already joined or finished onboarding.
         val needsCommunityIntro = hasSession &&
             SessionManager.sessionToken(context) != null &&
             !SessionManager.communityJoined(context) &&
-            !SessionManager.questionnaireDone(context)
+            !questionnaireDone
+        val needsNotificationsIntro = hasSession &&
+            !needsCommunityIntro &&
+            !SessionManager.notificationsPromptShown(context) &&
+            !questionnaireDone
         when {
             !hasSession -> "welcome"
             needsCommunityIntro -> "community_intro"
-            !SessionManager.questionnaireDone(context) -> "questionnaire"
+            needsNotificationsIntro -> "notifications_intro"
+            !questionnaireDone -> "questionnaire"
             else -> "main"
         }
     }
@@ -103,8 +110,17 @@ fun MarketAiApp() {
         composable("community_intro") {
             CommunityIntroScreen(
                 onJoined = {
-                    navController.navigate("questionnaire") {
+                    navController.navigate("notifications_intro") {
                         popUpTo("community_intro") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("notifications_intro") {
+            NotificationsIntroScreen(
+                onDone = {
+                    navController.navigate("questionnaire") {
+                        popUpTo("notifications_intro") { inclusive = true }
                     }
                 }
             )
