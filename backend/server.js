@@ -102,6 +102,15 @@ async function initDb() {
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS post_type TEXT NOT NULL DEFAULT 'text';
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS poll_options JSONB;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS allow_comments BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false;
+    CREATE TABLE IF NOT EXISTS community_post_images (
+      post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
+      position INT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      data_base64 TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (post_id, position)
+    );
     CREATE TABLE IF NOT EXISTS post_poll_votes (
       poll_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
       user_id UUID NOT NULL,
@@ -1068,6 +1077,8 @@ function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor)
     commentCount,
     allowComments: row.allow_comments !== false,
     postType: row.post_type || "text",
+    isPinned: row.is_pinned === true,
+    imageCount: row.image_count || 0,
     poll: poll ? {
       options: poll.options,
       totalVotes: poll.totalVotes,
@@ -1123,7 +1134,10 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
     const meId = me ? me.id : null;
 
     const { rows: posts } = await pool.query(
-      `SELECT * FROM community_posts ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count
+       FROM community_posts p
+       ORDER BY p.is_pinned DESC, p.created_at DESC
+       LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
     const { rows: total } = await pool.query(`SELECT COUNT(*)::int AS c FROM community_posts`);
@@ -1204,6 +1218,20 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
   if (!body) return res.status(400).json({ error: postType === "poll" ? "Write the poll question first." : "Write something first." });
   if (body.length > 2000) return res.status(400).json({ error: "Posts are limited to 2000 characters." });
 
+  const imageList = Array.isArray(req.body.images) ? req.body.images.slice(0, 4) : [];
+  if (postType === "text" && imageList.length > 0 && !body) {
+    return res.status(400).json({ error: "Add a few words about your image." });
+  }
+  for (const dataUrl of imageList) {
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(String(dataUrl))) {
+      return res.status(400).json({ error: "Images must be png/jpeg/webp data URLs." });
+    }
+    const b64 = String(dataUrl).split(",")[1] || "";
+    if (b64.length > 4_000_000) { // ~3MB decoded
+      return res.status(400).json({ error: "Each image must be under 3MB." });
+    }
+  }
+
   let pollOptions = null;
   if (postType === "poll") {
     const raw = Array.isArray(req.body.pollOptions) ? req.body.pollOptions : [];
@@ -1216,6 +1244,9 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     }
     if (pollOptions.length !== raw.length) {
       return res.status(400).json({ error: "Every poll option needs a label." });
+    }
+    if (imageList.length > 0) {
+      return res.status(400).json({ error: "Polls cannot include images." });
     }
   }
   const allowComments = req.body.allowComments !== false;
@@ -1230,10 +1261,19 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
       [me.id, me.name || "Trader", me.email || "", body, isTeam, postType, JSON.stringify(pollOptions), allowComments]
     );
     const row = rows[0];
+    for (let i = 0; i < imageList.length; i++) {
+      const dataUrl = String(imageList[i]);
+      const m = dataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,/);
+      await pool.query(
+        `INSERT INTO community_post_images (post_id, position, content_type, data_base64) VALUES ($1::uuid, $2, $3, $4)`,
+        [row.id, i, m ? m[1] : "image/jpeg", dataUrl.split(",")[1] || ""]
+      );
+    }
     const poll = postType === "poll"
       ? { options: row.poll_options, counts: {}, totalVotes: 0 }
       : null;
-    return res.json({ post: postToApi(row, [], 0, poll, null, false) });
+    const post = postToApi({ ...row, image_count: imageList.length }, [], 0, poll, null, false);
+    return res.json({ post });
   } catch (err) {
     return res.status(500).json({ error: "Could not publish the post", detail: String(err.message || err) });
   }
@@ -1275,6 +1315,44 @@ app.post("/api/community/posts/:id/vote", requireAuth, async (req, res) => {
     return res.json({ optionId, counts, totalVotes, myVote: optionId });
   } catch (err) {
     return res.status(500).json({ error: "Could not record the vote", detail: String(err.message || err) });
+  }
+});
+
+// Serve a post image (auth required — community is members-only).
+app.get("/api/community/posts/:postId/images/:position", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const pos = parseInt(req.params.position) || 0;
+    const { rows } = await pool.query(
+      `SELECT content_type, data_base64 FROM community_post_images
+       WHERE post_id = $1::uuid AND position = $2 LIMIT 1`,
+      [req.params.postId, pos]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Image not found" });
+    const buf = Buffer.from(rows[0].data_base64, "base64");
+    res.setHeader("Content-Type", rows[0].content_type);
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    return res.send(buf);
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load image" });
+  }
+});
+
+// Pin/unpin a post (team announcements — admin only).
+app.post("/api/community/posts/:id/pin", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    const isAdmin = ADMIN_EMAIL && me && (me.email || "").toLowerCase() === ADMIN_EMAIL;
+    if (!isAdmin) return res.status(403).json({ error: "Only the Market Ai team can pin posts." });
+    const { rows } = await pool.query(
+      `UPDATE community_posts SET is_pinned = NOT is_pinned WHERE id = $1::uuid RETURNING id, is_pinned`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Post not found" });
+    return res.json({ id: rows[0].id, isPinned: rows[0].is_pinned });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not pin the post", detail: String(err.message || err) });
   }
 });
 

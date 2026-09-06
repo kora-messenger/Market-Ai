@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HowToVote
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Card
@@ -100,6 +101,8 @@ data class CommunityPost(
     val authorEmail: String,
     val isTeam: Boolean,
     val isTopContributor: Boolean,
+    val isPinned: Boolean,
+    val imageCount: Int,
     val body: String,
     val createdAt: String,
     val commentCount: Int,
@@ -108,6 +111,8 @@ data class CommunityPost(
     val poll: CommunityPoll?,
     val reactions: List<CommunityReaction>
 )
+
+data class PickedPostImage(val dataUrl: String)
 
 data class CommunityComment(
     val id: String,
@@ -156,6 +161,8 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
             authorEmail = p.optString("authorEmail"),
             isTeam = p.optBoolean("isTeam"),
             isTopContributor = p.optBoolean("isTopContributor"),
+            isPinned = p.optBoolean("isPinned"),
+            imageCount = p.optInt("imageCount", 0),
             body = p.optString("body"),
             createdAt = p.optString("createdAt"),
             commentCount = p.optInt("commentCount", 0),
@@ -223,8 +230,46 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
     var composerMode by remember { mutableStateOf("text") } // "text" | "poll"
     val pollOptions = remember { mutableStateListOf(TextFieldValue(""), TextFieldValue("")) }
     var allowComments by remember { mutableStateOf(true) }
+    val pickedImages = remember { mutableStateListOf<PickedPostImage>() }
+    var imageProcessing by remember { mutableStateOf(false) }
 
     var openPost by remember { mutableStateOf<CommunityPost?>(null) }
+    var viewerPost by remember { mutableStateOf<CommunityPost?>(null) }
+    var viewerIndex by remember { mutableStateOf(0) }
+    var isAdmin by remember { mutableStateOf(false) }
+
+    val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            imageProcessing = true
+            scope.launch {
+                try {
+                    val dataUrl = ApiClient.prepareChartImage(context, uri)
+                    if (pickedImages.size < 4) pickedImages.add(PickedPostImage(dataUrl))
+                } catch (e: Exception) {
+                    error = e.message ?: "Could not read that image"
+                } finally {
+                    imageProcessing = false
+                }
+            }
+        }
+    }
+
+    fun togglePin(post: CommunityPost) {
+        if (token == null) return
+        posts = posts.map {
+            if (it.id == post.id) it.copy(isPinned = !it.isPinned) else it
+        }
+        scope.launch {
+            try {
+                ApiClient.pinCommunityPost(token, post.id)
+            } catch (e: Exception) {
+                error = e.message ?: "Could not pin the post"
+                load(reset = true)
+            }
+        }
+    }
 
     fun load(reset: Boolean) {
         if (token == null) return
@@ -258,6 +303,12 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                 val stats = ApiClient.fetchCommunityStats()
                 memberCount = stats.optInt("totalMembers", -1)
             } catch (_: Exception) { }
+            if (token != null) {
+                try {
+                    val access = ApiClient.fetchSignalAccess(token)
+                    isAdmin = access.optBoolean("isAdmin", false)
+                } catch (_: Exception) { }
+            }
         }
     }
 
@@ -274,7 +325,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
         scope.launch {
             try {
                 val resp = if (composerMode == "text") {
-                    ApiClient.createCommunityPost(token, text)
+                    ApiClient.createCommunityPost(token, text, pickedImages.map { it.dataUrl })
                 } else {
                     ApiClient.createCommunityPoll(
                         token, text,
@@ -286,6 +337,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                 posts = listOf(post) + posts
                 totalPosts += 1
                 composerText = TextFieldValue("")
+                pickedImages.clear()
                 pollOptions.clear()
                 pollOptions.addAll(listOf(TextFieldValue(""), TextFieldValue("")))
                 composerMode = "text"
@@ -455,6 +507,18 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                                 pollOptions = pollOptions,
                                 allowComments = allowComments,
                                 onAllowCommentsChange = { allowComments = it },
+                                pickedImages = pickedImages,
+                                imageProcessing = imageProcessing,
+                                onPickImage = {
+                                    pickImage.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(
+                                            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                                        )
+                                    )
+                                },
+                                onRemoveImage = { index ->
+                                    if (index in pickedImages.indices) pickedImages.removeAt(index)
+                                },
                                 publishing = publishing,
                                 onPublish = { publish() }
                             )
@@ -462,9 +526,15 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                         items(posts, key = { it.id }) { post ->
                             PostCard(
                                 post = post,
+                                isAdmin = isAdmin,
                                 onReact = { emoji -> toggleReaction(post, emoji) },
                                 onVote = { optionId -> votePoll(post, optionId) },
-                                onOpenComments = { openPost = post }
+                                onOpenComments = { openPost = post },
+                                onPin = { togglePin(post) },
+                                onOpenImage = { idx ->
+                                    viewerPost = post
+                                    viewerIndex = idx
+                                }
                             )
                         }
                         if (loadingMore) {
@@ -492,6 +562,44 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                         color = Color(0xFFB45309),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
+                }
+            }
+        }
+    }
+
+    viewerPost?.let { post ->
+        if (post.imageCount > 0) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { viewerPost = null },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable { viewerPost = null },
+                    contentAlignment = Alignment.Center
+                ) {
+                    coil.compose.AsyncImage(
+                        model = ApiClient.communityImageUrl(post.id, viewerIndex),
+                        contentDescription = "Post image",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Surface(
+                        color = Color(0xB3000000),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(top = 10.dp)
+                    ) {
+                        Text(
+                            "${viewerIndex + 1} / ${post.imageCount} · tap anywhere to close",
+                            fontSize = 11.sp,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
         }
@@ -570,6 +678,10 @@ private fun PostComposer(
     pollOptions: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue>,
     allowComments: Boolean,
     onAllowCommentsChange: (Boolean) -> Unit,
+    pickedImages: androidx.compose.runtime.snapshots.SnapshotStateList<PickedPostImage>,
+    imageProcessing: Boolean,
+    onPickImage: () -> Unit,
+    onRemoveImage: (Int) -> Unit,
     publishing: Boolean,
     onPublish: () -> Unit
 ) {
@@ -606,6 +718,60 @@ private fun PostComposer(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (pickedImages.isNotEmpty() || imageProcessing) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pickedImages.forEachIndexed { index, img ->
+                            Box {
+                                coil.compose.AsyncImage(
+                                    model = img.dataUrl,
+                                    contentDescription = "Attached image ${index + 1}",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                )
+                                Surface(
+                                    color = Color(0xCC1E293B),
+                                    shape = CircleShape,
+                                    onClick = { onRemoveImage(index) },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(3.dp)
+                                        .size(18.dp)
+                                ) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Remove image", tint = Color.White, modifier = Modifier.size(11.dp))
+                                }
+                            }
+                        }
+                        if (imageProcessing) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFF1F5F9))
+                            ) {
+                                CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(10.dp),
+                    onClick = onPickImage,
+                    enabled = !imageProcessing && pickedImages.size < 4
+                ) {
+                    Text(
+                        if (pickedImages.isEmpty) "＋ Add post images (share your win 🎉)" else "＋ Add more (${pickedImages.size}/4)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (pickedImages.size < 4) AccentCyan else TextMuted,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                    )
+                }
             } else {
                 Text("Ask the community", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
                 Spacer(Modifier.height(8.dp))
@@ -749,9 +915,12 @@ private fun ComposerTab(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun PostCard(
     post: CommunityPost,
+    isAdmin: Boolean,
     onReact: (String) -> Unit,
     onVote: (String) -> Unit,
-    onOpenComments: () -> Unit
+    onOpenComments: () -> Unit,
+    onPin: () -> Unit,
+    onOpenImage: (Int) -> Unit
 ) {
     var showReactionRow by remember { mutableStateOf(false) }
 
@@ -778,7 +947,7 @@ private fun PostCard(
                     )
                 }
                 Spacer(Modifier.width(10.dp))
-                Column {
+                Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             post.authorName,
@@ -810,8 +979,30 @@ private fun PostCard(
                                 )
                             }
                         }
+                        if (post.isPinned) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(color = AccentViolet.copy(alpha = 0.12f), shape = RoundedCornerShape(6.dp)) {
+                                Text(
+                                    "\uD83D\uDCCC Pinned",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = AccentViolet,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
                     Text(relativeTime(post.createdAt), fontSize = 11.sp, color = TextMuted)
+                }
+                if (isAdmin) {
+                    IconButton(onClick = onPin, modifier = Modifier.size(30.dp)) {
+                        Icon(
+                            Icons.Filled.PushPin,
+                            contentDescription = if (post.isPinned) "Unpin post" else "Pin post",
+                            tint = if (post.isPinned) AccentViolet else TextMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
                 }
             }
 
@@ -820,12 +1011,54 @@ private fun PostCard(
             if (post.poll != null) {
                 PollBody(post, onVote)
             } else {
-                Text(
-                    post.body,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                if (post.body.isNotBlank()) {
+                    Text(
+                        post.body,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                if (post.imageCount > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    if (post.imageCount == 1) {
+                        coil.compose.AsyncImage(
+                            model = ApiClient.communityImageUrl(post.id, 0),
+                            contentDescription = "Post image",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onOpenImage(0) }
+                        )
+                    } else {
+                        val rows = (post.imageCount + 1) / 2
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            (0 until rows).forEach { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    (0 until 2).forEach { col ->
+                                        val idx = row * 2 + col
+                                        if (idx < post.imageCount) {
+                                            coil.compose.AsyncImage(
+                                                model = ApiClient.communityImageUrl(post.id, idx),
+                                                contentDescription = "Post image ${idx + 1}",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(110.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .clickable { onOpenImage(idx) }
+                                            )
+                                        } else {
+                                            Spacer(Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // reactions row
