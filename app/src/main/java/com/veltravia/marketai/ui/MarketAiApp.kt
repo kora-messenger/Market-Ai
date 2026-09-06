@@ -50,6 +50,7 @@ import com.veltravia.marketai.ui.screens.ChartUploadScreen
 import com.veltravia.marketai.ui.screens.InstrumentPickerScreen
 import com.veltravia.marketai.ui.screens.SignalCardScreen
 import com.veltravia.marketai.ui.screens.ProfileScreen
+import com.veltravia.marketai.ui.screens.ScreenshotGuideScreen
 import com.veltravia.marketai.ui.screens.QuestionnaireScreen
 import com.veltravia.marketai.ui.screens.SavedScreen
 import com.veltravia.marketai.ui.screens.SignalsScreen
@@ -98,12 +99,20 @@ fun MarketAiApp() {
             !needsProjectionIntro &&
             !SessionManager.brokerSetupShown(context) &&
             !questionnaireDone
+        val needsScreenshotGuideIntro = hasSession &&
+            !needsCommunityIntro &&
+            !needsNotificationsIntro &&
+            !needsProjectionIntro &&
+            !needsBrokerSetupIntro &&
+            !SessionManager.screenshotGuideShown(context) &&
+            !questionnaireDone
         when {
             !hasSession -> "welcome"
             needsCommunityIntro -> "community_intro"
             needsNotificationsIntro -> "notifications_intro"
             needsProjectionIntro -> "projection_intro"
             needsBrokerSetupIntro -> "broker_setup_intro"
+            needsScreenshotGuideIntro -> "screenshot_guide_intro"
             !questionnaireDone -> "questionnaire"
             else -> "main"
         }
@@ -153,10 +162,28 @@ fun MarketAiApp() {
         composable("broker_setup_intro") {
             BrokerSetupIntroScreen(
                 onDone = {
-                    navController.navigate("questionnaire") {
+                    navController.navigate("screenshot_guide_intro") {
                         popUpTo("broker_setup_intro") { inclusive = true }
                     }
                 }
+            )
+        }
+        composable("screenshot_guide_intro") {
+            ScreenshotGuideScreen(
+                ctaLabel = "Analyze Now!",
+                onCta = {
+                    SessionManager.setScreenshotGuideShown(context, true)
+                    navController.navigate("questionnaire") {
+                        popUpTo("screenshot_guide_intro") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("screenshot_guide") {
+            ScreenshotGuideScreen(
+                ctaLabel = "Got it",
+                onCta = { navController.popBackStack() },
+                onBack = { navController.popBackStack() }
             )
         }
         composable("questionnaire") {
@@ -263,7 +290,8 @@ private fun MainTabs(navController: NavHostController) {
                         navController.navigate("welcome") {
                             popUpTo(0) { inclusive = true }
                         }
-                    }
+                    },
+                    onOpenScreenshotGuide = { navController.navigate("screenshot_guide") }
                 )
             }
         }

@@ -71,6 +71,7 @@ object SessionManager {
     private const val KEY_PROJECTION_INTRO_SHOWN = "projection_intro_shown"
     private const val KEY_BROKER_SETUP_SHOWN = "broker_setup_shown"
     private const val KEY_BROKER_CHOICE = "broker_choice"
+    private const val KEY_SCREENSHOT_GUIDE_SHOWN = "screenshot_guide_shown"
     private const val KEY_QUESTIONNAIRE = "questionnaire_json"
     private const val KEY_QUESTIONNAIRE_DONE = "questionnaire_done"
 
@@ -139,6 +140,13 @@ object SessionManager {
 
     fun setBrokerChoice(context: Context, choice: String) {
         prefs(context).edit().putString(KEY_BROKER_CHOICE, choice).apply()
+    }
+
+    fun screenshotGuideShown(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SCREENSHOT_GUIDE_SHOWN, false)
+
+    fun setScreenshotGuideShown(context: Context, shown: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SCREENSHOT_GUIDE_SHOWN, shown).apply()
     }
 
     fun signOut(context: Context) {

@@ -1,6 +1,8 @@
 package com.veltravia.marketai.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,13 +13,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,7 +40,7 @@ import com.veltravia.marketai.ui.theme.AccentCyan
 import com.veltravia.marketai.ui.theme.TextSecondary
 
 @Composable
-fun ProfileScreen(onSignOut: () -> Unit) {
+fun ProfileScreen(onSignOut: () -> Unit, onOpenScreenshotGuide: () -> Unit) {
     val context = LocalContext.current
     val user = SessionManager.currentUser(context)
     val answers = SessionManager.questionnaireAnswers(context)
@@ -108,6 +116,33 @@ fun ProfileScreen(onSignOut: () -> Unit) {
                     .clip(RoundedCornerShape(12.dp))
                     .background(AccentCyan.copy(alpha = 0.1f))
                     .padding(14.dp)
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                .clickable { onOpenScreenshotGuide() }
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.CameraAlt, contentDescription = null, tint = AccentCyan)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Screenshot guide",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = null,
+                tint = TextSecondary,
+                modifier = Modifier.size(14.dp)
             )
         }
 
