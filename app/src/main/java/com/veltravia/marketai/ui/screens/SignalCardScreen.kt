@@ -696,7 +696,7 @@ private fun SectionHeader(title: String) {
 }
 
 @Composable
-private fun SnapshotCard(
+private fun androidx.compose.foundation.layout.RowScope.SnapshotCard(
     title: String,
     value: String,
     color: Color = TextPrimary,
