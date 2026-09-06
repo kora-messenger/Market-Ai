@@ -68,6 +68,7 @@ object SessionManager {
     private const val KEY_COMMUNITY_JOINED = "community_joined"
     private const val KEY_NOTIFICATIONS_PROMPT_SHOWN = "notifications_prompt_shown"
     private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
+    private const val KEY_PROJECTION_INTRO_SHOWN = "projection_intro_shown"
     private const val KEY_QUESTIONNAIRE = "questionnaire_json"
     private const val KEY_QUESTIONNAIRE_DONE = "questionnaire_done"
 
@@ -115,6 +116,13 @@ object SessionManager {
 
     fun setNotificationsEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, enabled).apply()
+    }
+
+    fun projectionIntroShown(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PROJECTION_INTRO_SHOWN, false)
+
+    fun setProjectionIntroShown(context: Context, shown: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PROJECTION_INTRO_SHOWN, shown).apply()
     }
 
     fun signOut(context: Context) {

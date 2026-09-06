@@ -42,6 +42,7 @@ import androidx.navigation.compose.rememberNavController
 import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.ui.screens.CommunityIntroScreen
 import com.veltravia.marketai.ui.screens.NotificationsIntroScreen
+import com.veltravia.marketai.ui.screens.ProjectionIntroScreen
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
 import com.veltravia.marketai.ui.screens.ChartUploadScreen
@@ -85,10 +86,16 @@ fun MarketAiApp() {
             !needsCommunityIntro &&
             !SessionManager.notificationsPromptShown(context) &&
             !questionnaireDone
+        val needsProjectionIntro = hasSession &&
+            !needsCommunityIntro &&
+            !needsNotificationsIntro &&
+            !SessionManager.projectionIntroShown(context) &&
+            !questionnaireDone
         when {
             !hasSession -> "welcome"
             needsCommunityIntro -> "community_intro"
             needsNotificationsIntro -> "notifications_intro"
+            needsProjectionIntro -> "projection_intro"
             !questionnaireDone -> "questionnaire"
             else -> "main"
         }
@@ -119,8 +126,18 @@ fun MarketAiApp() {
         composable("notifications_intro") {
             NotificationsIntroScreen(
                 onDone = {
-                    navController.navigate("questionnaire") {
+                    navController.navigate("projection_intro") {
                         popUpTo("notifications_intro") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("projection_intro") {
+            ProjectionIntroScreen(
+                onContinue = {
+                    SessionManager.setProjectionIntroShown(context, true)
+                    navController.navigate("questionnaire") {
+                        popUpTo("projection_intro") { inclusive = true }
                     }
                 }
             )
