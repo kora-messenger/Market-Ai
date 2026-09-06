@@ -40,6 +40,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.veltravia.marketai.data.SessionManager
+import com.veltravia.marketai.ui.screens.CommunityIntroScreen
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
 import com.veltravia.marketai.ui.screens.ChartUploadScreen
@@ -71,8 +72,16 @@ fun MarketAiApp() {
     val context = LocalContext.current
 
     val startDestination = remember {
+        val hasSession = SessionManager.currentUser(context) != null
+        // Only gate on community_intro if the backend session exists (i.e. joining is
+        // actually possible) and the user hasn't already joined or finished onboarding.
+        val needsCommunityIntro = hasSession &&
+            SessionManager.sessionToken(context) != null &&
+            !SessionManager.communityJoined(context) &&
+            !SessionManager.questionnaireDone(context)
         when {
-            SessionManager.currentUser(context) == null -> "welcome"
+            !hasSession -> "welcome"
+            needsCommunityIntro -> "community_intro"
             !SessionManager.questionnaireDone(context) -> "questionnaire"
             else -> "main"
         }
@@ -85,8 +94,17 @@ fun MarketAiApp() {
         composable("welcome") {
             WelcomeScreen(
                 onSignedIn = {
-                    navController.navigate("questionnaire") {
+                    navController.navigate("community_intro") {
                         popUpTo("welcome") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("community_intro") {
+            CommunityIntroScreen(
+                onJoined = {
+                    navController.navigate("questionnaire") {
+                        popUpTo("community_intro") { inclusive = true }
                     }
                 }
             )

@@ -10,6 +10,12 @@ data class GoogleUser(
     val picture: String
 )
 
+data class UserSession(
+    val user: GoogleUser,
+    val sessionToken: String?,
+    val communityJoined: Boolean
+)
+
 data class QuestionnaireAnswers(
     val experience: String,
     val style: String,
@@ -58,17 +64,22 @@ object SessionManager {
     private const val KEY_NAME = "user_name"
     private const val KEY_EMAIL = "user_email"
     private const val KEY_PICTURE = "user_picture"
+    private const val KEY_SESSION_TOKEN = "session_token"
+    private const val KEY_COMMUNITY_JOINED = "community_joined"
     private const val KEY_QUESTIONNAIRE = "questionnaire_json"
     private const val KEY_QUESTIONNAIRE_DONE = "questionnaire_done"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun saveUser(context: Context, user: GoogleUser) {
+    /** Persists the profile plus the server-issued session JWT and community membership flag. */
+    fun saveSession(context: Context, session: UserSession) {
         prefs(context).edit()
-            .putString(KEY_NAME, user.name)
-            .putString(KEY_EMAIL, user.email)
-            .putString(KEY_PICTURE, user.picture)
+            .putString(KEY_NAME, session.user.name)
+            .putString(KEY_EMAIL, session.user.email)
+            .putString(KEY_PICTURE, session.user.picture)
+            .putString(KEY_SESSION_TOKEN, session.sessionToken)
+            .putBoolean(KEY_COMMUNITY_JOINED, session.communityJoined)
             .apply()
     }
 
@@ -77,6 +88,17 @@ object SessionManager {
         val email = prefs(context).getString(KEY_EMAIL, "") ?: ""
         val picture = prefs(context).getString(KEY_PICTURE, "") ?: ""
         return GoogleUser(name, email, picture)
+    }
+
+    /** Bearer token for authenticated backend calls (community join, etc.), or null if unset. */
+    fun sessionToken(context: Context): String? =
+        prefs(context).getString(KEY_SESSION_TOKEN, null)
+
+    fun communityJoined(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_COMMUNITY_JOINED, false)
+
+    fun setCommunityJoined(context: Context, joined: Boolean) {
+        prefs(context).edit().putBoolean(KEY_COMMUNITY_JOINED, joined).apply()
     }
 
     fun signOut(context: Context) {

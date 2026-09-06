@@ -35,6 +35,8 @@ async function initDb() {
       email TEXT,
       name TEXT,
       picture TEXT,
+      community_joined BOOLEAN NOT NULL DEFAULT false,
+      community_joined_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS analyses (
@@ -47,6 +49,24 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+}
+
+// --- Session auth middleware: verifies the Bearer session JWT issued at /api/auth/google ---
+function requireAuth(req, res, next) {
+  if (!JWT_SECRET) {
+    return res.status(503).json({ error: "Sessions are not configured yet." });
+  }
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: "Missing session token" });
+  }
+  try {
+    req.session = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid or expired session" });
+  }
 }
 
 // --- Legal pages (real content, linked from the app's welcome screen) ---
@@ -113,7 +133,7 @@ app.post("/api/auth/google", async (req, res) => {
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (google_sub)
          DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, picture = EXCLUDED.picture
-         RETURNING id, google_sub, email, name, picture`,
+         RETURNING id, google_sub, email, name, picture, community_joined, community_joined_at`,
         [payload.sub, user.email, user.name, user.picture]
       );
       user = {
@@ -121,7 +141,9 @@ app.post("/api/auth/google", async (req, res) => {
         googleSub: rows[0].google_sub,
         email: rows[0].email,
         name: rows[0].name,
-        picture: rows[0].picture
+        picture: rows[0].picture,
+        communityJoined: rows[0].community_joined,
+        communityJoinedAt: rows[0].community_joined_at
       };
     }
 
@@ -132,6 +154,53 @@ app.post("/api/auth/google", async (req, res) => {
     return res.json({ user, sessionToken });
   } catch (err) {
     return res.status(401).json({ error: "Google token verification failed" });
+  }
+});
+
+// --- Community: free onboarding community access (real DB-persisted membership) ---
+app.post("/api/community/join", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET community_joined = true,
+           community_joined_at = COALESCE(community_joined_at, now())
+       WHERE google_sub = $1
+       RETURNING community_joined, community_joined_at`,
+      [req.session.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.json({
+      joined: rows[0].community_joined,
+      joinedAt: rows[0].community_joined_at
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not join community", detail: String(err.message || err) });
+  }
+});
+
+app.get("/api/community/status", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT community_joined, community_joined_at FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.json({
+      joined: rows[0].community_joined,
+      joinedAt: rows[0].community_joined_at
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load community status", detail: String(err.message || err) });
   }
 });
 

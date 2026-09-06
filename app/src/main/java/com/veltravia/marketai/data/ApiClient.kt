@@ -65,6 +65,29 @@ object ApiClient {
         request(request)
     }
 
+    /**
+     * Verifies the Google ID token on the backend, upserts the user row, and returns
+     * the server-issued session JWT plus the current community-membership state.
+     */
+    suspend fun authenticateWithGoogle(idToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("idToken", idToken)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/auth/google")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Marks the signed-in user as a community member (real, persisted server-side). */
+    suspend fun joinCommunity(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/community/join")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post("{}".toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Recent analyses, newest first. */
     suspend fun fetchAnalyses(limit: Int = 30): JSONArray = withContext(Dispatchers.IO) {
         val request = Request.Builder()

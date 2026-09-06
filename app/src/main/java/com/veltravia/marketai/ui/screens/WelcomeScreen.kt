@@ -46,7 +46,9 @@ import androidx.compose.ui.unit.sp
 import com.veltravia.marketai.BuildConfig
 import com.veltravia.marketai.R
 import com.veltravia.marketai.auth.GoogleSignIn
+import com.veltravia.marketai.data.ApiClient
 import com.veltravia.marketai.data.SessionManager
+import com.veltravia.marketai.data.UserSession
 import com.veltravia.marketai.ui.theme.AccentCyan
 import com.veltravia.marketai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -120,8 +122,26 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
                         error = null
                         scope.launch {
                             try {
-                                val user = GoogleSignIn.signIn(context, clientId)
-                                SessionManager.saveUser(context, user)
+                                val credential = GoogleSignIn.signIn(context, clientId)
+                                // Never trust the client-decoded token alone — verify it on the
+                                // backend, which checks the signature/audience with Google and
+                                // upserts the user row.
+                                val verified = ApiClient.authenticateWithGoogle(credential.idToken)
+                                val verifiedUser = verified.optJSONObject("user")
+                                SessionManager.saveSession(
+                                    context,
+                                    UserSession(
+                                        user = credential.user.copy(
+                                            name = verifiedUser?.optString("name")?.ifBlank { null }
+                                                ?: credential.user.name,
+                                            picture = verifiedUser?.optString("picture")?.ifBlank { null }
+                                                ?: credential.user.picture
+                                        ),
+                                        sessionToken = verified.optString("sessionToken").ifBlank { null },
+                                        communityJoined = verifiedUser?.optBoolean("communityJoined", false)
+                                            ?: false
+                                    )
+                                )
                                 onSignedIn()
                             } catch (e: Exception) {
                                 error = e.message ?: "Login failed. Please try again."
