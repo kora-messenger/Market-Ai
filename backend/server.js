@@ -271,6 +271,10 @@ app.get("/api/analyses/:id", async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
   }
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: "Analysis not found" });
+  }
   try {
     const { rows } = await pool.query(
       `SELECT id, instrument_id, mode, result, created_at FROM analyses WHERE id = $1`,
