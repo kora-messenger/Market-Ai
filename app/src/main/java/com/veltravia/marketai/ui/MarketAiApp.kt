@@ -42,7 +42,9 @@ import androidx.navigation.compose.rememberNavController
 import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
+import com.veltravia.marketai.ui.screens.ChartUploadScreen
 import com.veltravia.marketai.ui.screens.InstrumentPickerScreen
+import com.veltravia.marketai.ui.screens.SignalCardScreen
 import com.veltravia.marketai.ui.screens.ProfileScreen
 import com.veltravia.marketai.ui.screens.QuestionnaireScreen
 import com.veltravia.marketai.ui.screens.SavedScreen
@@ -104,12 +106,28 @@ fun MarketAiApp() {
         composable("picker") {
             InstrumentPickerScreen(
                 onSelected = { instrument ->
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("selected_instrument", instrument.display)
-                    navController.popBackStack()
+                    navController.navigate("upload/${'$'}{instrument.id}") {
+                        popUpTo("main")
+                    }
                 },
                 onCancel = { navController.popBackStack() }
+            )
+        }
+        composable("upload/{instrumentId}") { entry ->
+            ChartUploadScreen(
+                instrumentId = entry.arguments?.getString("instrumentId") ?: "",
+                onBack = { navController.popBackStack() },
+                onAnalysisComplete = { analysisId ->
+                    navController.navigate("signal/${'$'}analysisId") {
+                        popUpTo("main")
+                    }
+                }
+            )
+        }
+        composable("signal/{analysisId}") { entry ->
+            SignalCardScreen(
+                analysisId = entry.arguments?.getString("analysisId") ?: "",
+                onBack = { navController.popBackStack() }
             )
         }
     }
@@ -118,16 +136,6 @@ fun MarketAiApp() {
 @Composable
 private fun MainTabs(navController: NavHostController) {
     var currentTab by rememberSaveable { mutableIntStateOf(0) }
-    var selectedInstrument by rememberSaveable { mutableStateOf<String?>(null) }
-
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    LaunchedEffect(navBackStackEntry) {
-        val result = navBackStackEntry?.savedStateHandle
-            ?.remove<String>("selected_instrument")
-        if (result != null) {
-            selectedInstrument = result
-        }
-    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -172,12 +180,15 @@ private fun MainTabs(navController: NavHostController) {
         ) {
             when (currentTab) {
                 0 -> HomeScreen(
-                    selectedInstrument = selectedInstrument,
                     onPickInstrument = { navController.navigate("picker") }
                 )
                 1 -> SignalsScreen()
                 2 -> CommunityScreen()
-                3 -> SavedScreen()
+                3 -> SavedScreen(
+                    onOpenAnalysis = { id ->
+                        navController.navigate("signal/${'$'}id")
+                    }
+                )
                 else -> ProfileScreen(
                     onSignOut = {
                         SessionManager.signOut(navController.context)

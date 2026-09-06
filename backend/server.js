@@ -229,15 +229,66 @@ app.post("/api/analyze", async (req, res) => {
     };
 
     if (pool) {
-      await pool.query(
-        `INSERT INTO analyses (instrument_id, mode, result) VALUES ($1, $2, $3)`,
+      const { rows } = await pool.query(
+        `INSERT INTO analyses (instrument_id, mode, result) VALUES ($1, $2, $3) RETURNING id`,
         [instrument.id, mode, JSON.stringify(result)]
       );
+      if (rows.length) result.id = rows[0].id;
     }
 
     return res.json(result);
   } catch (err) {
     return res.status(500).json({ error: "Analysis failed", detail: String(err.message || err) });
+  }
+});
+
+app.get("/api/analyses", async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+    const { rows } = await pool.query(
+      `SELECT id, instrument_id, mode, result, created_at
+       FROM analyses ORDER BY created_at DESC LIMIT $1`,
+      [limit]
+    );
+    res.json({
+      analyses: rows.map((r) => ({
+        id: r.id,
+        instrumentId: r.instrument_id,
+        mode: r.mode,
+        analysis: r.result,
+        analyzedAt: r.created_at
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load analyses", detail: String(err.message || err) });
+  }
+});
+
+app.get("/api/analyses/:id", async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, instrument_id, mode, result, created_at FROM analyses WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "Analysis not found" });
+    }
+    const r = rows[0];
+    res.json({
+      id: r.id,
+      instrumentId: r.instrument_id,
+      mode: r.mode,
+      analysis: r.result,
+      analyzedAt: r.created_at
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load analysis", detail: String(err.message || err) });
   }
 });
 

@@ -129,4 +129,10 @@ object InstrumentCatalog {
             indices + synthetics + cryptos
 
     val categories = listOf("Forex", "Metals", "Indices", "Synthetics", "Crypto")
+
+    fun byId(id: String): Instrument? =
+        all.firstOrNull { it.id.equals(id, ignoreCase = true) }
+
+    fun byDisplay(display: String): Instrument? =
+        all.firstOrNull { it.display.equals(display, ignoreCase = true) }
 }

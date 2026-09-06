@@ -41,7 +41,6 @@ private val popularInstruments = listOf(
 
 @Composable
 fun HomeScreen(
-    selectedInstrument: String?,
     onPickInstrument: () -> Unit
 ) {
     Column(
@@ -106,16 +105,6 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
-
-            selectedInstrument?.let { instrument ->
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    "Selected: $instrument",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
 
             Spacer(Modifier.height(18.dp))
             Button(
