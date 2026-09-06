@@ -202,7 +202,8 @@ fun FirstAnalysisScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ChartTile(
                 imageUri = imageH4,
-                label = "Upload 4H Chart",
+                emptyLabel = "Upload 4H Chart",
+                filledLabel = "4H Chart",
                 modifier = Modifier.weight(1f),
                 onPick = {
                     pickH4.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -211,7 +212,8 @@ fun FirstAnalysisScreen(
             )
             ChartTile(
                 imageUri = imageM15,
-                label = "Upload 15M Chart",
+                emptyLabel = "Upload 15M Chart",
+                filledLabel = "15M Chart",
                 modifier = Modifier.weight(1f),
                 onPick = {
                     pickM15.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -441,59 +443,81 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun ChartTile(
     imageUri: android.net.Uri?,
-    label: String,
+    emptyLabel: String,
+    filledLabel: String,
     modifier: Modifier = Modifier,
     onPick: () -> Unit,
     onClear: () -> Unit
 ) {
-    Box(
+    Column(
         modifier = modifier
-            .aspectRatio(1f)
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceDark)
             .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp))
-            .clickable(enabled = imageUri == null) { onPick() },
-        contentAlignment = Alignment.Center
     ) {
-        if (imageUri == null) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Filled.AddAPhoto,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(28.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clickable(enabled = imageUri == null) { onPick() },
+            contentAlignment = Alignment.Center
+        ) {
+            if (imageUri == null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Filled.AddAPhoto,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        emptyLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                AsyncImage(
+                    model = imageUri,
+                    contentDescription = filledLabel,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center
-                )
+                IconButton(
+                    onClick = onClear,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Remove image",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
-        } else {
-            AsyncImage(
-                model = imageUri,
-                contentDescription = label,
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            IconButton(
-                onClick = onClear,
+        }
+
+        // Caption strip under the image, same idea as the FxLens reference
+        // ("4H Chart" / "15M Chart") so the user can see which slot is which
+        // at a glance once a screenshot is in place.
+        if (imageUri != null) {
+            Text(
+                filledLabel,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.Black.copy(alpha = 0.6f))
-            ) {
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = "Remove image",
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp)
+            )
         }
     }
 }
