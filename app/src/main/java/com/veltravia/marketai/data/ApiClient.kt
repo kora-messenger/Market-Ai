@@ -135,6 +135,76 @@ object ApiClient {
         request(request)
     }
 
+    /** Community feed page: { posts: [...], total, hasMore } — newest first. */
+    suspend fun fetchCommunityFeed(
+        sessionToken: String,
+        offset: Int = 0,
+        limit: Int = 20
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${'$'}{ApiConfig.BASE_URL}/api/community/feed?offset=${'$'}offset&limit=${'$'}limit")
+            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Publish a text post to the community. Returns { post: {...} }. */
+    suspend fun createCommunityPost(sessionToken: String, body: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("body", body)
+            val request = Request.Builder()
+                .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts")
+                .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Toggle one emoji reaction on a post. Returns { emoji, active }. */
+    suspend fun toggleCommunityReaction(
+        sessionToken: String,
+        postId: String,
+        emoji: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("emoji", emoji)
+        val request = Request.Builder()
+            .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/react")
+            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** All comments on a post (flat; the caller nests by parentId). */
+    suspend fun fetchPostComments(sessionToken: String, postId: String): JSONArray =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/comments")
+                .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .get()
+                .build()
+            val json = request(request)
+            json.optJSONArray("comments") ?: JSONArray()
+        }
+
+    /** Add a comment or reply (parentId nullable). Returns { comment: {...} }. */
+    suspend fun addPostComment(
+        sessionToken: String,
+        postId: String,
+        body: String,
+        parentId: String? = null
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("body", body)
+        if (parentId != null) payload.put("parentId", parentId)
+        val request = Request.Builder()
+            .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/comments")
+            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Public real total of users who have joined the community (no auth needed). */
     suspend fun fetchCommunityStats(): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

@@ -89,6 +89,33 @@ async function initDb() {
       notes TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    CREATE TABLE IF NOT EXISTS community_posts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      author_name TEXT NOT NULL,
+      author_email TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL,
+      is_team BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS post_reactions (
+      post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (post_id, user_id, emoji)
+    );
+    CREATE TABLE IF NOT EXISTS post_comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      author_name TEXT NOT NULL,
+      author_email TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL,
+      parent_id UUID REFERENCES post_comments(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }
 
@@ -257,7 +284,11 @@ app.get("/api/community/stats", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT COUNT(*)::int AS total FROM users WHERE community_joined = true`
     );
-    return res.json({ totalMembers: rows[0]?.total ?? 0 });
+    const posts = await pool.query(`SELECT COUNT(*)::int AS total FROM community_posts`);
+    return res.json({
+      totalMembers: rows[0]?.total ?? 0,
+      totalPosts: posts.rows[0]?.total ?? 0
+    });
   } catch (err) {
     return res.status(500).json({ error: "Could not load community stats", detail: String(err.message || err) });
   }
@@ -995,6 +1026,174 @@ app.post("/api/daily-signals/:id/close", requireAuth, async (req, res) => {
     res.json(signalToApi(rows[0]));
   } catch (err) {
     res.status(500).json({ error: "Could not close signal", detail: String(err.message || err) });
+  }
+});
+
+
+// ---------------------------------------------------------------------------
+// Community feed — posts, reactions, threaded comments (all requireAuth).
+// ---------------------------------------------------------------------------
+
+const REACTION_EMOJIS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F525}", "\u{1F680}", "\u{1F4B0}", "\u{1F4C8}", "\u{1F4C9}", "\u{1F4AF}", "\u{1F44F}", "\u{1F602}", "\u{1F62E}", "\u{1F64F}"];
+
+async function currentUser(req) {
+  const { rows } = await pool.query(
+    `SELECT id, name, email, picture FROM users WHERE google_sub = $1`,
+    [req.session.sub]
+  );
+  return rows[0] || null;
+}
+
+function postToApi(row, reactions, commentCount) {
+  return {
+    id: row.id,
+    authorName: row.author_name,
+    authorEmail: row.author_email,
+    isTeam: row.is_team,
+    body: row.body,
+    createdAt: row.created_at,
+    commentCount,
+    reactions: reactions.map((r) => ({ emoji: r.emoji, count: r.count, mine: r.mine }))
+  };
+}
+
+// Feed: paginated posts newest-first with reaction rollups + comment counts.
+app.get("/api/community/feed", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+    const me = await currentUser(req);
+    const meId = me ? me.id : null;
+
+    const { rows: posts } = await pool.query(
+      `SELECT * FROM community_posts ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    const { rows: total } = await pool.query(`SELECT COUNT(*)::int AS c FROM community_posts`);
+
+    if (!posts.length) {
+      return res.json({ posts: [], total: total[0].c, hasMore: false });
+    }
+
+    const ids = posts.map((p) => p.id);
+    const { rows: reactions } = await pool.query(
+      `SELECT post_id, emoji, COUNT(*)::int AS count,
+              COALESCE(BOOL_OR(user_id = $2), false) AS mine
+       FROM post_reactions WHERE post_id = ANY($1::uuid[])
+       GROUP BY post_id, emoji ORDER BY count DESC`,
+      [ids, meId]
+    );
+    const { rows: comments } = await pool.query(
+      `SELECT post_id, COUNT(*)::int AS c
+       FROM post_comments WHERE post_id = ANY($1::uuid[])
+       GROUP BY post_id`,
+      [ids]
+    );
+
+    const byPost = {};
+    for (const r of reactions) (byPost[r.post_id] = byPost[r.post_id] || []).push(r);
+    const cByPost = {};
+    for (const c of comments) cByPost[c.post_id] = c.c;
+
+    return res.json({
+      posts: posts.map((p) => postToApi(p, byPost[p.id] || [], cByPost[p.id] || 0)),
+      total: total[0].c,
+      hasMore: offset + posts.length < total[0].c
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load the feed", detail: String(err.message || err) });
+  }
+});
+
+// Create a text post. Posts by the admin email are flagged as team posts.
+app.post("/api/community/posts", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const body = String(req.body.body || "").trim();
+  if (!body) return res.status(400).json({ error: "Write something first." });
+  if (body.length > 2000) return res.status(400).json({ error: "Posts are limited to 2000 characters." });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const isTeam = ADMIN_EMAIL && (me.email || "").toLowerCase() === ADMIN_EMAIL;
+    const { rows } = await pool.query(
+      `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [me.id, me.name || "Trader", me.email || "", body, isTeam]
+    );
+    return res.json({ post: postToApi(rows[0], [], 0) });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not publish the post", detail: String(err.message || err) });
+  }
+});
+
+// Toggle one emoji reaction on a post for the signed-in user.
+app.post("/api/community/posts/:id/react", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const emoji = String(req.body.emoji || "");
+  if (!REACTION_EMOJIS.includes(emoji)) {
+    return res.status(400).json({ error: "That reaction is not supported." });
+  }
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const postId = req.params.id;
+    const { rows: existing } = await pool.query(
+      `SELECT 1 FROM post_reactions WHERE post_id = $1::uuid AND user_id = $2::uuid AND emoji = $3`,
+      [postId, me.id, emoji]
+    );
+    if (existing.length) {
+      await pool.query(
+        `DELETE FROM post_reactions WHERE post_id = $1::uuid AND user_id = $2::uuid AND emoji = $3`,
+        [postId, me.id, emoji]
+      );
+      return res.json({ emoji, active: false });
+    }
+    await pool.query(
+      `INSERT INTO post_reactions (post_id, user_id, emoji) VALUES ($1::uuid, $2::uuid, $3)`,
+      [postId, me.id, emoji]
+    );
+    return res.json({ emoji, active: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not update the reaction", detail: String(err.message || err) });
+  }
+});
+
+// Flat comment list (client nests by parent_id).
+app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, author_name, author_email, body, parent_id, created_at
+       FROM post_comments WHERE post_id = $1::uuid
+       ORDER BY created_at ASC LIMIT 300`,
+      [req.params.id]
+    );
+    return res.json({ comments: rows });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load comments", detail: String(err.message || err) });
+  }
+});
+
+// Add a comment (optionally a reply via parent_id).
+app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const body = String(req.body.body || "").trim();
+  if (!body) return res.status(400).json({ error: "Write a comment first." });
+  if (body.length > 1000) return res.status(400).json({ error: "Comments are limited to 1000 characters." });
+  const parentId = req.body.parentId || null;
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const { rows } = await pool.query(
+      `INSERT INTO post_comments (post_id, user_id, author_name, author_email, body, parent_id)
+       VALUES ($1::uuid, $2, $3, $4, $5, $6)
+       RETURNING id, author_name, author_email, body, parent_id, created_at`,
+      [req.params.id, me.id, me.name || "Trader", me.email || "", body, parentId]
+    );
+    return res.json({ comment: rows[0] });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not post the comment", detail: String(err.message || err) });
   }
 });
 
