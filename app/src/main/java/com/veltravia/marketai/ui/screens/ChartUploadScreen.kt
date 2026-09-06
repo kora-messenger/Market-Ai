@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.veltravia.marketai.data.ApiClient
+import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.data.Instrument
 import com.veltravia.marketai.data.InstrumentCatalog
 import com.veltravia.marketai.ui.theme.AccentCyan
@@ -175,13 +176,22 @@ fun ChartUploadScreen(
                 error = null
                 scope.launch {
                     try {
+                        val token = SessionManager.sessionToken(context)
+                        if (token == null) {
+                            loading = false
+                            error = "Not signed in"
+                            return@launch
+                        }
                         val dataH4 = ApiClient.prepareChartImage(context, h4)
                         val dataM15 = ApiClient.prepareChartImage(context, m15)
-                        val result = ApiClient.analyze(instrumentId, mode, dataH4, dataM15)
+                        val result = ApiClient.analyze(token, instrumentId, mode, dataH4, dataM15)
                         val id = result.optString("id", "")
                         loading = false
                         if (id.isNotEmpty()) onAnalysisComplete(id)
                         else error = "Analysis completed but was not saved"
+                    } catch (e: ApiClient.TrialExpiredException) {
+                        loading = false
+                        error = e.message ?: "Your free trial has ended."
                     } catch (e: Exception) {
                         loading = false
                         error = e.message ?: "Analysis failed"

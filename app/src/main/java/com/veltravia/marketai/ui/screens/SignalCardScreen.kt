@@ -35,6 +35,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veltravia.marketai.data.ApiClient
+import com.veltravia.marketai.data.SessionManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.fillMaxWidth
 import com.veltravia.marketai.ui.theme.AccentCyan
 import com.veltravia.marketai.ui.theme.BearRed
 import com.veltravia.marketai.ui.theme.BullGreen
@@ -55,14 +60,21 @@ import java.util.TimeZone
 @Composable
 fun SignalCardScreen(
     analysisId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    continueCta: Pair<String, () -> Unit>? = null
 ) {
+    val context = LocalContext.current
     var record by remember { mutableStateOf<JSONObject?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(analysisId) {
         try {
-            record = ApiClient.fetchAnalysis(analysisId)
+            val token = SessionManager.sessionToken(context)
+            if (token == null) {
+                error = "Not signed in"
+                return@LaunchedEffect
+            }
+            record = ApiClient.fetchAnalysis(token, analysisId)
         } catch (e: Exception) {
             error = e.message ?: "Could not load analysis"
         }
@@ -117,6 +129,19 @@ fun SignalCardScreen(
                 )
             }
         }
+
+        if (continueCta != null) {
+            Spacer(Modifier.height(20.dp))
+            val (label, action) = continueCta
+            Button(
+                onClick = action,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+            ) {
+                Text(label, fontWeight = FontWeight.SemiBold)
+            }
+        }
+
         Spacer(Modifier.height(28.dp))
     }
 }

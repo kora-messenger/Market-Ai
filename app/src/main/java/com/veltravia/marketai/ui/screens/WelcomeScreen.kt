@@ -139,7 +139,10 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
                                         ),
                                         sessionToken = verified.optString("sessionToken").ifBlank { null },
                                         communityJoined = verifiedUser?.optBoolean("communityJoined", false)
-                                            ?: false
+                                            ?: false,
+                                        trialActive = verifiedUser?.optBoolean("trialActive", true) ?: true,
+                                        trialDaysRemaining = verifiedUser?.optInt("trialDaysRemaining", 7) ?: 7,
+                                        isPremium = verifiedUser?.optBoolean("isPremium", false) ?: false
                                     )
                                 )
                                 onSignedIn()

@@ -13,7 +13,10 @@ data class GoogleUser(
 data class UserSession(
     val user: GoogleUser,
     val sessionToken: String?,
-    val communityJoined: Boolean
+    val communityJoined: Boolean,
+    val trialActive: Boolean = true,
+    val trialDaysRemaining: Int = 7,
+    val isPremium: Boolean = false
 )
 
 data class QuestionnaireAnswers(
@@ -72,6 +75,9 @@ object SessionManager {
     private const val KEY_BROKER_SETUP_SHOWN = "broker_setup_shown"
     private const val KEY_BROKER_CHOICE = "broker_choice"
     private const val KEY_SCREENSHOT_GUIDE_SHOWN = "screenshot_guide_shown"
+    private const val KEY_TRIAL_ACTIVE = "trial_active"
+    private const val KEY_TRIAL_DAYS_REMAINING = "trial_days_remaining"
+    private const val KEY_IS_PREMIUM = "is_premium"
     private const val KEY_QUESTIONNAIRE = "questionnaire_json"
     private const val KEY_QUESTIONNAIRE_DONE = "questionnaire_done"
 
@@ -86,8 +92,26 @@ object SessionManager {
             .putString(KEY_PICTURE, session.user.picture)
             .putString(KEY_SESSION_TOKEN, session.sessionToken)
             .putBoolean(KEY_COMMUNITY_JOINED, session.communityJoined)
+            .putBoolean(KEY_TRIAL_ACTIVE, session.trialActive)
+            .putInt(KEY_TRIAL_DAYS_REMAINING, session.trialDaysRemaining)
+            .putBoolean(KEY_IS_PREMIUM, session.isPremium)
             .apply()
     }
+
+    /** Updates just the trial/premium fields (e.g. after re-checking /api/trial/status). */
+    fun updateTrialState(context: Context, trialActive: Boolean, trialDaysRemaining: Int, isPremium: Boolean) {
+        prefs(context).edit()
+            .putBoolean(KEY_TRIAL_ACTIVE, trialActive)
+            .putInt(KEY_TRIAL_DAYS_REMAINING, trialDaysRemaining)
+            .putBoolean(KEY_IS_PREMIUM, isPremium)
+            .apply()
+    }
+
+    fun trialActive(context: Context): Boolean = prefs(context).getBoolean(KEY_TRIAL_ACTIVE, true)
+
+    fun trialDaysRemaining(context: Context): Int = prefs(context).getInt(KEY_TRIAL_DAYS_REMAINING, 7)
+
+    fun isPremium(context: Context): Boolean = prefs(context).getBoolean(KEY_IS_PREMIUM, false)
 
     fun currentUser(context: Context): GoogleUser? {
         val name = prefs(context).getString(KEY_NAME, null) ?: return null

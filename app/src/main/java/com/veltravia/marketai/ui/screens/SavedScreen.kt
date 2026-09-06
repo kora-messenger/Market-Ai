@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veltravia.marketai.data.ApiClient
+import com.veltravia.marketai.data.SessionManager
+import androidx.compose.ui.platform.LocalContext
 import com.veltravia.marketai.ui.theme.AccentCyan
 import com.veltravia.marketai.ui.theme.BearRed
 import com.veltravia.marketai.ui.theme.BullGreen
@@ -53,9 +55,15 @@ fun SavedScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
 
+    val context = LocalContext.current
     LaunchedEffect(reloadKey) {
         try {
-            analyses = ApiClient.fetchAnalyses(50)
+            val token = SessionManager.sessionToken(context)
+            if (token == null) {
+                error = "Not signed in"
+                return@LaunchedEffect
+            }
+            analyses = ApiClient.fetchAnalyses(token, 50)
             error = null
         } catch (e: Exception) {
             error = e.message ?: "Could not load history"

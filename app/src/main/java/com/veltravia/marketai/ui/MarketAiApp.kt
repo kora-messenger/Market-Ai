@@ -47,6 +47,7 @@ import com.veltravia.marketai.ui.screens.BrokerSetupIntroScreen
 import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
 import com.veltravia.marketai.ui.screens.ChartUploadScreen
+import com.veltravia.marketai.ui.screens.FirstAnalysisScreen
 import com.veltravia.marketai.ui.screens.InstrumentPickerScreen
 import com.veltravia.marketai.ui.screens.SignalCardScreen
 import com.veltravia.marketai.ui.screens.ProfileScreen
@@ -173,8 +174,28 @@ fun MarketAiApp() {
                 ctaLabel = "Analyze Now!",
                 onCta = {
                     SessionManager.setScreenshotGuideShown(context, true)
-                    navController.navigate("questionnaire") {
+                    navController.navigate("first_analysis") {
                         popUpTo("screenshot_guide_intro") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("first_analysis") {
+            FirstAnalysisScreen(
+                onAnalysisComplete = { analysisId ->
+                    navController.navigate("first_signal/$analysisId") {
+                        popUpTo("first_analysis")
+                    }
+                }
+            )
+        }
+        composable("first_signal/{analysisId}") { entry ->
+            SignalCardScreen(
+                analysisId = entry.arguments?.getString("analysisId") ?: "",
+                onBack = { navController.popBackStack() },
+                continueCta = "Continue" to {
+                    navController.navigate("questionnaire") {
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )

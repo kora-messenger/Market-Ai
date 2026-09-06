@@ -47,7 +47,10 @@ object ApiClient {
      * Run a chart-pair analysis on the backend.
      * @return full analysis result JSON: { id, instrument, instrumentId, mode, model, analysis, analyzedAt }
      */
+    class TrialExpiredException(message: String) : Exception(message)
+
     suspend fun analyze(
+        sessionToken: String,
         instrumentId: String,
         mode: String,
         imageH4DataUrl: String,
@@ -60,9 +63,22 @@ object ApiClient {
             .put("imageM15", imageM15DataUrl)
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/analyze")
+            .addHeader("Authorization", "Bearer $sessionToken")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
-        request(request)
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (response.code == 402 && json.optBoolean("trialExpired", false)) {
+                throw TrialExpiredException(
+                    json.optString("error", "Your free trial has ended.")
+                )
+            }
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Request failed (${response.code})"))
+            }
+            json
+        }
     }
 
     /**
@@ -88,10 +104,11 @@ object ApiClient {
         request(request)
     }
 
-    /** Recent analyses, newest first. */
-    suspend fun fetchAnalyses(limit: Int = 30): JSONArray = withContext(Dispatchers.IO) {
+    /** Recent analyses for the signed-in user, newest first. */
+    suspend fun fetchAnalyses(sessionToken: String, limit: Int = 30): JSONArray = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/analyses?limit=$limit")
+            .addHeader("Authorization", "Bearer $sessionToken")
             .get()
             .build()
         client.newCall(request).execute().use { response ->
@@ -106,10 +123,21 @@ object ApiClient {
         }
     }
 
-    /** Single stored analysis by id. */
-    suspend fun fetchAnalysis(id: String): JSONObject = withContext(Dispatchers.IO) {
+    /** Single stored analysis by id, scoped to the signed-in user. */
+    suspend fun fetchAnalysis(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/analyses/$id")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Trial status for the signed-in user: trialActive, trialDaysRemaining, isPremium, etc. */
+    suspend fun fetchTrialStatus(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/trial/status")
+            .addHeader("Authorization", "Bearer $sessionToken")
             .get()
             .build()
         request(request)
