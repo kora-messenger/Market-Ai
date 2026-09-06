@@ -61,6 +61,7 @@ import com.veltravia.marketai.ui.screens.CommunityScreen
 import com.veltravia.marketai.ui.screens.HomeScreen
 import com.veltravia.marketai.ui.screens.RiskCalculatorScreen
 import com.veltravia.marketai.ui.screens.NotificationsScreen
+import com.veltravia.marketai.ui.screens.CreateTradePlanScreen
 import com.veltravia.marketai.ui.screens.ChartUploadScreen
 import com.veltravia.marketai.ui.screens.FirstAnalysisScreen
 import com.veltravia.marketai.ui.screens.InstrumentPickerScreen
@@ -245,6 +246,12 @@ fun MarketAiApp() {
         composable("notifications") {
             NotificationsScreen(onBack = { navController.popBackStack() })
         }
+        composable("create_trade_plan") {
+            CreateTradePlanScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() }
+            )
+        }
         composable("questionnaire") {
             QuestionnaireScreen(
                 onDone = {
@@ -338,14 +345,16 @@ private fun MainTabs(navController: NavHostController) {
                     onPickInstrument = { navController.navigate("picker") },
                     onSwitchTab = { index -> currentTab = index },
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
-                    onOpenNotifications = { navController.navigate("notifications") }
+                    onOpenNotifications = { navController.navigate("notifications") },
+                    onCreateTradePlan = { navController.navigate("create_trade_plan") }
                 )
                 1 -> SignalsScreen()
                 2 -> CommunityScreen()
                 3 -> SavedScreen(
                     onOpenAnalysis = { id ->
                         navController.navigate("signal/${id}")
-                    }
+                    },
+                    onCreateTradePlan = { navController.navigate("create_trade_plan") }
                 )
                 else -> ProfileScreen(
                     onSignOut = {

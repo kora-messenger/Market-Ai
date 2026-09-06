@@ -98,7 +98,8 @@ fun HomeScreen(
     onPickInstrument: () -> Unit,
     onSwitchTab: (Int) -> Unit,
     onOpenRiskCalculator: () -> Unit,
-    onOpenNotifications: () -> Unit
+    onOpenNotifications: () -> Unit,
+    onCreateTradePlan: () -> Unit
 ) {
     val context = LocalContext.current
     val user = remember { SessionManager.currentUser(context) }
@@ -151,7 +152,7 @@ fun HomeScreen(
     )
     val moreActions = listOf(
         QuickAction("Learning hub", Icons.Filled.School) { comingSoon("Learning hub") },
-        QuickAction("Trade Plan", Icons.Filled.Assignment) { comingSoon("Trade Plan") },
+        QuickAction("Trade Plan", Icons.Filled.Assignment, onCreateTradePlan),
         QuickAction("Journal", Icons.AutoMirrored.Filled.MenuBook) { comingSoon("Journal") }
     )
 

@@ -154,6 +154,63 @@ object ApiClient {
         request(request)
     }
 
+    /** Real, user-authored trade plans for the signed-in user, newest first. */
+    suspend fun fetchTradePlans(sessionToken: String): JSONArray = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/trade-plans")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(
+                    json.optString("error", "Could not load trade plans (${response.code})")
+                )
+            }
+            json.optJSONArray("plans") ?: JSONArray()
+        }
+    }
+
+    /** Creates a real, persisted trade plan for the signed-in user. */
+    suspend fun createTradePlan(
+        sessionToken: String,
+        instrumentId: String,
+        instrument: String,
+        direction: String,
+        entry: Double?,
+        stopLoss: Double?,
+        takeProfit: Double?,
+        notes: String?
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("instrumentId", instrumentId)
+            put("instrument", instrument)
+            put("direction", direction)
+            if (entry != null) put("entry", entry)
+            if (stopLoss != null) put("stopLoss", stopLoss)
+            if (takeProfit != null) put("takeProfit", takeProfit)
+            if (!notes.isNullOrBlank()) put("notes", notes)
+        }
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/trade-plans")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Deletes a trade plan owned by the signed-in user. */
+    suspend fun deleteTradePlan(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/trade-plans/$id")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .delete()
+            .build()
+        request(request)
+    }
+
     /**
      * Reads a chart screenshot from the photo picker, downscales it so the upload stays
      * light while remaining readable, and returns a base64 JPEG data URL.

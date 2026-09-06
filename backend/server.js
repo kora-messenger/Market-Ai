@@ -54,6 +54,18 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
+    CREATE TABLE IF NOT EXISTS trade_plans (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id),
+      instrument_id TEXT NOT NULL,
+      instrument_display TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      entry DOUBLE PRECISION,
+      stop_loss DOUBLE PRECISION,
+      take_profit DOUBLE PRECISION,
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }
 
@@ -468,6 +480,101 @@ app.get("/api/analyses/:id", requireAuth, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: "Could not load analysis", detail: String(err.message || err) });
+  }
+});
+
+// --- Trade Plans ---
+// A real, user-authored trading plan (distinct from AI-generated saved
+// signals): instrument, planned entry/SL/TP levels and free-form notes.
+app.get("/api/trade-plans", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.instrument_id, p.instrument_display, p.direction, p.entry,
+              p.stop_loss, p.take_profit, p.notes, p.created_at
+       FROM trade_plans p
+       JOIN users u ON u.id = p.user_id
+       WHERE u.google_sub = $1
+       ORDER BY p.created_at DESC LIMIT 100`,
+      [req.session.sub]
+    );
+    res.json({
+      plans: rows.map((r) => ({
+        id: r.id,
+        instrumentId: r.instrument_id,
+        instrument: r.instrument_display,
+        direction: r.direction,
+        entry: r.entry,
+        stopLoss: r.stop_loss,
+        takeProfit: r.take_profit,
+        notes: r.notes,
+        createdAt: r.created_at
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load trade plans", detail: String(err.message || err) });
+  }
+});
+
+app.post("/api/trade-plans", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  const { instrumentId, instrument, direction, entry, stopLoss, takeProfit, notes } = req.body || {};
+  if (!instrumentId || !instrument || !direction) {
+    return res.status(400).json({ error: "instrumentId, instrument and direction are required" });
+  }
+  try {
+    const { rows: userRows } = await pool.query(
+      `SELECT id FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!userRows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO trade_plans (user_id, instrument_id, instrument_display, direction, entry, stop_loss, take_profit, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at`,
+      [
+        userRows[0].id,
+        String(instrumentId),
+        String(instrument),
+        String(direction).toUpperCase(),
+        entry != null ? Number(entry) : null,
+        stopLoss != null ? Number(stopLoss) : null,
+        takeProfit != null ? Number(takeProfit) : null,
+        notes ? String(notes).slice(0, 2000) : null
+      ]
+    );
+    res.status(201).json({ id: rows[0].id, createdAt: rows[0].created_at });
+  } catch (err) {
+    res.status(500).json({ error: "Could not save trade plan", detail: String(err.message || err) });
+  }
+});
+
+app.delete("/api/trade-plans/:id", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: "Trade plan not found" });
+  }
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM trade_plans p
+       USING users u
+       WHERE p.id = $1 AND p.user_id = u.id AND u.google_sub = $2`,
+      [req.params.id, req.session.sub]
+    );
+    if (!rowCount) {
+      return res.status(404).json({ error: "Trade plan not found" });
+    }
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not delete trade plan", detail: String(err.message || err) });
   }
 });
 
