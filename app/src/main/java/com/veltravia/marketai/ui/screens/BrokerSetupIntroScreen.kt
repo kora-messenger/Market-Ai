@@ -20,12 +20,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.veltravia.marketai.data.BrokerConfig
 import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.ui.theme.AccentCyan
 import com.veltravia.marketai.ui.theme.AccentViolet
@@ -53,19 +56,17 @@ import com.veltravia.marketai.ui.theme.TextSecondary
  * Optional broker-recommendation screen shown right after the projection intro,
  * before the questionnaire. "Continue with Exness" opens a REAL external link via
  * an actual Android view Intent (not a dead button). The referral URL is Ijezie's own
- * Exness link (https://one.exnessonelink.com/a/c1bre6uiv5), centralized in
- * BrokerConfig. Deliberately does NOT reuse any third-party app's affiliate
- * code.
+ * Exness link, centralized in the shared data/BrokerConfig.kt. Deliberately
+ * does NOT reuse any third-party app's affiliate URL.
  */
-private object BrokerConfig {
-    const val NAME = "Exness"
-
-    /** Ijezie's own Exness referral link (provided 2026-09-06). */
-    const val REFERRAL_URL = "https://one.exnessonelink.com/a/c1bre6uiv5"
-}
-
 @Composable
-fun BrokerSetupIntroScreen(onDone: () -> Unit) {
+fun BrokerSetupIntroScreen(
+    onDone: () -> Unit,
+    // When provided (e.g. opened from the Trade Analysis screen's broker card
+    // instead of onboarding), a back arrow appears at the top and onBack is
+    // called instead of finishing onboarding.
+    onBack: (() -> Unit)? = null
+) {
     val context = LocalContext.current
 
     Column(
@@ -75,7 +76,15 @@ fun BrokerSetupIntroScreen(onDone: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(16.dp))
+
+        if (onBack != null) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+        } else {
+            Spacer(Modifier.height(12.dp))
+        }
 
         Box(
             modifier = Modifier

@@ -200,6 +200,7 @@ fun MarketAiApp() {
                         popUpTo(0) { inclusive = true }
                     }
                 },
+                onOpenBrokerInfo = { navController.navigate("broker_info") },
                 continueCta = "Continue to Market Ai" to {
                     navController.navigate("main") {
                         popUpTo(0) { inclusive = true }
@@ -211,6 +212,15 @@ fun MarketAiApp() {
             ScreenshotGuideScreen(
                 ctaLabel = "Got it",
                 onCta = { navController.popBackStack() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable("broker_info") {
+            // Reachable from the Trade Analysis screen's broker card — shows
+            // the same broker recommendation as onboarding, but with a back
+            // arrow and returns instead of advancing the onboarding flow.
+            BrokerSetupIntroScreen(
+                onDone = { navController.popBackStack() },
                 onBack = { navController.popBackStack() }
             )
         }
@@ -250,7 +260,8 @@ fun MarketAiApp() {
         composable("signal/{analysisId}") { entry ->
             SignalCardScreen(
                 analysisId = entry.arguments?.getString("analysisId") ?: "",
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenBrokerInfo = { navController.navigate("broker_info") }
             )
         }
     }

@@ -2,6 +2,7 @@ package com.veltravia.marketai.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ import com.veltravia.marketai.data.ApiClient
 import com.veltravia.marketai.data.SessionManager
 import com.veltravia.marketai.data.UserSession
 import com.veltravia.marketai.ui.theme.AccentCyan
+import com.veltravia.marketai.ui.theme.BorderSubtle
 import com.veltravia.marketai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
@@ -117,6 +119,9 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(50))
                     .background(Color.White)
+                    // The app canvas is white now — without a border this pill
+                    // button would be invisible (white on white).
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(50))
                     .clickable(enabled = clientId.isNotBlank() && !signingIn) {
                         signingIn = true
                         error = null
