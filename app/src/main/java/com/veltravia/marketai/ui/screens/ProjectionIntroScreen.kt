@@ -80,6 +80,12 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
         ProjectionEngine.consistencyLine(answers?.experience ?: "", answers?.style ?: "")
     }
 
+    // Recall what the trader actually filled in: their timeframes and style.
+    val timeframes = answers?.timeframes?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
+        ?: listOf("15M", "4H")
+    val timeframeStack = timeframes.joinToString(" · ")
+    val styleLine = answers?.style?.takeIf { it.isNotBlank() } ?: "your style"
+
     val usd = remember { NumberFormat.getCurrencyInstance(java.util.Locale.US) }
 
     Column(
@@ -106,17 +112,25 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
             color = TextSecondary
         )
 
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = "Trading $timeframeStack with $styleLine, starting from ${usd.format(userCapital)}:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMuted
+        )
+
         Spacer(Modifier.height(20.dp))
 
         ProjectionCard(projection = projection, usd = usd)
 
         Spacer(Modifier.height(14.dp))
 
-        TradeChips(projection = projection, usd = usd)
+        TradeChips(projection = projection, usd = usd, timeframes = timeframes)
 
         Spacer(Modifier.height(20.dp))
 
-        FocusCard()
+        FocusCard(timeframes = timeframes)
 
         Spacer(Modifier.height(28.dp))
 
@@ -279,9 +293,16 @@ private fun ProjectionStat(label: String, value: String) {
 }
 
 @Composable
-private fun TradeChips(projection: ProjectionEngine.ProjectionResult, usd: NumberFormat) {
+private fun TradeChips(
+    projection: ProjectionEngine.ProjectionResult,
+    usd: NumberFormat,
+    timeframes: List<String>
+) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(projection.trades) { trade ->
+            // Cycle the trader's own chosen timeframes across the 12 days.
+            val tf = if (timeframes.isNotEmpty()) timeframes[(trade.index - 1) % timeframes.size] else ""
+            val dayLabel = if (tf.isBlank()) "Day ${trade.index}" else "Day ${trade.index} · $tf"
             val bg = if (trade.isWin) BullGreen.copy(alpha = 0.14f) else BearRed.copy(alpha = 0.14f)
             val fg = if (trade.isWin) BullGreen else BearRed
             Column(
@@ -291,7 +312,7 @@ private fun TradeChips(projection: ProjectionEngine.ProjectionResult, usd: Numbe
                     .background(bg)
                     .padding(12.dp)
             ) {
-                Text("Trade ${trade.index}", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                Text(dayLabel, style = MaterialTheme.typography.labelSmall, color = TextMuted)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = (if (trade.pnl >= 0) "+" else "") + usd.format(trade.pnl),
@@ -310,7 +331,8 @@ private fun TradeChips(projection: ProjectionEngine.ProjectionResult, usd: Numbe
 private data class FocusItem(val icon: ImageVector, val title: String, val desc: String)
 
 @Composable
-private fun FocusCard() {
+private fun FocusCard(timeframes: List<String>) {
+    val stack = timeframes.joinToString(" \u00b7 ")
     val items = listOf(
         FocusItem(
             Icons.Filled.Psychology,
@@ -320,7 +342,7 @@ private fun FocusCard() {
         FocusItem(
             Icons.Filled.ShowChart,
             "Sharper chart reading",
-            "Work the 4H \u00b7 15M \u00b7 1H stack. Mark levels pre-session \u2014 no trigger, no trade."
+            "Work your $stack stack. Mark levels pre-session \u2014 no trigger, no trade."
         ),
         FocusItem(
             Icons.Filled.QueryStats,
