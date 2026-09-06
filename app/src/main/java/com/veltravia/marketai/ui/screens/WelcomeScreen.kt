@@ -32,6 +32,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,6 +54,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun WelcomeScreen(onSignedIn: () -> Unit) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val clientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
 
@@ -87,14 +94,16 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "Let's analyze your chart ",
-                style = MaterialTheme.typography.displayLarge,
+                text = "Let's analyze your chart",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center
             )
             Text(
                 text = "and make you profitable now.",
-                style = MaterialTheme.typography.displayLarge,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
                 color = AccentCyan,
                 textAlign = TextAlign.Center
             )
@@ -167,7 +176,41 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
                 )
             }
 
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(28.dp))
+
+            val termsStart = "By continuing, you agree to our ".length
+            val termsEnd = termsStart + "Terms of Service".length
+            val privacyStart = termsEnd + " and ".length
+            val privacyEnd = privacyStart + "Privacy Policy".length
+            val legalText = buildAnnotatedString {
+                append("By continuing, you agree to our ")
+                withStyle(SpanStyle(color = AccentCyan, textDecoration = TextDecoration.Underline)) {
+                    append("Terms of Service")
+                }
+                append(" and ")
+                withStyle(SpanStyle(color = AccentCyan, textDecoration = TextDecoration.Underline)) {
+                    append("Privacy Policy")
+                }
+                append(".")
+            }
+            androidx.compose.foundation.text.ClickableText(
+                text = legalText,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { offset ->
+                    when {
+                        offset in termsStart until termsEnd ->
+                            uriHandler.openUri("https://market-ai-api-jwfb.onrender.com/terms")
+                        offset in privacyStart until privacyEnd ->
+                            uriHandler.openUri("https://market-ai-api-jwfb.onrender.com/privacy")
+                    }
+                }
+            )
+
+            Spacer(Modifier.height(20.dp))
 
             Text(
                 "By Veltravia Technologies",

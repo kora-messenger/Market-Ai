@@ -7,6 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
+const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 
 const app = express();
 app.use(express.json({ limit: "25mb" }));
@@ -47,6 +48,14 @@ async function initDb() {
     );
   `);
 }
+
+// --- Legal pages (real content, linked from the app's welcome screen) ---
+app.get("/terms", (_req, res) => {
+  res.set("Content-Type", "text/html; charset=utf-8").send(termsOfServiceHtml());
+});
+app.get("/privacy", (_req, res) => {
+  res.set("Content-Type", "text/html; charset=utf-8").send(privacyPolicyHtml());
+});
 
 // --- Health ---
 app.get("/health", (_req, res) => {
