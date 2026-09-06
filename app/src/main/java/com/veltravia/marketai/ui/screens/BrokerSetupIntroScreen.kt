@@ -52,15 +52,16 @@ import com.veltravia.marketai.ui.theme.TextSecondary
 /**
  * Optional broker-recommendation screen shown right after the projection intro,
  * before the questionnaire. "Continue with Exness" opens a REAL external link via
- * an actual Android view Intent (not a dead button). The chosen referral URL is
- * centralized in BrokerConfig so it's a one-line swap once Ijezie has his own
- * Exness partner/affiliate link — currently points at Exness's plain signup page
- * (no affiliate tracking baked in, since we deliberately do not reuse any
- * third-party app's own affiliate code).
+ * an actual Android view Intent (not a dead button). The referral URL is Ijezie's own
+ * Exness link (https://one.exnessonelink.com/a/c1bre6uiv5), centralized in
+ * BrokerConfig. Deliberately does NOT reuse any third-party app's affiliate
+ * code.
  */
 private object BrokerConfig {
     const val NAME = "Exness"
-    const val REFERRAL_URL = "https://exness.com"
+
+    /** Ijezie's own Exness referral link (provided 2026-09-06). */
+    const val REFERRAL_URL = "https://one.exnessonelink.com/a/c1bre6uiv5"
 }
 
 @Composable
