@@ -37,6 +37,8 @@ async function initDb() {
       picture TEXT,
       community_joined BOOLEAN NOT NULL DEFAULT false,
       community_joined_at TIMESTAMPTZ,
+      trial_started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      is_premium BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS analyses (
@@ -48,7 +50,26 @@ async function initDb() {
       outcome TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT false;
   `);
+}
+
+const TRIAL_DAYS = 7;
+
+function trialInfo(row) {
+  const startedAt = new Date(row.trial_started_at);
+  const endsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+  const isPremium = Boolean(row.is_premium);
+  const active = isPremium || Date.now() < endsAt.getTime();
+  const daysRemaining = Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+  return {
+    trialStartedAt: startedAt.toISOString(),
+    trialEndsAt: endsAt.toISOString(),
+    isPremium,
+    trialActive: active,
+    trialDaysRemaining: daysRemaining
+  };
 }
 
 // --- Session auth middleware: verifies the Bearer session JWT issued at /api/auth/google ---
@@ -133,7 +154,8 @@ app.post("/api/auth/google", async (req, res) => {
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (google_sub)
          DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, picture = EXCLUDED.picture
-         RETURNING id, google_sub, email, name, picture, community_joined, community_joined_at`,
+         RETURNING id, google_sub, email, name, picture, community_joined, community_joined_at,
+                   trial_started_at, is_premium`,
         [payload.sub, user.email, user.name, user.picture]
       );
       user = {
@@ -143,7 +165,8 @@ app.post("/api/auth/google", async (req, res) => {
         name: rows[0].name,
         picture: rows[0].picture,
         communityJoined: rows[0].community_joined,
-        communityJoinedAt: rows[0].community_joined_at
+        communityJoinedAt: rows[0].community_joined_at,
+        ...trialInfo(rows[0])
       };
     }
 
@@ -204,6 +227,25 @@ app.get("/api/community/status", requireAuth, async (req, res) => {
   }
 });
 
+// --- Trial status: 7 days of full free access from account creation, then Premium required ---
+app.get("/api/trial/status", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.json(trialInfo(rows[0]));
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load trial status", detail: String(err.message || err) });
+  }
+});
+
 // --- AI chart analysis (server-side, OpenRouter vision) ---
 const SYSTEM_PROMPT = `You are a senior market analyst. You receive two real chart screenshots of the same instrument:
 - a 4H (higher timeframe) chart and a 15M (lower timeframe) chart.
@@ -234,11 +276,14 @@ function extractJson(text) {
   return JSON.parse(t.slice(first, last + 1));
 }
 
-app.post("/api/analyze", async (req, res) => {
+app.post("/api/analyze", requireAuth, async (req, res) => {
   if (!OPENROUTER_API_KEY) {
     return res.status(503).json({
       error: "Analysis engine is not configured yet. Add OPENROUTER_API_KEY."
     });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
   }
   const { instrumentId, mode, imageH4, imageM15 } = req.body || {};
 
@@ -253,6 +298,29 @@ app.post("/api/analyze", async (req, res) => {
   if (!isDataUrl(imageH4) || !isDataUrl(imageM15)) {
     return res.status(400).json({
       error: "imageH4 and imageM15 must be base64 image data URLs (png/jpeg/webp)"
+    });
+  }
+
+  let userRow;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    userRow = rows[0];
+  } catch (err) {
+    return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
+  }
+
+  const trial = trialInfo(userRow);
+  if (!trial.trialActive) {
+    return res.status(402).json({
+      error: "Your 7-day free trial has ended. Premium plans are coming soon \u2014 stay tuned!",
+      trialExpired: true,
+      ...trial
     });
   }
 
@@ -306,30 +374,33 @@ app.post("/api/analyze", async (req, res) => {
       analyzedAt: new Date().toISOString()
     };
 
-    if (pool) {
-      const { rows } = await pool.query(
-        `INSERT INTO analyses (instrument_id, mode, result) VALUES ($1, $2, $3) RETURNING id`,
-        [instrument.id, mode, JSON.stringify(result)]
-      );
-      if (rows.length) result.id = rows[0].id;
-    }
+    const { rows } = await pool.query(
+      `INSERT INTO analyses (user_id, instrument_id, mode, result) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [userRow.id, instrument.id, mode, JSON.stringify(result)]
+    );
+    if (rows.length) result.id = rows[0].id;
 
-    return res.json(result);
+    return res.json({ ...result, ...trial });
   } catch (err) {
     return res.status(500).json({ error: "Analysis failed", detail: String(err.message || err) });
   }
 });
 
-app.get("/api/analyses", async (req, res) => {
+// NOTE: scoped to the authenticated user's own google_sub -> user id. Previously these two
+// routes had no auth and returned EVERY user's analyses — fixed while wiring per-user trials.
+app.get("/api/analyses", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
   }
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
     const { rows } = await pool.query(
-      `SELECT id, instrument_id, mode, result, created_at
-       FROM analyses ORDER BY created_at DESC LIMIT $1`,
-      [limit]
+      `SELECT a.id, a.instrument_id, a.mode, a.result, a.created_at
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       WHERE u.google_sub = $1
+       ORDER BY a.created_at DESC LIMIT $2`,
+      [req.session.sub, limit]
     );
     res.json({
       analyses: rows.map((r) => ({
@@ -345,7 +416,7 @@ app.get("/api/analyses", async (req, res) => {
   }
 });
 
-app.get("/api/analyses/:id", async (req, res) => {
+app.get("/api/analyses/:id", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
   }
@@ -355,8 +426,11 @@ app.get("/api/analyses/:id", async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, instrument_id, mode, result, created_at FROM analyses WHERE id = $1`,
-      [req.params.id]
+      `SELECT a.id, a.instrument_id, a.mode, a.result, a.created_at
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       WHERE a.id = $1 AND u.google_sub = $2`,
+      [req.params.id, req.session.sub]
     );
     if (!rows.length) {
       return res.status(404).json({ error: "Analysis not found" });
