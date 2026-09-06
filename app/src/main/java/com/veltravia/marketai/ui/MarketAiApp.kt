@@ -106,7 +106,7 @@ fun MarketAiApp() {
         composable("picker") {
             InstrumentPickerScreen(
                 onSelected = { instrument ->
-                    navController.navigate("upload/${'$'}{instrument.id}") {
+                    navController.navigate("upload/${instrument.id}") {
                         popUpTo("main")
                     }
                 },
@@ -118,7 +118,7 @@ fun MarketAiApp() {
                 instrumentId = entry.arguments?.getString("instrumentId") ?: "",
                 onBack = { navController.popBackStack() },
                 onAnalysisComplete = { analysisId ->
-                    navController.navigate("signal/${'$'}analysisId") {
+                    navController.navigate("signal/${analysisId}") {
                         popUpTo("main")
                     }
                 }
@@ -186,7 +186,7 @@ private fun MainTabs(navController: NavHostController) {
                 2 -> CommunityScreen()
                 3 -> SavedScreen(
                     onOpenAnalysis = { id ->
-                        navController.navigate("signal/${'$'}id")
+                        navController.navigate("signal/${id}")
                     }
                 )
                 else -> ProfileScreen(
