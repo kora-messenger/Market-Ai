@@ -771,9 +771,8 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
     }
 }
 
-// --- weekly competition card -----------------------------------------------------------
+// --- pinned posts widget + featured proofs ---------------------------------------------
 
-@Composable
 @Composable
 private fun PinnedPostsWidget(
     pinned: List<PinnedPost>,
