@@ -24,17 +24,17 @@ let lastMarketCaps = {}; // id -> last known real market cap, for the Binance fa
 // URL is CoinGecko's static CDN asset per coin, not a live API call) mapped
 // to its Binance ticker.
 const FALLBACK_WATCHLIST = [
-  { id: "bitcoin", symbol: "BTC", name: "Bitcoin", pair: "BTCUSDT", coinbase: "BTC-USD", image: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png" },
-  { id: "ethereum", symbol: "ETH", name: "Ethereum", pair: "ETHUSDT", coinbase: "ETH-USD", image: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png" },
-  { id: "binancecoin", symbol: "BNB", name: "BNB", pair: "BNBUSDT", coinbase: "BNB-USD", image: "https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png" },
-  { id: "solana", symbol: "SOL", name: "Solana", pair: "SOLUSDT", coinbase: "SOL-USD", image: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png" },
-  { id: "ripple", symbol: "XRP", name: "XRP", pair: "XRPUSDT", coinbase: "XRP-USD", image: "https://coin-images.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png" },
-  { id: "cardano", symbol: "ADA", name: "Cardano", pair: "ADAUSDT", coinbase: "ADA-USD", image: "https://coin-images.coingecko.com/coins/images/975/large/cardano.png" },
-  { id: "dogecoin", symbol: "DOGE", name: "Dogecoin", pair: "DOGEUSDT", coinbase: "DOGE-USD", image: "https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png" },
-  { id: "polkadot", symbol: "DOT", name: "Polkadot", pair: "DOTUSDT", coinbase: "DOT-USD", image: "https://coin-images.coingecko.com/coins/images/12171/large/polkadot.png" },
-  { id: "avalanche-2", symbol: "AVAX", name: "Avalanche", pair: "AVAXUSDT", coinbase: "AVAX-USD", image: "https://coin-images.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png" },
-  { id: "chainlink", symbol: "LINK", name: "Chainlink", pair: "LINKUSDT", coinbase: "LINK-USD", image: "https://coin-images.coingecko.com/coins/images/877/large/chainlink-new-logo.png" },
-  { id: "litecoin", symbol: "LTC", name: "Litecoin", pair: "LTCUSDT", coinbase: "LTC-USD", image: "https://coin-images.coingecko.com/coins/images/2/large/litecoin.png" }
+  { id: "bitcoin", paprika: "btc-bitcoin", symbol: "BTC", name: "Bitcoin", pair: "BTCUSDT", coinbase: "BTC-USD", image: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png" },
+  { id: "ethereum", paprika: "eth-ethereum", symbol: "ETH", name: "Ethereum", pair: "ETHUSDT", coinbase: "ETH-USD", image: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png" },
+  { id: "binancecoin", paprika: "bnb-binance-coin", symbol: "BNB", name: "BNB", pair: "BNBUSDT", coinbase: "BNB-USD", image: "https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png" },
+  { id: "solana", paprika: "sol-solana", symbol: "SOL", name: "Solana", pair: "SOLUSDT", coinbase: "SOL-USD", image: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png" },
+  { id: "ripple", paprika: "xrp-xrp", symbol: "XRP", name: "XRP", pair: "XRPUSDT", coinbase: "XRP-USD", image: "https://coin-images.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png" },
+  { id: "cardano", paprika: "ada-cardano", symbol: "ADA", name: "Cardano", pair: "ADAUSDT", coinbase: "ADA-USD", image: "https://coin-images.coingecko.com/coins/images/975/large/cardano.png" },
+  { id: "dogecoin", paprika: "doge-dogecoin", symbol: "DOGE", name: "Dogecoin", pair: "DOGEUSDT", coinbase: "DOGE-USD", image: "https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png" },
+  { id: "polkadot", paprika: "dot-polkadot", symbol: "DOT", name: "Polkadot", pair: "DOTUSDT", coinbase: "DOT-USD", image: "https://coin-images.coingecko.com/coins/images/12171/large/polkadot.png" },
+  { id: "avalanche-2", paprika: "avax-avalanche", symbol: "AVAX", name: "Avalanche", pair: "AVAXUSDT", coinbase: "AVAX-USD", image: "https://coin-images.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png" },
+  { id: "chainlink", paprika: "link-chainlink", symbol: "LINK", name: "Chainlink", pair: "LINKUSDT", coinbase: "LINK-USD", image: "https://coin-images.coingecko.com/coins/images/877/large/chainlink-new-logo.png" },
+  { id: "litecoin", paprika: "ltc-litecoin", symbol: "LTC", name: "Litecoin", pair: "LTCUSDT", coinbase: "LTC-USD", image: "https://coin-images.coingecko.com/coins/images/2/large/litecoin.png" }
 ];
 
 async function fetchJson(url) {
@@ -68,6 +68,27 @@ async function fetchMarketsOnce(limit) {
     if (typeof c.marketCap === "number" && c.marketCap > 0) lastMarketCaps[c.id] = c.marketCap;
   }
   return data;
+}
+
+/**
+ * Best-effort market-cap enrichment via CoinPaprika (EU-friendly, free).
+ * Only fills gaps — never overwrites a market cap we already have.
+ */
+async function enrichMarketCaps(rows) {
+  const missing = rows.filter((r) => !r.marketCap);
+  for (const row of missing) {
+    const coin = FALLBACK_WATCHLIST.find((c) => c.id === row.id);
+    if (!coin || !coin.paprika) continue;
+    try {
+      const t = await fetchJson(`https://api.coinpaprika.com/v1/tickers/${coin.paprika}`);
+      const mcap = t && t.quotes && t.quotes.USD && Number(t.quotes.USD.market_cap);
+      if (Number.isFinite(mcap) && mcap > 0) {
+        row.marketCap = mcap;
+        lastMarketCaps[row.id] = mcap;
+      }
+    } catch (_e) { /* enrichment is best-effort */ }
+  }
+  return rows;
 }
 
 /**
@@ -171,7 +192,7 @@ async function fetchTrending(limit = 15) {
   }
 
   try {
-    const data = await fetchCoinbaseFallback(limit);
+    const data = await enrichMarketCaps(await fetchCoinbaseFallback(limit));
     if (data.length > 0) {
       cache = { at: Date.now(), data, source: "coinbase" };
       return data;
