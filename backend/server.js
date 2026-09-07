@@ -345,6 +345,36 @@ app.post("/api/admin/login-email-test", async (req, res) => {
   });
 });
 
+// --- Ops: verify the new-vs-returning upsert logic used to pick the email type ---
+// Runs the exact auth upsert twice with a synthetic account and reports whether
+// Postgres flags the first as new and the second as returning. Test row removed.
+app.post("/api/admin/upsert-check", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const sub = `upsert-check-${Date.now()}`;
+    const q = `INSERT INTO users (google_sub, email, name, picture)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (google_sub)
+               DO UPDATE SET email = EXCLUDED.email
+               RETURNING (xmax = 0) AS inserted_new`;
+    const first = await pool.query(q, [sub, "upsert-check@example.com", "Upsert Check", ""]);
+    const second = await pool.query(q, [sub, "upsert-check@example.com", "Upsert Check", ""]);
+    await pool.query(`DELETE FROM users WHERE google_sub = $1`, [sub]);
+    return res.json({
+      firstSignInFlaggedNew: first.rows[0].inserted_new,
+      secondSignInFlaggedNew: second.rows[0].inserted_new,
+      logicCorrect: first.rows[0].inserted_new === true && second.rows[0].inserted_new === false
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "upsert check failed", detail: String(err.message || err) });
+  }
+});
+
 // --- Community: free onboarding community access (real DB-persisted membership) ---
 app.post("/api/community/join", requireAuth, async (req, res) => {
   if (!pool) {
