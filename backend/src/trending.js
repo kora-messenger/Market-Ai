@@ -24,18 +24,17 @@ let lastMarketCaps = {}; // id -> last known real market cap, for the Binance fa
 // URL is CoinGecko's static CDN asset per coin, not a live API call) mapped
 // to its Binance ticker.
 const FALLBACK_WATCHLIST = [
-  { id: "bitcoin", symbol: "BTC", name: "Bitcoin", pair: "BTCUSDT", image: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png" },
-  { id: "ethereum", symbol: "ETH", name: "Ethereum", pair: "ETHUSDT", image: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png" },
-  { id: "binancecoin", symbol: "BNB", name: "BNB", pair: "BNBUSDT", image: "https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png" },
-  { id: "solana", symbol: "SOL", name: "Solana", pair: "SOLUSDT", image: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png" },
-  { id: "ripple", symbol: "XRP", name: "XRP", pair: "XRPUSDT", image: "https://coin-images.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png" },
-  { id: "cardano", symbol: "ADA", name: "Cardano", pair: "ADAUSDT", image: "https://coin-images.coingecko.com/coins/images/975/large/cardano.png" },
-  { id: "dogecoin", symbol: "DOGE", name: "Dogecoin", pair: "DOGEUSDT", image: "https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png" },
-  { id: "polkadot", symbol: "DOT", name: "Polkadot", pair: "DOTUSDT", image: "https://coin-images.coingecko.com/coins/images/12171/large/polkadot.png" },
-  { id: "tron", symbol: "TRX", name: "TRON", pair: "TRXUSDT", image: "https://coin-images.coingecko.com/coins/images/1094/large/tron-logo.png" },
-  { id: "avalanche-2", symbol: "AVAX", name: "Avalanche", pair: "AVAXUSDT", image: "https://coin-images.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png" },
-  { id: "chainlink", symbol: "LINK", name: "Chainlink", pair: "LINKUSDT", image: "https://coin-images.coingecko.com/coins/images/877/large/chainlink-new-logo.png" },
-  { id: "litecoin", symbol: "LTC", name: "Litecoin", pair: "LTCUSDT", image: "https://coin-images.coingecko.com/coins/images/2/large/litecoin.png" }
+  { id: "bitcoin", symbol: "BTC", name: "Bitcoin", pair: "BTCUSDT", coinbase: "BTC-USD", image: "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png" },
+  { id: "ethereum", symbol: "ETH", name: "Ethereum", pair: "ETHUSDT", coinbase: "ETH-USD", image: "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png" },
+  { id: "binancecoin", symbol: "BNB", name: "BNB", pair: "BNBUSDT", coinbase: "BNB-USD", image: "https://coin-images.coingecko.com/coins/images/825/large/bnb-icon2_2x.png" },
+  { id: "solana", symbol: "SOL", name: "Solana", pair: "SOLUSDT", coinbase: "SOL-USD", image: "https://coin-images.coingecko.com/coins/images/4128/large/solana.png" },
+  { id: "ripple", symbol: "XRP", name: "XRP", pair: "XRPUSDT", coinbase: "XRP-USD", image: "https://coin-images.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png" },
+  { id: "cardano", symbol: "ADA", name: "Cardano", pair: "ADAUSDT", coinbase: "ADA-USD", image: "https://coin-images.coingecko.com/coins/images/975/large/cardano.png" },
+  { id: "dogecoin", symbol: "DOGE", name: "Dogecoin", pair: "DOGEUSDT", coinbase: "DOGE-USD", image: "https://coin-images.coingecko.com/coins/images/5/large/dogecoin.png" },
+  { id: "polkadot", symbol: "DOT", name: "Polkadot", pair: "DOTUSDT", coinbase: "DOT-USD", image: "https://coin-images.coingecko.com/coins/images/12171/large/polkadot.png" },
+  { id: "avalanche-2", symbol: "AVAX", name: "Avalanche", pair: "AVAXUSDT", coinbase: "AVAX-USD", image: "https://coin-images.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png" },
+  { id: "chainlink", symbol: "LINK", name: "Chainlink", pair: "LINKUSDT", coinbase: "LINK-USD", image: "https://coin-images.coingecko.com/coins/images/877/large/chainlink-new-logo.png" },
+  { id: "litecoin", symbol: "LTC", name: "Litecoin", pair: "LTCUSDT", coinbase: "LTC-USD", image: "https://coin-images.coingecko.com/coins/images/2/large/litecoin.png" }
 ];
 
 async function fetchJson(url) {
@@ -71,7 +70,49 @@ async function fetchMarketsOnce(limit) {
   return data;
 }
 
-/** Real Binance-derived trending rows when CoinGecko is unreachable from this server. */
+/**
+ * Real Coinbase Exchange-derived trending rows. Preferred fallback from
+ * EU servers (Render/Frankfurt): Binance answers 451 there due to MiCA
+ * geo-blocking, while Coinbase serves the EU fine.
+ */
+async function fetchCoinbaseFallback(limit) {
+  const list = FALLBACK_WATCHLIST.filter((c) => c.coinbase).slice(0, limit);
+  const rows = [];
+  for (const c of list) {
+    try {
+      const stats = await fetchJson(`https://api.exchange.coinbase.com/products/${c.coinbase}/stats`);
+      const open = Number(stats.open);
+      const last = Number(stats.last);
+      const volumeBase = Number(stats.volume);
+      if (!Number.isFinite(last) || !Number.isFinite(open) || last <= 0 || open <= 0) continue;
+      let sparkline = [];
+      try {
+        // hourly candles, most-recent-first; take the oldest 168 for a 7-day view
+        const candles = await fetchJson(`https://api.exchange.coinbase.com/products/${c.coinbase}/candles?granularity=3600`);
+        sparkline = (Array.isArray(candles) ? candles : [])
+          .slice(0, 168)
+          .map((k) => Number(k[4])) // close price
+          .reverse();
+      } catch (_e) { /* sparkline is best-effort; row still shows without it */ }
+      rows.push({
+        id: c.id,
+        symbol: c.symbol,
+        name: c.name,
+        image: c.image,
+        price: last,
+        marketCap: lastMarketCaps[c.id] ?? null, // honest — null renders as "—", never fabricated
+        volume24h: volumeBase * last, // base volume x last price = approximate USD volume
+        change24h: ((last - open) / open) * 100,
+        sparkline
+      });
+    } catch (err) {
+      console.warn(`trending: coinbase ${c.symbol} failed (${String(err.message || err)})`);
+    }
+  }
+  return rows;
+}
+
+/** Real Binance-derived trending rows — Americas/Asia hosting tier. */
 async function fetchBinanceFallback(limit) {
   const list = FALLBACK_WATCHLIST.slice(0, limit);
   const symbols = list.map((c) => c.pair);
@@ -108,9 +149,10 @@ async function fetchBinanceFallback(limit) {
 
 /**
  * @returns {Promise<Array<{id,symbol,name,image,price,marketCap,volume24h,change24h,sparkline:number[]}>>}
- * Tier 1: fresh CoinGecko (has everything). Tier 2: fresh Binance fallback
- * (accurate live data, market cap best-effort). Tier 3: last good snapshot
- * of either, however old — a stale trending list beats a broken section.
+ * Tier 1: fresh CoinGecko (has everything). Tier 2: fresh Coinbase Exchange
+ * fallback (EU-friendly, accurate live data). Tier 3: Binance (works off-EU
+ * hosting). Tier 4: last good snapshot of any, however old — a stale
+ * trending list beats a broken section.
  */
 async function fetchTrending(limit = 15) {
   if (cache.data && Date.now() - cache.at < CACHE_MS) return cache.data;
@@ -126,6 +168,18 @@ async function fetchTrending(limit = 15) {
   } catch (err) {
     errs.push(`coingecko: ${String(err.message || err)}`);
     console.warn(`trending: coingecko failed (${String(err.message || err)})`);
+  }
+
+  try {
+    const data = await fetchCoinbaseFallback(limit);
+    if (data.length > 0) {
+      cache = { at: Date.now(), data, source: "coinbase" };
+      return data;
+    }
+    errs.push("coinbase returned no rows");
+  } catch (err) {
+    errs.push(`coinbase: ${String(err.message || err)}`);
+    console.warn(`trending: coinbase fallback failed (${String(err.message || err)})`);
   }
 
   try {
