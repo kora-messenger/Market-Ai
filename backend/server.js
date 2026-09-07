@@ -179,6 +179,8 @@ async function initDb() {
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS poll_options JSONB;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS allow_comments BOOLEAN NOT NULL DEFAULT true;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS outcome_tag TEXT;
     CREATE TABLE IF NOT EXISTS community_post_images (
       post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
       position INT NOT NULL,
@@ -200,6 +202,12 @@ async function initDb() {
       emoji TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (post_id, user_id, emoji)
+    );
+    CREATE TABLE IF NOT EXISTS post_views (
+      post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (post_id, user_id)
     );
     CREATE TABLE IF NOT EXISTS post_comments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1509,7 +1517,7 @@ async function currentUser(req) {
   return rows[0] || null;
 }
 
-function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor) {
+function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor, viewCount) {
   return {
     id: row.id,
     authorName: row.author_name,
@@ -1523,6 +1531,8 @@ function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor)
     postType: row.post_type || "text",
     isPinned: row.is_pinned === true,
     imageCount: row.image_count || 0,
+    outcomeTag: row.outcome_tag || null,
+    viewCount: viewCount || 0,
     poll: poll ? {
       options: poll.options,
       totalVotes: poll.totalVotes,
@@ -1578,7 +1588,8 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
     const meId = me ? me.id : null;
 
     const { rows: posts } = await pool.query(
-      `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count
+      `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
+              (SELECT COUNT(*)::int FROM post_views v WHERE v.post_id = p.id) AS view_count
        FROM community_posts p
        ORDER BY p.is_pinned DESC, p.created_at DESC
        LIMIT $1 OFFSET $2`,
@@ -1644,7 +1655,7 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
           poll = { options, counts, totalVotes };
         }
         const isBadge = badgeEmails.has((p.author_email || "").toLowerCase());
-        return postToApi(p, byPost[p.id] || [], cByPost[p.id] || 0, poll, myVoteOption[p.id] || null, isBadge);
+        return postToApi(p, byPost[p.id] || [], cByPost[p.id] || 0, poll, myVoteOption[p.id] || null, isBadge, p.view_count || 0);
       }),
       total: total[0].c,
       hasMore: offset + posts.length < total[0].c
@@ -1694,15 +1705,22 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     }
   }
   const allowComments = req.body.allowComments !== false;
+  // Self-reported trade outcome — only meaningful on an image post (a chart/proof
+  // screenshot). Never inferred or fabricated by the backend; the author tags it.
+  let outcomeTag = String(req.body.outcomeTag || "").toLowerCase();
+  if (!["win", "loss"].includes(outcomeTag)) outcomeTag = null;
+  if (outcomeTag && imageList.length === 0) {
+    return res.status(400).json({ error: "An outcome tag can only be added to a post with an image." });
+  }
 
   try {
     const me = await currentUser(req);
     if (!me) return res.status(404).json({ error: "User not found" });
     const isTeam = ADMIN_EMAIL && (me.email || "").toLowerCase() === ADMIN_EMAIL;
     const { rows } = await pool.query(
-      `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) RETURNING *`,
-      [me.id, me.name || "Trader", me.email || "", body, isTeam, postType, JSON.stringify(pollOptions), allowComments]
+      `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments, outcome_tag)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9) RETURNING *`,
+      [me.id, me.name || "Trader", me.email || "", body, isTeam, postType, JSON.stringify(pollOptions), allowComments, outcomeTag]
     );
     const row = rows[0];
     for (let i = 0; i < imageList.length; i++) {
@@ -1716,7 +1734,7 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     const poll = postType === "poll"
       ? { options: row.poll_options, counts: {}, totalVotes: 0 }
       : null;
-    const post = postToApi({ ...row, image_count: imageList.length }, [], 0, poll, null, false);
+    const post = postToApi({ ...row, image_count: imageList.length }, [], 0, poll, null, false, 0);
     return res.json({ post });
   } catch (err) {
     return res.status(500).json({ error: "Could not publish the post", detail: String(err.message || err) });
@@ -1790,13 +1808,69 @@ app.post("/api/community/posts/:id/pin", requireAuth, async (req, res) => {
     const isAdmin = ADMIN_EMAIL && me && (me.email || "").toLowerCase() === ADMIN_EMAIL;
     if (!isAdmin) return res.status(403).json({ error: "Only the MarketScope AI team can pin posts." });
     const { rows } = await pool.query(
-      `UPDATE community_posts SET is_pinned = NOT is_pinned WHERE id = $1::uuid RETURNING id, is_pinned`,
+      `UPDATE community_posts
+       SET is_pinned = NOT is_pinned,
+           pinned_at = CASE WHEN NOT is_pinned THEN now() ELSE NULL END
+       WHERE id = $1::uuid RETURNING id, is_pinned, pinned_at`,
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: "Post not found" });
-    return res.json({ id: rows[0].id, isPinned: rows[0].is_pinned });
+    return res.json({ id: rows[0].id, isPinned: rows[0].is_pinned, pinnedAt: rows[0].pinned_at });
   } catch (err) {
     return res.status(500).json({ error: "Could not pin the post", detail: String(err.message || err) });
+  }
+});
+
+// Real curated pinned-posts list, most-recently-pinned first — backs the
+// "Pinned posts" carousel in the Community screen. Title is derived honestly
+// from the post's own first line (never fabricated).
+app.get("/api/community/pinned", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, body, author_name, created_at, pinned_at
+       FROM community_posts
+       WHERE is_pinned = true
+       ORDER BY pinned_at DESC NULLS LAST, created_at DESC
+       LIMIT 20`
+    );
+    return res.json({
+      pinned: rows.map((r) => {
+        const firstLine = String(r.body || "").split("\n")[0].trim();
+        const title = firstLine.length > 70 ? `${firstLine.slice(0, 67)}...` : firstLine;
+        return {
+          id: r.id,
+          title: title || "Pinned post",
+          authorName: r.author_name,
+          createdAt: r.created_at,
+          pinnedAt: r.pinned_at
+        };
+      })
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load pinned posts", detail: String(err.message || err) });
+  }
+});
+
+// Registers a real view (deduped per user per post) — backs the eye-count on
+// each post. Fire-and-forget from the client; idempotent via the PK.
+app.post("/api/community/posts/:id/view", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const postId = req.params.id;
+    await pool.query(
+      `INSERT INTO post_views (post_id, user_id) VALUES ($1::uuid, $2::uuid) ON CONFLICT DO NOTHING`,
+      [postId, me.id]
+    );
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM post_views WHERE post_id = $1::uuid`,
+      [postId]
+    );
+    return res.json({ viewCount: rows[0].c });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not register the view", detail: String(err.message || err) });
   }
 });
 
@@ -1823,26 +1897,33 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
       }
     }
 
-    // Featured proof of the week: most-reacted image post published this week.
+    // Featured proof of the week: the most-reacted image posts published this
+    // week, most-reacted first. Real engagement-ranked data, never fabricated.
     const { rows: proofRows } = await pool.query(
-      `SELECT p.id, p.author_name, p.body,
+      `SELECT p.id, p.author_name, p.body, p.outcome_tag,
               (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
               (SELECT COUNT(*)::int FROM post_reactions r WHERE r.post_id = p.id AND r.created_at >= $1 AND r.created_at < $2) AS week_reactions
        FROM community_posts p
        WHERE p.created_at >= $1 AND p.created_at < $2
          AND EXISTS (SELECT 1 FROM community_post_images i WHERE i.post_id = p.id)
-       ORDER BY week_reactions DESC, p.created_at DESC LIMIT 1`,
+       ORDER BY week_reactions DESC, p.created_at DESC LIMIT 5`,
       [weekStart, weekEnd]
     );
-    const proof = proofRows.length
-      ? { postId: proofRows[0].id, authorName: proofRows[0].author_name, body: proofRows[0].body,
-          imageCount: proofRows[0].image_count, weekReactions: proofRows[0].week_reactions }
+    const topProofs = proofRows.map((r) => ({
+      postId: r.id, authorName: r.author_name, body: r.body,
+      outcomeTag: r.outcome_tag || null,
+      imageCount: r.image_count, weekReactions: r.week_reactions
+    }));
+    const proof = topProofs.length
+      ? { postId: topProofs[0].postId, authorName: topProofs[0].authorName, body: topProofs[0].body,
+          imageCount: topProofs[0].imageCount, weekReactions: topProofs[0].weekReactions }
       : null;
 
     return res.json({
       weekStart,
       nextReset: weekEnd,
       proof,
+      topProofs,
       standings: rows.slice(0, 10).map((r, i) => ({
         rank: i + 1,
         name: r.name,
