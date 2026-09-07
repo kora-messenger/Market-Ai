@@ -8,6 +8,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,10 +68,10 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.BrokerConfig
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
+import com.veltravia.marketscopeai.ui.theme.Border
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
-import com.veltravia.marketscopeai.ui.theme.DarkInk
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
@@ -264,7 +265,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .size(26.dp)
                             .clip(CircleShape)
-                            .background(DarkInk),
+                            .background(AccentViolet),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Filled.NorthEast, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
@@ -349,7 +350,8 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
-                .background(DarkInk)
+                .background(SurfaceLight)
+                .border(1.dp, Border, RoundedCornerShape(18.dp))
                 .clickable {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(BrokerConfig.REFERRAL_URL))
                     runCatching { context.startActivity(intent) }
@@ -362,13 +364,13 @@ fun HomeScreen(
                     "Trade with real market conditions",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = TextPrimary
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Our recommended broker for testing MarketScope AI's analysis.",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.75f)
+                    color = TextMuted
                 )
             }
             Spacer(Modifier.width(10.dp))

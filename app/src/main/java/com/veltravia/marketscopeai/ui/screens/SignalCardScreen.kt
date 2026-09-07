@@ -68,7 +68,6 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.BullGreen
-import com.veltravia.marketscopeai.ui.theme.DarkInk
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
@@ -308,12 +307,15 @@ private fun TradeAnalysisBody(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(50)),
-                colors = ButtonDefaults.buttonColors(containerColor = DarkInk),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AccentCyan,
+                    contentColor = Color(0xFF06202A)
+                ),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 14.dp)
             ) {
-                Icon(Icons.Filled.Calculate, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Calculate, contentDescription = null, tint = Color(0xFF06202A), modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Get lotsize for this trade", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("Get lotsize for this trade", color = Color(0xFF06202A), fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.height(8.dp))
             Text(
