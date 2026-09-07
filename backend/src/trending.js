@@ -9,7 +9,7 @@
  */
 
 const TIMEOUT_MS = 8000;
-const CACHE_MS = 90_000;
+const CACHE_MS = 3 * 60_000; // 3 min — keeps us well under CoinGecko's free rate limit
 
 let cache = { at: 0, data: null };
 
@@ -22,18 +22,12 @@ async function fetchJson(url) {
   return res.json();
 }
 
-/**
- * @returns {Promise<Array<{id,symbol,name,image,price,marketCap,volume24h,change24h,sparkline:number[]}>>}
- */
-async function fetchTrending(limit = 15) {
-  if (cache.data && Date.now() - cache.at < CACHE_MS) return cache.data;
-
+async function fetchMarketsOnce(limit) {
   const rows = await fetchJson(
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc` +
       `&per_page=${limit}&page=1&sparkline=true&price_change_percentage=24h`
   );
-
-  const data = (Array.isArray(rows) ? rows : [])
+  return (Array.isArray(rows) ? rows : [])
     .map((c) => ({
       id: c.id,
       symbol: String(c.symbol || "").toUpperCase(),
@@ -46,9 +40,31 @@ async function fetchTrending(limit = 15) {
       sparkline: (c.sparkline_in_7d && c.sparkline_in_7d.price) || []
     }))
     .filter((c) => c.id && typeof c.price === "number");
+}
 
-  cache = { at: Date.now(), data };
-  return data;
+/**
+ * @returns {Promise<Array<{id,symbol,name,image,price,marketCap,volume24h,change24h,sparkline:number[]}>>}
+ * Serves the last good snapshot on a transient CoinGecko failure (e.g. a
+ * free-tier 429) rather than erroring the whole Home screen section — a
+ * stale trending list beats no trending list.
+ */
+async function fetchTrending(limit = 15) {
+  if (cache.data && Date.now() - cache.at < CACHE_MS) return cache.data;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const data = await fetchMarketsOnce(limit);
+      if (data.length > 0) {
+        cache = { at: Date.now(), data };
+        return data;
+      }
+    } catch (err) {
+      console.warn(`trending: coingecko attempt ${attempt + 1} failed (${String(err.message || err)})`);
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  if (cache.data) return cache.data; // stale-but-real beats a hard error
+  throw new Error("CoinGecko is temporarily rate-limiting this server");
 }
 
 module.exports = { fetchTrending };
