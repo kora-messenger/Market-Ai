@@ -14,6 +14,7 @@ const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
 const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
+const { fetchWatchlist } = require("./src/markets");
 
 const app = express();
 
@@ -497,6 +498,21 @@ app.get("/api/trending/quotes", async (req, res) => {
     res.json({ quotes });
   } catch (err) {
     res.status(502).json({ error: "Could not load live quotes right now.", detail: String(err.message || err) });
+  }
+});
+
+/**
+ * Public, always-live multi-asset watchlist (Futures/Forex/Crypto) — the
+ * app polls this on a short interval so prices genuinely tick, exactly
+ * like a real trading watchlist. Real feeds only (src/prices.js), no
+ * placeholders; changePct is null until a same-day reference exists.
+ */
+app.get("/api/markets/watchlist", async (_req, res) => {
+  try {
+    const rows = await fetchWatchlist();
+    res.json({ rows, fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(502).json({ error: "Could not load live market data right now.", detail: String(err.message || err) });
   }
 });
 
