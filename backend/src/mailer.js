@@ -1,19 +1,22 @@
 /**
  * MarketScope AI — user-facing transactional emails.
  *
- * Two plain-text, professional emails (no HTML, no colors — they render as
- * ordinary text in every mail client):
+ * Two professional emails:
  *   1. Welcome email — sent once, when a NEW user signs in for the first time.
  *   2. Security sign-in email — sent whenever a REGISTERED user signs in again.
  *
+ * Every email carries the MarketScope AI app logo at the top. Formatting stays
+ * deliberately restrained: black text on a white background, no colored
+ * backgrounds or buttons — the logo is the only branding. Each email has both
+ * a plain-text part (renders in any client) and a minimal HTML part (shows the
+ * logo); clients that prefer plain text still get the exact same message.
+ *
  * Emails are addressed only to the account owner's own email address and
  * contain no other users' information, no account IDs, and no platform
- * statistics (nothing like a total-user count).
+ * statistics.
  *
  * Sends via Brevo's HTTPS API (port 443) — Render blocks outbound SMTP
- * ports (25/465/587), so raw SMTP cannot leave the server. Same Brevo
- * account Veltravia already uses for Kora Messenger.
- *
+ * ports (25/465/587). Same Brevo account Veltravia already uses for Kora.
  * All sends are fire-and-forget safe: failures are logged, never thrown to
  * the caller, and never block or fail the sign-in itself.
  */
@@ -22,6 +25,9 @@ const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
 const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "";
 const SENDER_NAME = process.env.MAIL_FROM_NAME || "MarketScope AI";
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@veltraviatech.com";
+const LOGO_URL =
+  process.env.APP_LOGO_URL ||
+  "https://raw.githubusercontent.com/kora-messenger/Market-Ai/main/branding/email_logo.png";
 const API_URL = "https://api.brevo.com/v3/smtp/email";
 const TIMEOUT_MS = 10_000;
 
@@ -97,7 +103,74 @@ function describeDevice(userAgent) {
   return `${os} device (${browser})`;
 }
 
-async function sendViaBrevo({ to, subject, textContent }) {
+// ---------------------------------------------------------------------------
+// Rendering: one content model -> plain-text part + logo-headed HTML part
+// ---------------------------------------------------------------------------
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * content = { subject, paragraphs: [string], fields?: [{label, value}], signoff: [string] }
+ * - paragraphs: normal sentences
+ * - fields:     short key/value lines (sign-in details)
+ * - signoff:    closing lines
+ */
+function renderText(content) {
+  const lines = [];
+  for (const p of content.paragraphs) {
+    lines.push(p, "");
+  }
+  if (content.fields) {
+    for (const f of content.fields) {
+      lines.push(`${f.label}: ${f.value}`);
+    }
+    lines.push("");
+  }
+  lines.push(...content.paragraphsAfterFields || []);
+  if (content.paragraphsAfterFields && content.paragraphsAfterFields.length) lines.push("");
+  lines.push(...content.signoff);
+  return lines.join("\r\n");
+}
+
+function renderHtml(content) {
+  const esc = (s) => escapeHtml(s);
+  const wrap = (inner) => `<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#ffffff;">
+<div style="max-width:460px;margin:0 auto;padding:28px 12px 36px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;">
+<img src="${LOGO_URL}" width="84" height="84" alt="MarketScope AI" style="display:block;margin:0 auto 24px;width:84px;height:84px;border-radius:19px;">
+${inner}
+<p style="margin:36px 0 0;padding-top:18px;border-top:1px solid #e8e8e8;font-size:13px;line-height:1.5;color:#6b6b6b;">
+${content.signoff.map(esc).join("<br>")}
+</p>
+</div>
+</body></html>`;
+
+  const parts = [];
+  for (const p of content.paragraphs) {
+    parts.push(`<p style="margin:0 0 16px;">${esc(p)}</p>`);
+  }
+  if (content.fields) {
+    const rows = content.fields
+      .map(
+        (f) =>
+          `<tr><td style="padding:2px 24px 2px 0;font-size:14px;color:#6b6b6b;white-space:nowrap;vertical-align:top;">${esc(f.label)}</td><td style="padding:2px 0;font-size:14px;color:#1a1a1a;">${esc(f.value)}</td></tr>`
+      )
+      .join("");
+    parts.push(`<table style="border-collapse:collapse;margin:0 0 16px;">${rows}</table>`);
+  }
+  for (const p of content.paragraphsAfterFields || []) {
+    parts.push(`<p style="margin:0 0 16px;">${esc(p)}</p>`);
+  }
+  return wrap(parts.join("\n"));
+}
+
+async function sendViaBrevo({ to, subject, content }) {
   const res = await fetch(API_URL, {
     method: "POST",
     signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -110,7 +183,8 @@ async function sendViaBrevo({ to, subject, textContent }) {
       sender: { name: SENDER_NAME, email: BREVO_SENDER_EMAIL },
       to: [{ email: to }],
       subject,
-      textContent // text only — no htmlContent key, so the email is plain text everywhere
+      textContent: renderText(content),
+      htmlContent: renderHtml(content)
     })
   });
   const body = await res.json().catch(() => ({}));
@@ -125,38 +199,25 @@ function configured() {
   return Boolean(BREVO_API_KEY && BREVO_SENDER_EMAIL);
 }
 
-/**
- * Welcome email — new user's first sign-in. Once per user, ever.
- * @param {{googleSub:string, email:string, name:string}} user
- */
+/** Welcome email — new user's first sign-in. Once per user, ever. */
 async function sendWelcomeEmail(user) {
   try {
     if (!configured()) return { ok: false, reason: "Brevo is not configured" };
     if (!user || !user.email) return { ok: false, reason: "no email address on account" };
 
-    const body = [
-      `Hello ${firstName(user.name)},`,
-      "",
-      "Welcome to MarketScope AI — we're glad to have you on board.",
-      "",
-      "Your account has been created successfully. You now have access to AI-powered",
-      "chart analysis, daily trading signals, and our community of traders.",
-      "",
-      "To get the most out of MarketScope AI, complete your trading profile in the",
-      "app and run your first chart analysis whenever you're ready.",
-      "",
-      `If you ever need help, just reply to this email or contact us at ${SUPPORT_EMAIL}.`,
-      "",
-      "Welcome aboard,",
-      "The MarketScope AI Team",
-      "Veltravia Technologies"
-    ].join("\r\n");
-
-    const messageId = await sendViaBrevo({
-      to: user.email,
+    const content = {
       subject: "Welcome to MarketScope AI",
-      textContent: body
-    });
+      paragraphs: [
+        `Hello ${firstName(user.name)},`,
+        "Welcome to MarketScope AI — we're glad to have you on board.",
+        "Your account has been created successfully. You now have access to AI-powered chart analysis, daily trading signals, and our community of traders.",
+        "To get the most out of MarketScope AI, complete your trading profile in the app and run your first chart analysis whenever you're ready.",
+        `If you ever need help, just reply to this email or contact us at ${SUPPORT_EMAIL}.`
+      ],
+      signoff: ["Welcome aboard,", "The MarketScope AI Team", "Veltravia Technologies"]
+    };
+
+    const messageId = await sendViaBrevo({ to: user.email, subject: content.subject, content });
     console.log(`[mailer] welcome email sent to ${user.email} (${messageId})`);
     return { ok: true, messageId };
   } catch (err) {
@@ -165,12 +226,7 @@ async function sendWelcomeEmail(user) {
   }
 }
 
-/**
- * Security sign-in email — a registered user signed in again.
- * Contains only the user's own sign-in details; no platform statistics.
- * @param {{googleSub:string, email:string, name:string}} user
- * @param {{at?:string, userAgent?:string}} [meta]
- */
+/** Security sign-in email — a registered user signed in again. */
 async function sendSecurityAlert(user, meta = {}) {
   try {
     if (!configured()) return { ok: false, reason: "Brevo is not configured" };
@@ -180,28 +236,24 @@ async function sendSecurityAlert(user, meta = {}) {
     }
 
     const at = meta.at || new Date().toISOString();
-    const body = [
-      `Hello ${firstName(user.name)},`,
-      "",
-      "A new sign-in to your MarketScope AI account was just detected.",
-      "",
-      `Date and time: ${formatLagosTime(at)}`,
-      `Device: ${describeDevice(meta.userAgent)}`,
-      "",
-      "If this was you, no action is needed.",
-      "",
-      "If you do not recognize this sign-in, please secure your Google account and",
-      `contact us immediately at ${SUPPORT_EMAIL}.`,
-      "",
-      "The MarketScope AI Team",
-      "Veltravia Technologies"
-    ].join("\r\n");
-
-    const messageId = await sendViaBrevo({
-      to: user.email,
+    const content = {
       subject: "New sign-in to your MarketScope AI account",
-      textContent: body
-    });
+      paragraphs: [
+        `Hello ${firstName(user.name)},`,
+        "A new sign-in to your MarketScope AI account was just detected."
+      ],
+      fields: [
+        { label: "Date and time", value: formatLagosTime(at) },
+        { label: "Device", value: describeDevice(meta.userAgent) }
+      ],
+      paragraphsAfterFields: [
+        "If this was you, no action is needed.",
+        `If you do not recognize this sign-in, please secure your Google account and contact us immediately at ${SUPPORT_EMAIL}.`
+      ],
+      signoff: ["The MarketScope AI Team", "Veltravia Technologies"]
+    };
+
+    const messageId = await sendViaBrevo({ to: user.email, subject: content.subject, content });
     console.log(`[mailer] security sign-in email sent to ${user.email} (${messageId})`);
     return { ok: true, messageId };
   } catch (err) {
