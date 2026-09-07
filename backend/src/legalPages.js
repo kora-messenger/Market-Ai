@@ -4,7 +4,7 @@
  * links open genuine, current legal text (not placeholders).
  */
 
-const EFFECTIVE_DATE = "September 6, 2026";
+const EFFECTIVE_DATE = "September 7, 2026";
 const CONTACT_EMAIL = "support@veltraviatech.com";
 
 const baseStyle = `
@@ -81,12 +81,19 @@ Fees already charged are non-refundable except where required by law.</p>
 Signals as your own trading advisory service without our written permission; upload content
 you do not have the right to upload; or use the App to violate any applicable law or
 regulation, including securities and financial-promotion laws in your jurisdiction.</p>
+<p>In the Community you agree to keep content honest and legal: no spam, scams,
+misleading trade claims, harassment, or unauthorized promotion. We may remove
+content or restrict Community access for accounts that violate these rules.</p>
 
 <h2>6. Your Content</h2>
 <p>You retain ownership of the chart images you upload. You grant Veltravia a limited license
 to process those images (including sending them to our AI analysis provider) solely to
 generate your Signal and improve the App's analysis quality. See our
 <a href="/privacy">Privacy Policy</a> for details on how uploaded images and data are handled.</p>
+<p>The same applies to content you post in the Community (posts, images, comments
+and reactions): you keep ownership, and you grant us a limited license to display
+it to other members of the Community. You are responsible for what you choose
+to share publicly there, and we may moderate Community content at our discretion.</p>
 
 <h2>7. Disclaimer of Warranties</h2>
 <p>The App and all Signals are provided "as is" and "as available," without warranties of any
@@ -142,6 +149,9 @@ analysis can be tailored to you.</p>
 <p><strong>Chart images.</strong> The chart screenshots you upload for analysis. These are
 sent to our AI analysis provider to generate your Signal and are stored so you can view your
 analysis history inside the App.</p>
+<p><strong>Community content.</strong> The posts, images, comments and reactions you
+create in the Community are shared with other members, with your display name attached.
+Everything else in this section stays between you and us.</p>
 <p><strong>Usage data.</strong> Basic technical data such as app version, device model, and
 crash diagnostics, used only to keep the App stable.</p>
 
@@ -151,6 +161,9 @@ crash diagnostics, used only to keep the App stable.</p>
 <li>To generate AI Signals from your uploaded charts and trading profile.</li>
 <li>To show you your analysis history ("Saved").</li>
 <li>To operate subscriptions and payments for Pro features.</li>
+<li>To run the trader Community — showing members the posts, images, comments and
+reactions that traders choose to share.</li>
+<li>To run Daily Signals and weekly Community features (leaderboard, featured proof).</li>
 <li>To maintain, secure, and improve the App.</li>
 </ul>
 <p>We do not sell your personal information.</p>
