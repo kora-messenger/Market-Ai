@@ -1,15 +1,10 @@
 package com.veltravia.marketscopeai
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.core.view.WindowCompat
@@ -18,29 +13,9 @@ import com.veltravia.marketscopeai.ui.theme.MarketAiTheme
 
 class MainActivity : ComponentActivity() {
 
-    /**
-     * Ask for the Android 13+ notification permission at app start.
-     *
-     * The onboarding flow asks once for new users (NotificationsIntroScreen),
-     * but anyone who installed an app update OVER an existing install had
-     * already finished onboarding — that screen never ran for them, so the
-     * OS silently swallows every push. Requesting here covers that case:
-     * every cold start, if the permission is missing, we ask (the OS itself
-     * stops showing the dialog after the user denies it twice, so this can
-     * never nag). Permission can also be re-granted from system settings.
-     */
-    private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
-    private fun ensureNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val granted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
+    // NOTE: the Android 13+ POST_NOTIFICATIONS permission is requested ONLY when
+    // the user taps "Turn on notifications" (NotificationsIntroScreen in
+    // onboarding). It must never pop up automatically at app launch.
 
     private fun handlePushIntent(intent: Intent?) {
         val route = intent?.getStringExtra("route") ?: return
@@ -73,9 +48,6 @@ class MainActivity : ComponentActivity() {
         com.veltravia.marketscopeai.push.MarketScopeFcmService.createChannels(applicationContext)
         handlePushIntent(intent)
         handleDeepLink(intent)
-        // Covers users who installed an update over an existing install and
-        // never ran the onboarding notification prompt (see kdoc above).
-        ensureNotificationPermission()
         // Register this device for FCM pushes whenever the user is signed in.
         if (com.veltravia.marketscopeai.data.SessionManager.sessionToken(applicationContext) != null) {
             com.google.firebase.messaging.FirebaseMessaging.getInstance().token
