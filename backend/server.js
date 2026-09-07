@@ -7,6 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
+const { sendLoginAlert } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -297,6 +298,23 @@ app.post("/api/auth/google", async (req, res) => {
       ? jwt.sign({ sub: payload.sub, email: user.email }, JWT_SECRET, { expiresIn: "30d" })
       : null;
 
+    // Login notification email — fire-and-forget, never blocks or fails sign-in
+    (async () => {
+      try {
+        let totalUsers = null;
+        if (pool) {
+          const c = await pool.query(`SELECT COUNT(*)::int AS total FROM users`);
+          totalUsers = c.rows[0]?.total ?? null;
+        }
+        await sendLoginAlert(
+          { googleSub: user.googleSub, email: user.email, name: user.name },
+          { at: new Date().toISOString(), userAgent: req.headers["user-agent"] || "", totalUsers }
+        );
+      } catch (e) {
+        console.warn("[auth/google] login alert error:", String(e.message || e));
+      }
+    })();
+
     return res.json({ user, sessionToken });
   } catch (err) {
     console.error("[auth/google] verification failed:", err && err.message, err && err.stack);
@@ -305,6 +323,25 @@ app.post("/api/auth/google", async (req, res) => {
       reason: err && err.message ? String(err.message) : "unknown"
     });
   }
+});
+
+// --- Ops: send a sample login-alert email (verifies SMTP delivery end-to-end) ---
+app.post("/api/admin/login-email-test", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  let totalUsers = null;
+  try {
+    if (pool) {
+      const c = await pool.query(`SELECT COUNT(*)::int AS total FROM users`);
+      totalUsers = c.rows[0]?.total ?? null;
+    }
+  } catch (_e) { /* best-effort context */ }
+  const result = await sendLoginAlert(
+    { googleSub: "test-sample", email: "sample@example.com", name: "Sample Test User" },
+    { at: new Date().toISOString(), userAgent: req.headers["user-agent"] || "backend-test", totalUsers }
+  );
+  return res.json({ ...result, sentTo: process.env.LOGIN_ALERT_EMAIL || process.env.SMTP_USER || null });
 });
 
 // --- Community: free onboarding community access (real DB-persisted membership) ---
