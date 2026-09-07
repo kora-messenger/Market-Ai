@@ -118,7 +118,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "Finish setup and you're automatically part of the free MarketScope AI community — real trader posts and select signal drops.",
+            text = "Finish setup and you're automatically part of the free MarketScope AI community — trader posts and select signal drops.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )

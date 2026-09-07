@@ -127,21 +127,24 @@ fun NotificationsScreen(onBack: () -> Unit) {
                 Text(error ?: "", color = TextSecondary)
             }
             rows != null && rows.orEmpty().isEmpty() -> Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(bottom = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(Modifier.height(120.dp))
-                Icon(Icons.Filled.NotificationsNone, contentDescription = null, tint = TextMuted, modifier = Modifier.size(48.dp))
-                Spacer(Modifier.height(16.dp))
-                Text("No notifications yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "New Daily Signals and activity on your community posts will appear here.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 32.dp)
-                )
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Filled.NotificationsNone, contentDescription = null, tint = TextMuted, modifier = Modifier.size(48.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text("No notifications yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "New Daily Signals and activity on your community posts will appear here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp)
+                        )
+                    }
+                }
             }
             else -> {
                 if (unread > 0) {

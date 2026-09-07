@@ -111,12 +111,6 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
                 modifier = Modifier.align(Alignment.Center)
             )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Work out your real position size before you trade — using your instrument's actual contract specs.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary
-        )
         Spacer(Modifier.height(20.dp))
 
         Text("Instrument", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)

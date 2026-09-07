@@ -98,12 +98,6 @@ fun CreateTradePlanScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                 modifier = Modifier.align(Alignment.Center)
             )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Lay out your instrument, direction, and planned levels before you enter — real, saved to your account.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary
-        )
         Spacer(Modifier.height(20.dp))
 
         Text("Instrument", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)

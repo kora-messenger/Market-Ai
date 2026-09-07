@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -549,19 +550,41 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
             }
 
             error?.let { msg ->
-                Surface(
-                    color = Color(0xFFFFF7ED),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .fillMaxWidth()
-                ) {
-                    Text(
-                        "Couldn't reach the community: $msg — tap refresh to retry.",
-                        fontSize = 12.sp,
-                        color = Color(0xFFB45309),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
+                if (posts.isEmpty()) {
+                    // Full-screen centered failure state with a real retry action.
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Filled.CloudOff, contentDescription = null, tint = TextMuted, modifier = Modifier.size(44.dp))
+                        Spacer(Modifier.height(14.dp))
+                        Text("Couldn't load the feed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                        Spacer(Modifier.height(6.dp))
+                        Text(msg, fontSize = 13.sp, color = TextMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Spacer(Modifier.height(18.dp))
+                        androidx.compose.material3.Button(
+                            onClick = { load(reset = true) },
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                        ) {
+                            Text("Retry", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                } else {
+                    Surface(
+                        color = Color(0xFFFFF7ED),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Text(
+                            "Couldn't reach the community: $msg — tap refresh to retry.",
+                            fontSize = 12.sp,
+                            color = Color(0xFFB45309),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
                 }
             }
         }
