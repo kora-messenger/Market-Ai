@@ -7,7 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
-const { sendLoginAlert } = require("./src/mailer");
+const { sendWelcomeEmail, sendSecurityAlert } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -279,9 +279,10 @@ app.post("/api/auth/google", async (req, res) => {
          ON CONFLICT (google_sub)
          DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, picture = EXCLUDED.picture
          RETURNING id, google_sub, email, name, picture, community_joined, community_joined_at,
-                   trial_started_at, is_premium`,
+                   trial_started_at, is_premium, (xmax = 0) AS inserted_new`,
         [payload.sub, user.email, user.name, user.picture]
       );
+      const isNewUser = Boolean(rows[0].inserted_new);
       user = {
         id: rows[0].id,
         googleSub: rows[0].google_sub,
@@ -298,20 +299,18 @@ app.post("/api/auth/google", async (req, res) => {
       ? jwt.sign({ sub: payload.sub, email: user.email }, JWT_SECRET, { expiresIn: "30d" })
       : null;
 
-    // Login notification email — fire-and-forget, never blocks or fails sign-in
+    // User-facing email — fire-and-forget, never blocks or fails sign-in.
+    // New user: welcome email. Registered user signing in again: security notice.
     (async () => {
       try {
-        let totalUsers = null;
-        if (pool) {
-          const c = await pool.query(`SELECT COUNT(*)::int AS total FROM users`);
-          totalUsers = c.rows[0]?.total ?? null;
+        const meta = { at: new Date().toISOString(), userAgent: req.headers["user-agent"] || "" };
+        if (isNewUser) {
+          await sendWelcomeEmail({ googleSub: user.googleSub, email: user.email, name: user.name });
+        } else {
+          await sendSecurityAlert({ googleSub: user.googleSub, email: user.email, name: user.name }, meta);
         }
-        await sendLoginAlert(
-          { googleSub: user.googleSub, email: user.email, name: user.name },
-          { at: new Date().toISOString(), userAgent: req.headers["user-agent"] || "", totalUsers }
-        );
       } catch (e) {
-        console.warn("[auth/google] login alert error:", String(e.message || e));
+        console.warn("[auth/google] email error:", String(e.message || e));
       }
     })();
 
@@ -325,23 +324,25 @@ app.post("/api/auth/google", async (req, res) => {
   }
 });
 
-// --- Ops: send a sample login-alert email (verifies SMTP delivery end-to-end) ---
+// --- Ops: preview the two user-facing emails (welcome + security sign-in) ---
+// Sends samples of both email types so delivery and formatting can be verified
+// end-to-end. Samples go to LOGIN_ALERT_EMAIL (the owner inbox), never to a user.
 app.post("/api/admin/login-email-test", async (req, res) => {
   if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  let totalUsers = null;
-  try {
-    if (pool) {
-      const c = await pool.query(`SELECT COUNT(*)::int AS total FROM users`);
-      totalUsers = c.rows[0]?.total ?? null;
-    }
-  } catch (_e) { /* best-effort context */ }
-  const result = await sendLoginAlert(
-    { googleSub: "test-sample", email: "sample@example.com", name: "Sample Test User" },
-    { at: new Date().toISOString(), userAgent: req.headers["user-agent"] || "backend-test", totalUsers }
-  );
-  return res.json({ ...result, sentTo: process.env.LOGIN_ALERT_EMAIL || process.env.SMTP_USER || null });
+  const sample = { googleSub: "test-sample", email: process.env.LOGIN_ALERT_EMAIL || process.env.BREVO_SENDER_EMAIL, name: "Sample Test User" };
+  const welcome = await sendWelcomeEmail(sample);
+  // bypass the dedupe window for the sample security email
+  const security = await sendSecurityAlert({ ...sample, googleSub: "test-sample-2" }, {
+    at: new Date().toISOString(),
+    userAgent: req.headers["user-agent"] || "backend-test"
+  });
+  return res.json({
+    welcome,
+    security,
+    sentTo: sample.email
+  });
 });
 
 // --- Community: free onboarding community access (real DB-persisted membership) ---

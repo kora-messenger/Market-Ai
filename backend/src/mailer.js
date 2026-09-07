@@ -1,9 +1,14 @@
 /**
- * MarketScope AI — transactional email (login notifications).
+ * MarketScope AI — user-facing transactional emails.
  *
- * Sends plain-text, professional notification emails whenever a user signs
- * in with Google. Deliberately NO HTML and NO styling: recipients get a
- * clean, ordinary text email in any mail client.
+ * Two plain-text, professional emails (no HTML, no colors — they render as
+ * ordinary text in every mail client):
+ *   1. Welcome email — sent once, when a NEW user signs in for the first time.
+ *   2. Security sign-in email — sent whenever a REGISTERED user signs in again.
+ *
+ * Emails are addressed only to the account owner's own email address and
+ * contain no other users' information, no account IDs, and no platform
+ * statistics (nothing like a total-user count).
  *
  * Sends via Brevo's HTTPS API (port 443) — Render blocks outbound SMTP
  * ports (25/465/587), so raw SMTP cannot leave the server. Same Brevo
@@ -16,13 +21,13 @@
 const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
 const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "";
 const SENDER_NAME = process.env.MAIL_FROM_NAME || "MarketScope AI";
-const ALERT_TO = process.env.LOGIN_ALERT_EMAIL || BREVO_SENDER_EMAIL; // defaults to the sending inbox
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@veltraviatech.com";
 const API_URL = "https://api.brevo.com/v3/smtp/email";
 const TIMEOUT_MS = 10_000;
 
-// Guard against duplicate alerts for the same account within a short window
-// (double-tap on the sign-in button, or a client retry) — real repeat logins
-// outside the window always notify.
+// Guard against duplicate security alerts for the same account within a
+// short window (double-tap on the sign-in button, or a client retry) —
+// real repeat sign-ins outside the window always notify.
 const DEDUPE_MS = 90_000;
 const lastSentBySub = new Map();
 function shouldSend(googleSub) {
@@ -30,7 +35,6 @@ function shouldSend(googleSub) {
   const last = lastSentBySub.get(googleSub) || 0;
   if (now - last < DEDUPE_MS) return false;
   lastSentBySub.set(googleSub, now);
-  // keep the map small
   if (lastSentBySub.size > 500) {
     for (const [k, t] of lastSentBySub) {
       if (now - t > DEDUPE_MS) lastSentBySub.delete(k);
@@ -50,7 +54,6 @@ function formatLagosTime(iso) {
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-        second: "2-digit",
         hour12: false
       }) + " WAT"
     );
@@ -59,79 +62,152 @@ function formatLagosTime(iso) {
   }
 }
 
-function buildLoginAlertBody(user, meta) {
-  const lines = [
-    "MarketScope AI — Google Sign-In Notification",
-    "",
-    "A user has just signed in to MarketScope AI using Google.",
-    "",
-    "Name:              " + (user.name || "—"),
-    "Email:             " + (user.email || "—"),
-    "Google Account ID: " + (user.googleSub || "—"),
-    "Sign-in time:      " + formatLagosTime(meta.at),
-    "Client:            " + (meta.userAgent || "Unknown device"),
-    ""
-  ];
-  if (typeof meta.totalUsers === "number") {
-    lines.push("Total registered users: " + meta.totalUsers);
-    lines.push("");
+function firstName(fullName) {
+  return String(fullName || "").trim().split(/\s+/)[0] || "there";
+}
+
+/** Short, human-readable device description derived from a user-agent string. */
+function describeDevice(userAgent) {
+  const ua = String(userAgent || "");
+  if (!ua) return "Unknown device";
+  const os = /Android/i.test(ua)
+    ? "Android"
+    : /iPhone|iPad|iOS/i.test(ua)
+      ? "iOS"
+      : /Windows/i.test(ua)
+        ? "Windows"
+        : /Mac OS|Macintosh/i.test(ua)
+          ? "Mac"
+          : /Linux/i.test(ua)
+            ? "Linux"
+            : "Unknown";
+  const browser = /Edg\//i.test(ua)
+    ? "Edge"
+    : /OPR|Opera/i.test(ua)
+      ? "Opera"
+      : /SamsungBrowser/i.test(ua)
+        ? "Samsung Internet"
+        : /Firefox\//i.test(ua)
+          ? "Firefox"
+          : /Chrome\//i.test(ua)
+            ? "Chrome"
+            : /Safari\//i.test(ua)
+              ? "Safari"
+              : "a web browser";
+  return `${os} device (${browser})`;
+}
+
+async function sendViaBrevo({ to, subject, textContent }) {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+    headers: {
+      "api-key": BREVO_API_KEY,
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    },
+    body: JSON.stringify({
+      sender: { name: SENDER_NAME, email: BREVO_SENDER_EMAIL },
+      to: [{ email: to }],
+      subject,
+      textContent // text only — no htmlContent key, so the email is plain text everywhere
+    })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const reason = (body && (body.message || body.code)) || `HTTP ${res.status}`;
+    throw new Error(String(reason));
   }
-  lines.push("If this sign-in looks unusual, you can review the account from your admin console.");
-  lines.push("");
-  lines.push("—");
-  lines.push("Automated notification from MarketScope AI (Veltravia Technologies).");
-  lines.push("Sent " + formatLagosTime(new Date().toISOString()) + ".");
-  return lines.join("\r\n");
+  return body.messageId;
+}
+
+function configured() {
+  return Boolean(BREVO_API_KEY && BREVO_SENDER_EMAIL);
 }
 
 /**
+ * Welcome email — new user's first sign-in. Once per user, ever.
  * @param {{googleSub:string, email:string, name:string}} user
- * @param {{at?:string, userAgent?:string, totalUsers?:number}} [meta]
- * @returns {Promise<{ok:boolean, reason?:string, skipped?:string, messageId?:string}>}
  */
-async function sendLoginAlert(user, meta = {}) {
-  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
-    return { ok: false, reason: "Brevo is not configured (BREVO_API_KEY/BREVO_SENDER_EMAIL missing)" };
-  }
-  if (!user || !user.googleSub) {
-    return { ok: false, reason: "user is required" };
-  }
-  if (!shouldSend(user.googleSub)) {
-    return { ok: true, skipped: "duplicate-sign-in-within-window", messageId: null };
-  }
-
-  const at = meta.at || new Date().toISOString();
-  const subject = "MarketScope AI sign-in: " + (user.name || user.email || "unknown user");
-
+async function sendWelcomeEmail(user) {
   try {
-    const res = await fetch(API_URL, {
-      method: "POST",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: {
-        "api-key": BREVO_API_KEY,
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify({
-        sender: { name: SENDER_NAME, email: BREVO_SENDER_EMAIL },
-        to: [{ email: ALERT_TO }],
-        subject,
-        textContent: buildLoginAlertBody(user, { ...meta, at }) // text only — NO htmlContent key, so the email is plain text everywhere
-        // Brevo requires htmlContent OR textContent; textContent alone sends a pure text email
-      })
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    if (!user || !user.email) return { ok: false, reason: "no email address on account" };
+
+    const body = [
+      `Hello ${firstName(user.name)},`,
+      "",
+      "Welcome to MarketScope AI — we're glad to have you on board.",
+      "",
+      "Your account has been created successfully. You now have access to AI-powered",
+      "chart analysis, daily trading signals, and our community of traders.",
+      "",
+      "To get the most out of MarketScope AI, complete your trading profile in the",
+      "app and run your first chart analysis whenever you're ready.",
+      "",
+      `If you ever need help, just reply to this email or contact us at ${SUPPORT_EMAIL}.`,
+      "",
+      "Welcome aboard,",
+      "The MarketScope AI Team",
+      "Veltravia Technologies"
+    ].join("\r\n");
+
+    const messageId = await sendViaBrevo({
+      to: user.email,
+      subject: "Welcome to MarketScope AI",
+      textContent: body
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const reason = (body && (body.message || body.code)) || `HTTP ${res.status}`;
-      console.error(`[mailer] login alert rejected by Brevo: ${String(reason)}`);
-      return { ok: false, reason: String(reason) };
-    }
-    console.log(`[mailer] login alert sent for ${user.email} (Brevo messageId ${body.messageId})`);
-    return { ok: true, messageId: body.messageId };
+    console.log(`[mailer] welcome email sent to ${user.email} (${messageId})`);
+    return { ok: true, messageId };
   } catch (err) {
-    console.error(`[mailer] login alert failed: ${String(err.message || err)}`);
+    console.error(`[mailer] welcome email failed: ${String(err.message || err)}`);
     return { ok: false, reason: String(err.message || err) };
   }
 }
 
-module.exports = { sendLoginAlert, formatLagosTime };
+/**
+ * Security sign-in email — a registered user signed in again.
+ * Contains only the user's own sign-in details; no platform statistics.
+ * @param {{googleSub:string, email:string, name:string}} user
+ * @param {{at?:string, userAgent?:string}} [meta]
+ */
+async function sendSecurityAlert(user, meta = {}) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    if (!user || !user.email) return { ok: false, reason: "no email address on account" };
+    if (!shouldSend(user.googleSub || user.email)) {
+      return { ok: true, skipped: "duplicate-sign-in-within-window", messageId: null };
+    }
+
+    const at = meta.at || new Date().toISOString();
+    const body = [
+      `Hello ${firstName(user.name)},`,
+      "",
+      "A new sign-in to your MarketScope AI account was just detected.",
+      "",
+      `Date and time: ${formatLagosTime(at)}`,
+      `Device: ${describeDevice(meta.userAgent)}`,
+      "",
+      "If this was you, no action is needed.",
+      "",
+      "If you do not recognize this sign-in, please secure your Google account and",
+      `contact us immediately at ${SUPPORT_EMAIL}.`,
+      "",
+      "The MarketScope AI Team",
+      "Veltravia Technologies"
+    ].join("\r\n");
+
+    const messageId = await sendViaBrevo({
+      to: user.email,
+      subject: "New sign-in to your MarketScope AI account",
+      textContent: body
+    });
+    console.log(`[mailer] security sign-in email sent to ${user.email} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] security sign-in email failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
+module.exports = { sendWelcomeEmail, sendSecurityAlert, formatLagosTime, describeDevice };
