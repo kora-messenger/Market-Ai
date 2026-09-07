@@ -114,6 +114,7 @@ async function fetchBinanceFallback(limit) {
  */
 async function fetchTrending(limit = 15) {
   if (cache.data && Date.now() - cache.at < CACHE_MS) return cache.data;
+  const errs = [];
 
   try {
     const data = await fetchMarketsOnce(limit);
@@ -121,7 +122,9 @@ async function fetchTrending(limit = 15) {
       cache = { at: Date.now(), data, source: "coingecko" };
       return data;
     }
+    errs.push("coingecko returned no rows");
   } catch (err) {
+    errs.push(`coingecko: ${String(err.message || err)}`);
     console.warn(`trending: coingecko failed (${String(err.message || err)})`);
   }
 
@@ -131,12 +134,15 @@ async function fetchTrending(limit = 15) {
       cache = { at: Date.now(), data, source: "binance" };
       return data;
     }
+    errs.push("binance returned no rows");
   } catch (err) {
+    errs.push(`binance: ${String(err.message || err)}`);
     console.warn(`trending: binance fallback failed (${String(err.message || err)})`);
   }
 
   if (cache.data) return cache.data; // stale-but-real beats a hard error
-  throw new Error("Trending feeds are temporarily unavailable");
+  const failures = errs.filter(Boolean).join(" | ");
+  throw new Error(failures || "Trending feeds are temporarily unavailable");
 }
 
 module.exports = { fetchTrending };
