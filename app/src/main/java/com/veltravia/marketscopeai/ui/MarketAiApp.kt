@@ -41,10 +41,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Row
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -401,34 +402,39 @@ private fun MainTabs(navController: NavHostController) {
                 )
             }
 
-            // Floating "Start Analysis" button — only on Home, matching the
+            // Floating "Start Analysis" pill — only on Home, matching the
             // FxLens reference layout. Same real destination as the Home
             // screen's own CTA: the instrument picker → chart upload flow.
+            // An auto-sized pill (icon + label in a Row) instead of forcing
+            // both into a fixed-size circle — the old 92dp circle was too
+            // small for "Start Analysis" at readable size, so the label
+            // overflowed the circle and floated loose above the nav bar.
+            // Offset is negative (upward) so the whole pill sits fully
+            // visible, half-overlapping the top edge of the nav bar.
             if (currentTab == 0) {
-                Box(
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset(y = 34.dp)
-                        .size(92.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(AccentCyan, AccentViolet)))
-                        .clickable { navController.navigate("picker") },
-                    contentAlignment = Alignment.Center
+                        .offset(y = (-20).dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Brush.horizontalGradient(listOf(AccentCyan, AccentViolet)))
+                        .clickable { navController.navigate("picker") }
+                        .padding(horizontal = 22.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Filled.Bolt,
-                            contentDescription = null,
-                            tint = androidx.compose.ui.graphics.Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Text(
-                            "Start Analysis",
-                            color = androidx.compose.ui.graphics.Color.White,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    Icon(
+                        Icons.Filled.Bolt,
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Start Analysis",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
