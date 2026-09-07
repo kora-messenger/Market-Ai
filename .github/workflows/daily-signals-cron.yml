@@ -1,6 +1,6 @@
 name: Daily Signals cron
 
-# Automatic outcome resolution + AI daily signal for Market Ai.
+# Automatic outcome resolution + AI daily signal + market alerts (price movers, session open/close, holidays) for Market Ai.
 # The repo is public (free Actions minutes); secrets live in GitHub Secrets.
 
 on:
@@ -19,8 +19,24 @@ on:
         options:
           - price-check
           - auto-signal
+          - market-alerts
 
 jobs:
+  market-alerts:
+    if: github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'market-alerts')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run market alerts
+        run: |
+          curl -sS -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "$RENDER_URL/api/market-alerts/cron"
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+
   price-check:
     if: github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'price-check')
     runs-on: ubuntu-latest

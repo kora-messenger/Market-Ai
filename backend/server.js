@@ -10,6 +10,7 @@ const { ALL, byId, categories } = require("./src/instruments");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
+const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
 
 const app = express();
 app.use(express.json({ limit: "25mb" }));
@@ -156,6 +157,11 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS alert_state (
+      key TEXT PRIMARY KEY,
+      value JSONB,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS push_log (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID,
@@ -1697,6 +1703,37 @@ app.get("/api/push/diagnostics", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Diagnostics failed", detail: String(err.message || err) });
   }
+});
+
+/* ---------- Automatic market alerts (cron) ---------- */
+
+/**
+ * Every 15 minutes from GitHub Actions. Detects big 24h price moves
+ * (coins / forex / gold / US indices), market session opens & closes,
+ * the forex weekend break, and US market/bank holiday closures —
+ * and fans them out to every user as a "general"-channel push.
+ */
+app.post("/api/market-alerts/cron", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await requireCronOrAdmin(req, res))) return;
+  try {
+    const { rows: users } = await pool.query(`SELECT id FROM users`);
+    const recipients = users.map((u) => u.id);
+    const notify = (title, body) => {
+      for (const userId of recipients) {
+        notifyUser(userId, { title, body, type: "alert", data: { type: "general", route: "notifications" } });
+      }
+    };
+    const result = await runAlertCron(pool, notify);
+    res.json({ ok: true, recipients: recipients.length, ...result });
+  } catch (err) {
+    res.status(500).json({ error: "Market alert cron failed", detail: String(err.message || err) });
+  }
+});
+
+/** Admin/diagnostic view: which US market holiday is today, if any. */
+app.get("/api/market-alerts/holiday-today", async (_req, res) => {
+  res.json({ holiday: holidayForToday(new Date()) });
 });
 
 app.get("/api/notifications", requireAuth, async (req, res) => {
