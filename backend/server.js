@@ -783,6 +783,91 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
     });
   }
 
+  // --- Stage 1: verify the CURRENT live market for this instrument ---
+  // Real price fetch from public sources; the analysis is anchored to it.
+  let livePrice = null;
+  try {
+    livePrice = await fetchPrice(instrument.id);
+  } catch (_e) {
+    livePrice = null; // synthetics or a source outage — validation still runs
+  }
+
+  // --- Stage 2: validate the uploaded images are real trading charts that
+  // plausibly match this instrument. A random photo must never be analyzed. ---
+  const CHART_VALIDATION_PROMPT = `You are a strict input validator for a trading analysis engine.
+You receive two images that MUST be genuine trading chart screenshots (candlestick, bar, or line chart with a visible price axis and time axis) of the SAME instrument, on the 4-hour and 15-minute timeframes.
+Respond ONLY with JSON:
+{
+  "isChart": <true only if BOTH images are genuine trading charts (candlestick, bar or line) with a visible price scale. Do NOT require timeframe labels or that the two screenshots look different \u2014 judge only that each image is a real price chart>,
+  "instrumentPlausible": <true only if the visible price scale plausibly belongs to the stated instrument, given its current live price. Charts may be from days or weeks ago, so judge order-of-magnitude plausibility (e.g. a EUR/USD chart shows values around 0.8-1.6, a USD/JPY chart around 130-160, an XAU/USD chart around 1800-4000, a BTC chart around tens of thousands)>,
+  "reason": "<one short sentence explaining the verdict>"
+}`;
+
+  const livePriceLine = livePrice != null
+    ? ` Current live market price of ${instrument.display}: ${livePrice}.`
+    : "";
+  let validation;
+  try {
+    const vResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: ANALYSIS_MODEL,
+        max_tokens: 1500,
+        reasoning: { effort: "low" },
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: CHART_VALIDATION_PROMPT },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Stated instrument: ${instrument.display} (4H and 15M charts).${livePriceLine}`
+              },
+              { type: "image_url", image_url: { url: imageH4 } },
+              { type: "image_url", image_url: { url: imageM15 } }
+            ]
+          }
+        ]
+      })
+    });
+    if (!vResponse.ok) {
+      const detail = await vResponse.text();
+      return res.status(502).json({
+        error: "Analysis provider error (validation)",
+        status: vResponse.status,
+        detail: detail.slice(0, 400)
+      });
+    }
+    const vData = await vResponse.json();
+    validation = extractJson(vData.choices?.[0]?.message?.content || "");
+  } catch (err) {
+    return res.status(502).json({
+      error: "Could not verify the uploaded charts. Please try again.",
+      detail: String(err.message || err)
+    });
+  }
+
+  if (validation.isChart === false) {
+    return res.status(422).json({
+      error: "These images don't look like valid trading charts. Please upload clear 4H and 15M chart screenshots of " + instrument.display + " from your broker.",
+      invalidChart: true,
+      reason: validation.reason || ""
+    });
+  }
+  if (validation.instrumentPlausible === false) {
+    return res.status(422).json({
+      error: "These charts don't appear to match " + instrument.display + ". Please make sure both screenshots are the 4H and 15M charts of " + instrument.display + ".",
+      instrumentMismatch: true,
+      reason: validation.reason || ""
+    });
+  }
+
+  // --- Stage 3: the real analysis, anchored to the verified live market ---
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -802,7 +887,10 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
             content: [
               {
                 type: "text",
-                text: `Instrument: ${instrument.display}. Mode: ${mode === "scalp" ? "Scalp (15M-biased)" : "Swing (4H-biased)"}.`
+                text: `Instrument: ${instrument.display}. Mode: ${mode === "scalp" ? "Scalp (15M-biased)" : "Swing (4H-biased)"}.` +
+                  (livePrice != null
+                    ? ` Verified current market price of ${instrument.display}: ${livePrice}. Cross-check the chart against this live market — if the chart and the live market contradict each other, say so in the thesis.`
+                    : "")
               },
               { type: "image_url", image_url: { url: imageH4 } },
               { type: "image_url", image_url: { url: imageM15 } }
@@ -830,6 +918,9 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
       instrumentId: instrument.id,
       mode,
       model: ANALYSIS_MODEL,
+      livePrice,
+      marketVerified: livePrice != null,
+      chartValidated: true,
       analysis,
       analyzedAt: new Date().toISOString()
     };
