@@ -464,5 +464,35 @@ object ApiClient {
             if (scaled !== bitmap) bitmap.recycle()
             scaled.recycle()
             "data:image/jpeg;base64,$base64"
-        }
+    
+
+    /** Register this device's FCM push token with the signed-in account. */
+    suspend fun registerPushToken(sessionToken: String, fcmToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("token", fcmToken).put("platform", "android")
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/push/register")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** In-app notification feed: { notifications: [...], unread: n } */
+    suspend fun fetchNotifications(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/notifications")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .build()
+        request(request)
+    }
+
+    /** Mark every notification as read. */
+    suspend fun markNotificationsRead(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/notifications/read-all")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post("{}".toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
 }

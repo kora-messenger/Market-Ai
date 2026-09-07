@@ -75,6 +75,21 @@ import com.veltravia.marketscopeai.ui.screens.SignalsScreen
 import com.veltravia.marketscopeai.ui.screens.AdminSignalsScreen
 import com.veltravia.marketscopeai.ui.screens.WelcomeScreen
 
+/**
+ * Route hint delivered by a push notification tap (MainActivity sets it from
+ * the notification intent; MainTabs consumes it and switches tabs).
+ */
+object PushRouter {
+    @Volatile
+    var pendingTab: Int? = null
+
+    fun tabForRoute(route: String?): Int? = when (route) {
+        "signals" -> 1
+        "community" -> 2
+        else -> null
+    }
+}
+
 private data class Tab(
     val label: String,
     val selectedIcon: ImageVector,
@@ -306,6 +321,13 @@ fun MarketAiApp() {
 @Composable
 private fun MainTabs(navController: NavHostController) {
     var currentTab by rememberSaveable { mutableIntStateOf(0) }
+    // Consume a push-notification tap: jump straight to the relevant tab.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        PushRouter.pendingTab?.let {
+            currentTab = it
+            PushRouter.pendingTab = null
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

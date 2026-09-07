@@ -1,5 +1,6 @@
 package com.veltravia.marketscopeai
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,8 +12,32 @@ import com.veltravia.marketscopeai.ui.MarketAiApp
 import com.veltravia.marketscopeai.ui.theme.MarketAiTheme
 
 class MainActivity : ComponentActivity() {
+
+    private fun handlePushIntent(intent: Intent?) {
+        val route = intent?.getStringExtra("route") ?: return
+        com.veltravia.marketscopeai.ui.PushRouter.pendingTab =
+            com.veltravia.marketscopeai.ui.PushRouter.tabForRoute(route)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handlePushIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Notification channels (signals / community / general).
+        com.veltravia.marketscopeai.push.MarketScopeFcmService.createChannels(applicationContext)
+        handlePushIntent(intent)
+        // Register this device for FCM pushes whenever the user is signed in.
+        if (com.veltravia.marketscopeai.data.SessionManager.sessionToken(applicationContext) != null) {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    com.veltravia.marketscopeai.push.MarketScopeFcmService.registerToken(
+                        applicationContext, token
+                    )
+                }
+        }
         if (BuildConfig.DEBUG) {
             CrashReporter.install(applicationContext)
             val lastCrash = CrashReporter.consumeLastCrash(applicationContext)

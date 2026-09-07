@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "369970965034",
+    "project_id": "marketscope-ai-acf47",
+    "storage_bucket": "marketscope-ai-acf47.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:369970965034:android:30dbd115ffbee7d3a97153",
+        "android_client_info": {
+          "package_name": "com.veltravia.marketscopeai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWebX9bFgmgD3NzmAYBhLUpDdH3tUOUKg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
