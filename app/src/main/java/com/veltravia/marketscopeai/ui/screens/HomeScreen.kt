@@ -332,6 +332,11 @@ fun HomeScreen(
 
         Spacer(Modifier.height(28.dp))
 
+        // --- Multi-asset live watchlist (Futures/Forex/Crypto) ---
+        MarketsWatchlistSection()
+
+        Spacer(Modifier.height(28.dp))
+
         // --- Trending tokens (live) ---
         TrendingSection()
 

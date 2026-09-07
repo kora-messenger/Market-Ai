@@ -123,6 +123,15 @@ function priceSources(id) {
       return Number.isFinite(close) ? close : null;
     });
   }
+  if (id === "xauusd" || id === "xagusd") {
+    // Real no-key spot metals feed — Yahoo's GC=F/SI=F futures often 429 on
+    // Render's shared outbound IP; gold-api.com serves genuine live spot.
+    sources.push(async () => {
+      const symbol = id === "xauusd" ? "XAU" : "XAG";
+      const data = await fetchJson(`https://api.gold-api.com/price/${symbol}`);
+      return Number(data?.price) || null;
+    });
+  }
   if (COINGECKO_IDS[id]) {
     sources.push(async () => {
       const data = await fetchJson(
@@ -132,6 +141,12 @@ function priceSources(id) {
     });
   }
   if (BINANCE_SYMBOLS[id]) {
+    // Coinbase first — Render is Frankfurt-hosted and Binance 451s the EU.
+    sources.push(async () => {
+      const base = BINANCE_SYMBOLS[id].replace(/USDT$/, "");
+      const data = await fetchJson(`https://api.exchange.coinbase.com/products/${base}-USD/ticker`);
+      return Number(data?.price) || null;
+    });
     sources.push(async () => {
       const data = await fetchJson(
         `https://api.binance.com/api/v3/ticker/price?symbol=${BINANCE_SYMBOLS[id]}`
