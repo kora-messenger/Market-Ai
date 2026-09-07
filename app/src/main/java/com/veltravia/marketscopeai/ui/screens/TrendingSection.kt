@@ -1,5 +1,11 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,9 +49,14 @@ import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
+import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
+
+private const val LIVE_QUOTE_POLL_MS = 6500L
+private const val FULL_REFRESH_MS = 3 * 60_000L
+private const val LIVE_TAIL_MAX_POINTS = 40
 
 private data class TrendingToken(
     val symbol: String,
@@ -103,18 +115,51 @@ private fun formatPrice(v: Double): String {
 
 /**
  * Real "Trending" section for the Home screen — top coins by market cap,
- * live from the backend's /api/trending (CoinGecko), with a genuine 7-day
- * sparkline drawn from actual price history. No mock rows, no fake charts.
+ * live from the backend's /api/trending (CoinGecko/Coinbase/Binance), with
+ * a genuine 7-day sparkline. On top of that base snapshot, this section
+ * polls real spot quotes every ~6.5s (GET /api/trending/quotes — Coinbase
+ * first, Binance fallback) and appends each real tick to a live tail drawn
+ * on the sparkline's right edge, so the chart and price genuinely move in
+ * real time — no simulated/random movement, no placeholders. The full
+ * snapshot (market cap, volume, 24h change, base sparkline) itself
+ * refreshes every 3 minutes, matching the backend's cache window.
  */
 @Composable
 fun TrendingSection() {
     var tokens by remember { mutableStateOf<List<TrendingToken>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    val liveTails = remember { mutableStateMapOf<String, List<Float>>() }
 
+    // Full snapshot: fetched immediately, then refreshed every 3 minutes.
     LaunchedEffect(Unit) {
-        runCatching { ApiClient.fetchTrending() }
-            .onSuccess { tokens = parseTokens(it) }
-            .onFailure { error = it.message ?: "Could not load trending tokens" }
+        while (true) {
+            runCatching { ApiClient.fetchTrending() }
+                .onSuccess {
+                    tokens = parseTokens(it)
+                    error = null
+                }
+                .onFailure { if (tokens == null) error = it.message ?: "Could not load trending tokens" }
+            delay(FULL_REFRESH_MS)
+        }
+    }
+
+    // Live tick: as soon as we have a token list, poll real spot quotes on a
+    // short interval and append each real price to that token's live tail.
+    val symbolsKey = tokens?.map { it.symbol } ?: emptyList()
+    LaunchedEffect(symbolsKey) {
+        if (symbolsKey.isEmpty()) return@LaunchedEffect
+        while (true) {
+            delay(LIVE_QUOTE_POLL_MS)
+            val quotes = runCatching { ApiClient.fetchTrendingQuotes(symbolsKey) }.getOrNull() ?: continue
+            if (quotes.isEmpty()) continue
+            tokens = tokens?.map { t ->
+                val q = quotes[t.symbol]
+                if (q != null && q > 0.0) {
+                    liveTails[t.symbol] = ((liveTails[t.symbol] ?: emptyList()) + q.toFloat()).takeLast(LIVE_TAIL_MAX_POINTS)
+                    t.copy(price = q)
+                } else t
+            }
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -127,6 +172,10 @@ fun TrendingSection() {
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
+            if (tokens != null && error == null) {
+                Spacer(Modifier.width(8.dp))
+                LiveIndicator()
+            }
         }
         Spacer(Modifier.height(12.dp))
 
@@ -151,7 +200,7 @@ fun TrendingSection() {
                     .background(SurfaceLight)
             ) {
                 tokens!!.forEachIndexed { index, token ->
-                    TrendingRow(token)
+                    TrendingRow(token, liveTails[token.symbol] ?: emptyList())
                     if (index != tokens!!.lastIndex) {
                         androidx.compose.material3.HorizontalDivider(color = TextMuted.copy(alpha = 0.12f), thickness = 1.dp)
                     }
@@ -161,8 +210,38 @@ fun TrendingSection() {
     }
 }
 
+/** Small pulsing dot + "LIVE" label — an honest signal that quotes are polling in real time. */
 @Composable
-private fun TrendingRow(token: TrendingToken) {
+private fun LiveIndicator() {
+    val transition = rememberInfiniteTransition(label = "live-pulse")
+    val alpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "live-pulse-alpha"
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(BullGreen.copy(alpha = alpha))
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "LIVE",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = BullGreen.copy(alpha = alpha)
+        )
+    }
+}
+
+@Composable
+private fun TrendingRow(token: TrendingToken, liveTail: List<Float>) {
     val up = (token.change24h ?: 0.0) >= 0
     Row(
         modifier = Modifier
@@ -189,7 +268,8 @@ private fun TrendingRow(token: TrendingToken) {
         }
         Spacer(Modifier.width(8.dp))
         Sparkline(
-            points = token.sparkline,
+            basePoints = token.sparkline,
+            liveTail = liveTail,
             positive = up,
             modifier = Modifier.size(width = 56.dp, height = 28.dp)
         )
@@ -209,10 +289,16 @@ private fun TrendingRow(token: TrendingToken) {
     }
 }
 
-/** A genuine mini line chart from a real price series — no decoration, no fake curve. */
+/**
+ * A genuine mini line chart: the 7-day base series plus, appended at the
+ * right edge, the real live-quote ticks polled since this row appeared —
+ * the same idea as a live market chart's moving edge, built from real
+ * prices only.
+ */
 @Composable
-private fun Sparkline(points: List<Float>, positive: Boolean, modifier: Modifier = Modifier) {
+private fun Sparkline(basePoints: List<Float>, liveTail: List<Float>, positive: Boolean, modifier: Modifier = Modifier) {
     val color = if (positive) BullGreen else BearRed
+    val points = if (liveTail.isEmpty()) basePoints else basePoints + liveTail
     Canvas(modifier = modifier) {
         if (points.size < 2) return@Canvas
         val min = points.min()
@@ -228,6 +314,13 @@ private fun Sparkline(points: List<Float>, positive: Boolean, modifier: Modifier
                 drawLine(color = color, start = p, end = curr, strokeWidth = 2.5f, cap = StrokeCap.Round)
             }
             prev = curr
+        }
+        if (liveTail.isNotEmpty()) {
+            // A small live dot at the moving edge, like a real-time ticker.
+            val lastIndex = points.lastIndex
+            val x = lastIndex * stepX
+            val y = size.height - ((points[lastIndex] - min) / range) * size.height
+            drawCircle(color = color, radius = 3f, center = Offset(x, y))
         }
     }
 }

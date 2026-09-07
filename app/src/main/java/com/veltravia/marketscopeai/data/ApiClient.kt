@@ -309,6 +309,27 @@ object ApiClient {
         }
     }
 
+    /** Fast live spot prices for the given symbols (e.g. ["BTC","ETH"]) — powers the
+     * Trending section's real-time tick between full refreshes. Returns only the
+     * symbols that resolved to a real price; missing ones are simply absent. */
+    suspend fun fetchTrendingQuotes(symbols: List<String>): Map<String, Double> = withContext(Dispatchers.IO) {
+        if (symbols.isEmpty()) return@withContext emptyMap()
+        val qs = symbols.joinToString(",")
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/trending/quotes?symbols=$qs")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) return@withContext emptyMap()
+            val quotes = json.optJSONObject("quotes") ?: JSONObject()
+            val map = mutableMapOf<String, Double>()
+            quotes.keys().forEach { key -> map[key] = quotes.optDouble(key) }
+            map
+        }
+    }
+
     /** Public real total of users who have joined the community (no auth needed). */
     suspend fun fetchCommunityStats(): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
