@@ -464,7 +464,7 @@ object ApiClient {
             if (scaled !== bitmap) bitmap.recycle()
             scaled.recycle()
             "data:image/jpeg;base64,$base64"
-    
+        }
 
     /** Register this device's FCM push token with the signed-in account. */
     suspend fun registerPushToken(sessionToken: String, fcmToken: String): JSONObject = withContext(Dispatchers.IO) {

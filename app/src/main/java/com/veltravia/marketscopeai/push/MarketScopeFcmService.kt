@@ -34,7 +34,7 @@ class MarketScopeFcmService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
-        val type = data["type"] ?: message.notification?.category ?: "general"
+        val type = data["type"] ?: "general"
         val title = message.notification?.title ?: data["title"] ?: "MarketScope AI"
         val body = message.notification?.body ?: data["body"] ?: return
         val channel = when (type) {
