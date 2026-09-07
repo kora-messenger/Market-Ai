@@ -18,6 +18,12 @@
 
 const { yahooSymbol, COINGECKO_IDS } = require("./prices");
 
+// Binance 24hr ticker fallback when CoinGecko rate-limits datacenter IPs
+const BINANCE_SYMBOLS = {
+  btcusd: "BTCUSDT", ethusd: "ETHUSDT", solusd: "SOLUSDT",
+  dogeusd: "DOGEUSDT", xrpusd: "XRPUSDT"
+};
+
 const MOVER_GAP_MS = 6 * 60 * 60 * 1000; // min time between alerts per instrument
 
 // Watchlist: coins, forex majors, gold, US stock benchmarks.
@@ -68,30 +74,69 @@ async function fetchJson(url) {
   return res.json();
 }
 
-/** 24h change (%) + current price for a coin via CoinGecko. */
+/** 24h change (%) + current price for a coin. CoinGecko -> Binance fallback. */
 async function coinMoverData(id) {
   const coin = COINGECKO_IDS[id];
-  if (!coin) return null;
-  const data = await fetchJson(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${coin}&vs_currencies=usd&include_24hr_change=true`
-  );
-  const node = data && data[coin];
-  if (!node || typeof node.usd !== "number") return null;
-  return { price: node.usd, pct: typeof node.usd_24h_change === "number" ? node.usd_24h_change : null };
+  if (coin) {
+    try {
+      const data = await fetchJson(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coin}&vs_currencies=usd&include_24hr_change=true`
+      );
+      const node = data && data[coin];
+      if (node && typeof node.usd === "number" && typeof node.usd_24h_change === "number") {
+        return { price: node.usd, pct: node.usd_24h_change };
+      }
+    } catch (e) {
+      console.warn(`mover ${id}: coingecko failed (${String(e.message || e)})`);
+    }
+  }
+  const bns = BINANCE_SYMBOLS[id];
+  if (!bns) return null;
+  try {
+    const t = await fetchJson(`https://api.binance.com/api/v3/ticker/24hr?symbol=${bns}`);
+    const price = Number(t.lastPrice);
+    const pct = Number(t.priceChangePercent);
+    if (Number.isFinite(price) && Number.isFinite(pct)) return { price, pct };
+  } catch (e) {
+    console.warn(`mover ${id}: binance failed (${String(e.message || e)})`);
+  }
+  return null;
 }
 
-/** Daily change (%) + current price for forex / gold / indices via Yahoo. */
+/** Forex daily change fallback via Frankfurter (ECB) time series. */
+async function frankfurterMoverData(id) {
+  const base = id.slice(0, 3).toUpperCase();
+  const quote = id.slice(3).toUpperCase();
+  const yesterday = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const data = await fetchJson(`https://api.frankfurter.app/${yesterday}..?base=${base}&symbols=${quote}`);
+  const dates = Object.keys((data && data.rates) || {}).sort();
+  if (dates.length === 0) return null;
+  const first = data.rates[dates[0]][quote];
+  const last = data.rates[dates[dates.length - 1]][quote];
+  if (!first || !last) return null;
+  return { price: last, pct: ((last - first) / first) * 100 };
+}
+
+/** Daily change (%) + current price for forex / gold / indices. Yahoo primary. */
 async function yahooMoverData(id) {
   const symbol = yahooSymbol(id);
   if (!symbol) return null;
-  const data = await fetchJson(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=5m&range=1d`
-  );
-  const meta = data && data.chart && data.chart.result && data.chart.result[0] && data.chart.result[0].meta;
-  if (!meta || typeof meta.regularMarketPrice !== "number") return null;
-  const prev = meta.chartPreviousClose ?? meta.previousClose;
-  if (typeof prev !== "number" || prev <= 0) return null;
-  return { price: meta.regularMarketPrice, pct: ((meta.regularMarketPrice - prev) / prev) * 100 };
+  try {
+    const data = await fetchJson(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=5m&range=1d`
+    );
+    const meta = data && data.chart && data.chart.result && data.chart.result[0] && data.chart.result[0].meta;
+    if (!meta || typeof meta.regularMarketPrice !== "number") throw new Error("no meta");
+    const prev = meta.chartPreviousClose ?? meta.previousClose;
+    if (typeof prev !== "number" || prev <= 0) throw new Error("no previous close");
+    return { price: meta.regularMarketPrice, pct: ((meta.regularMarketPrice - prev) / prev) * 100 };
+  } catch (e) {
+    console.warn(`mover ${id}: yahoo failed (${String(e.message || e)})`);
+    if (/^[a-z]{6}$/.test(id)) {
+      try { return await frankfurterMoverData(id); } catch (_e) { /* give up this run */ }
+    }
+    return null;
+  }
 }
 
 function formatPrice(kind, price) {
