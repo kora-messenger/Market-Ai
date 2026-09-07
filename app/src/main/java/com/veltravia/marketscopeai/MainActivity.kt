@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.core.view.WindowCompat
@@ -67,7 +66,13 @@ class MainActivity : ComponentActivity() {
                 return
             }
         }
-        enableEdgeToEdge()
+        // NOTE: deliberately NOT calling enableEdgeToEdge(). Edge-to-edge drew
+        // every screen underneath the Android status bar (time/battery/signal),
+        // overlapping the app's top UI. With the normal window fit here, the
+        // system reserves the status bar and the app content always starts
+        // below it. The white status-bar color comes from themes.xml
+        // (app_window_background) and the dark status icons from the
+        // insets-controller SideEffect below.
         setContent {
             MarketAiTheme {
                 // The app is always white/light, so status & nav bar icons are
