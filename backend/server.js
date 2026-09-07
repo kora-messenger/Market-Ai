@@ -11,6 +11,7 @@ const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
+const { fetchTrending } = require("./src/trending");
 
 const app = express();
 app.use(express.json({ limit: "25mb" }));
@@ -334,6 +335,16 @@ app.post("/api/community/join", requireAuth, async (req, res) => {
 
 // Public: total real member count (used on the Home screen community card —
 // no fabricated numbers, this is a literal COUNT of users who have joined).
+/** Public, live "Trending" tokens for the Home screen — top coins by market cap. */
+app.get("/api/trending", async (_req, res) => {
+  try {
+    const tokens = await fetchTrending(15);
+    res.json({ tokens, fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(502).json({ error: "Could not load trending tokens right now.", detail: String(err.message || err) });
+  }
+});
+
 app.get("/api/community/stats", async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });

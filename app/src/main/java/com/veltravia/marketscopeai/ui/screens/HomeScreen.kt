@@ -331,6 +331,11 @@ fun HomeScreen(
 
         Spacer(Modifier.height(28.dp))
 
+        // --- Trending tokens (live) ---
+        TrendingSection()
+
+        Spacer(Modifier.height(28.dp))
+
         // --- Recommended tools ---
         Text(
             "MarketScope AI Recommended Tools",

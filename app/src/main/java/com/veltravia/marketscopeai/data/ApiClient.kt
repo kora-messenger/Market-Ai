@@ -265,6 +265,22 @@ object ApiClient {
         request(request)
     }
 
+    /** Public, live top-market-cap tokens for the Home screen "Trending" section. */
+    suspend fun fetchTrending(): JSONArray = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/trending")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Could not load trending tokens (${response.code})"))
+            }
+            json.optJSONArray("tokens") ?: JSONArray()
+        }
+    }
+
     /** Public real total of users who have joined the community (no auth needed). */
     suspend fun fetchCommunityStats(): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
