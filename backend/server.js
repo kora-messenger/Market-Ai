@@ -9,6 +9,7 @@ const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
+const { sendFcm } = require("./src/fcm");
 
 const app = express();
 app.use(express.json({ limit: "25mb" }));
@@ -135,6 +136,26 @@ async function initDb() {
       parent_id UUID REFERENCES post_comments(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS push_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      platform TEXT NOT NULL DEFAULT 'android',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      data JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      read_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
   `);
 }
 
@@ -190,7 +211,8 @@ app.get("/health", (_req, res) => {
     time: new Date().toISOString(),
     config: {
       database: Boolean(pool),
-      googleAuth: Boolean(GOOGLE_WEB_CLIENT_ID),
+      fcm: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
+    googleAuth: Boolean(GOOGLE_WEB_CLIENT_ID),
       analysis: Boolean(OPENROUTER_API_KEY)
     }
   });
@@ -831,6 +853,7 @@ app.post("/api/daily-signals", requireAuth, async (req, res) => {
       ]
     );
     res.status(201).json(signalToApi(rows[0]));
+    broadcastNewSignal(signalToApi(rows[0])).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: "Could not publish signal", detail: String(err.message || err) });
   }
@@ -941,6 +964,7 @@ app.post("/api/daily-signals/auto", async (req, res) => {
       ]
     );
     res.status(201).json(signalToApi(rows[0]));
+    broadcastNewSignal(signalToApi(rows[0])).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: "Could not generate the daily AI signal", detail: String(err.message || err) });
   }
@@ -1474,6 +1498,124 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
 });
 
 // Add a comment (optionally a reply via parent_id).
+
+/* ---------- Push notifications (FCM v1) ---------- */
+
+/**
+ * Insert an in-app notification row for a user (and optionally everyone).
+ * Returns nothing; failures never break the caller.
+ */
+async function addNotification({ userId, type, title, body, data }) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, title, body, data) VALUES ($1, $2, $3, $4, $5)`,
+      [userId, type, title, body, data ? JSON.stringify(data) : null]
+    );
+  } catch (err) {
+    console.error("addNotification failed:", String(err.message || err));
+  }
+}
+
+/**
+ * Fan out a push + in-app notification to every registered device of one user.
+ * Prunes tokens FCM reports as dead.
+ */
+async function notifyUser(userId, { title, body, type, data }) {
+  if (!pool || !userId) return;
+  await addNotification({ userId, type, title, body, data });
+  try {
+    const { rows: tokens } = await pool.query(
+      `SELECT token FROM push_tokens WHERE user_id = $1`,
+      [userId]
+    );
+    for (const t of tokens) {
+      const result = await sendFcm(t.token, { title, body, data });
+      if (result === "invalid") {
+        await pool.query(`DELETE FROM push_tokens WHERE token = $1`, [t.token]);
+      }
+    }
+  } catch (err) {
+    console.error("notifyUser failed:", String(err.message || err));
+  }
+}
+
+/** Broadcast a new-signal notification to ALL users with push tokens. */
+async function broadcastNewSignal(signal) {
+  if (!pool) return;
+  const title = `New ${signal.author === "ai" ? "AI" : "Team"} Signal: ${signal.instrument}`;
+  const body = `${signal.direction === "long" ? "Long" : "Short"} setup is live on Daily Signals now.`;
+  try {
+    const { rows: users } = await pool.query(
+      `SELECT id FROM users`
+    );
+    for (const u of users) {
+      // fire-and-forget per user; notifyUser never throws
+      await notifyUser(u.id, { title, body, type: "signal", data: { route: "signals", signalId: String(signal.id) } });
+    }
+  } catch (err) {
+    console.error("broadcastNewSignal failed:", String(err.message || err));
+  }
+}
+
+app.post("/api/push/register", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const token = String(req.body.token || "").trim();
+  if (!token || token.length > 512) return res.status(400).json({ error: "A valid FCM token is required." });
+  const platform = ["android", "ios", "web"].includes(req.body.platform) ? req.body.platform : "android";
+  try {
+    await pool.query(
+      `INSERT INTO push_tokens (user_id, token, platform)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, last_seen_at = now()`,
+      [req.session.userId, token, platform]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not register the push token", detail: String(err.message || err) });
+  }
+});
+
+app.delete("/api/push/register", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const token = String(req.body.token || "").trim();
+  try {
+    await pool.query(`DELETE FROM push_tokens WHERE user_id = $1 AND token = $2`, [req.session.userId, token]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not remove the push token", detail: String(err.message || err) });
+  }
+});
+
+app.get("/api/notifications", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, type, title, body, data, created_at, read_at
+       FROM notifications WHERE user_id = $1
+       ORDER BY created_at DESC LIMIT 50`,
+      [req.session.userId]
+    );
+    const unread = rows.filter((r) => !r.read_at).length;
+    res.json({ notifications: rows, unread });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load notifications", detail: String(err.message || err) });
+  }
+});
+
+app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    await pool.query(
+      `UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL`,
+      [req.session.userId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not mark notifications read", detail: String(err.message || err) });
+  }
+});
+
 app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   const body = String(req.body.body || "").trim();
@@ -1489,6 +1631,19 @@ app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
        RETURNING id, author_name, author_email, body, parent_id, created_at`,
       [req.params.id, me.id, me.name || "Trader", me.email || "", body, parentId]
     );
+    const { rows: post } = await pool.query(
+      `SELECT user_id, author_name FROM community_posts WHERE id = $1::uuid`,
+      [req.params.id]
+    );
+    if (post.length && post[0].user_id !== me.id) {
+      const firstName = (me.name || "A trader").split(" ")[0];
+      notifyUser(post[0].user_id, {
+        title: `${firstName} commented on your post`,
+        body: body.length > 80 ? `${body.slice(0, 77)}...` : body,
+        type: "community",
+        data: { route: "community", postId: String(req.params.id) }
+      }).catch(() => {});
+    }
     return res.json({ comment: rows[0] });
   } catch (err) {
     return res.status(500).json({ error: "Could not post the comment", detail: String(err.message || err) });
