@@ -156,6 +156,17 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS push_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID,
+      token_suffix TEXT,
+      status TEXT NOT NULL,
+      http_status INTEGER,
+      error TEXT,
+      title TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_push_log_time ON push_log(created_at DESC);
   `);
 }
 
@@ -1521,6 +1532,16 @@ async function addNotification({ userId, type, title, body, data }) {
  * Fan out a push + in-app notification to every registered device of one user.
  * Prunes tokens FCM reports as dead.
  */
+/** Persist the outcome of every FCM send attempt for diagnostics. */
+async function logPush(userId, token, status, title) {
+  if (!pool) return;
+  await pool.query(
+    `INSERT INTO push_log (user_id, token_suffix, status, title)
+     VALUES ($1, $2, $3, $4)`,
+    [userId || null, String(token).slice(-8), String(status), String(title || "").slice(0, 120)]
+  );
+}
+
 async function notifyUser(userId, { title, body, type, data }) {
   if (!pool || !userId) return;
   await addNotification({ userId, type, title, body, data });
@@ -1531,6 +1552,7 @@ async function notifyUser(userId, { title, body, type, data }) {
     );
     for (const t of tokens) {
       const result = await sendFcm(t.token, { title, body, data });
+      await logPush(userId, t.token, result, title).catch(() => {});
       if (result === "invalid") {
         await pool.query(`DELETE FROM push_tokens WHERE token = $1`, [t.token]);
       }
@@ -1584,6 +1606,96 @@ app.delete("/api/push/register", requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Could not remove the push token", detail: String(err.message || err) });
+  }
+});
+
+/**
+ * Machine/admin gate shared by the push diagnostics + test endpoints.
+ * Callable with the CRON_SECRET header (used by the owner's automation) or
+ * with a signed-in admin session, exactly like /api/daily-signals/auto.
+ */
+async function requireCronOrAdmin(req, res) {
+  if (isCronRequest(req)) return true;
+  const authHeader = req.headers.authorization || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing session token" });
+    return false;
+  }
+  try {
+    const session = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    req.session = session;
+    const adminEmail = String(process.env.ADMIN_EMAIL || "").toLowerCase();
+    let isAdmin = false;
+    if (adminEmail && String(session.email || "").toLowerCase() === adminEmail) {
+      isAdmin = true;
+    } else {
+      const { rows } = await pool.query(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`);
+      isAdmin = rows.length > 0 && rows[0].id === session.userId;
+    }
+    if (!isAdmin) {
+      res.status(403).json({ error: "Admin access required" });
+      return false;
+    }
+    return true;
+  } catch (_e) {
+    res.status(401).json({ error: "Invalid or expired session" });
+    return false;
+  }
+}
+
+/**
+ * Send a test push to every registered device (no signal published).
+ * Returns the per-token outcome so delivery can be verified end to end.
+ */
+app.post("/api/push/test", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await requireCronOrAdmin(req, res))) return;
+  const results = [];
+  try {
+    const { rows: tokens } = await pool.query(`SELECT id, user_id, token FROM push_tokens`);
+    if (tokens.length === 0) {
+      return res.json({ sent: 0, note: "No registered push tokens — open the app once so the device registers.", results });
+    }
+    for (const t of tokens) {
+      const result = await sendFcm(t.token, {
+        title: "MarketScope AI — test notification",
+        body: "If you can read this, push delivery works on this device.",
+        data: { type: "general", route: "notifications" }
+      });
+      await logPush(t.user_id, t.token, result, "MarketScope AI — test notification");
+      if (result === "invalid") {
+        await pool.query(`DELETE FROM push_tokens WHERE token = $1`, [t.token]);
+      }
+      results.push({ tokenId: t.id, suffix: String(t.token).slice(-8), result });
+    }
+    res.json({ sent: results.filter(r => r.result === "ok").length, total: results.length, results });
+  } catch (err) {
+    res.status(500).json({ error: "Test push failed", detail: String(err.message || err) });
+  }
+});
+
+/**
+ * Push diagnostics: registered tokens, recent send attempts, recent
+ * notifications. Lets the owner (or automation) verify exactly where the
+ * chain stands — token registered? FCM accepted? notification created?
+ */
+app.get("/api/push/diagnostics", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await requireCronOrAdmin(req, res))) return;
+  try {
+    const { rows: tokens } = await pool.query(`
+      SELECT u.email, pt.platform, pt.last_seen_at, right(pt.token, 8) AS token_suffix
+      FROM push_tokens pt JOIN users u ON u.id = pt.user_id
+      ORDER BY pt.last_seen_at DESC`);
+    const { rows: log } = await pool.query(`
+      SELECT status, token_suffix, title, created_at FROM push_log ORDER BY created_at DESC LIMIT 25`);
+    const { rows: notifs } = await pool.query(`
+      SELECT n.type, n.title, n.body, n.created_at, u.email
+      FROM notifications n JOIN users u ON u.id = n.user_id
+      ORDER BY n.created_at DESC LIMIT 10`);
+    res.json({ tokens, recentSends: log, recentNotifications: notifs });
+  } catch (err) {
+    res.status(500).json({ error: "Diagnostics failed", detail: String(err.message || err) });
   }
 });
 

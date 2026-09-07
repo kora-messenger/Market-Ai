@@ -72,9 +72,18 @@ async function sendFcm(token, { title, body, data }) {
   if (!sa || !token) return "skipped";
   try {
     const accessToken = await getAccessToken();
+    // Route the tray notification onto the app's named channel (signals /
+    // community / general) so users can mute one and keep the other in
+    // system settings. Without channel_id Android drops the message onto
+    // the FCM fallback "Miscellaneous" channel instead.
+    const type = String((data && data.type) || "general");
+    const channelId = type === "signal" ? "signals" : type === "community" ? "community" : "general";
     const message = {
       token,
-      android: { priority: "high" },
+      android: {
+        priority: "high",
+        notification: { channel_id: channelId, priority: "high" }
+      },
       notification: { title: String(title || "MarketScope AI"), body: String(body || "") }
     };
     if (data) message.data = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]));
