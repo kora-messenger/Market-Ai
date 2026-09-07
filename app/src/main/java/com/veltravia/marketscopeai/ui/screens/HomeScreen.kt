@@ -68,7 +68,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.BrokerConfig
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
-import com.veltravia.marketscopeai.ui.theme.Border
+import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
@@ -351,7 +351,7 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
                 .background(SurfaceLight)
-                .border(1.dp, Border, RoundedCornerShape(18.dp))
+                .border(1.dp, BorderSubtle, RoundedCornerShape(18.dp))
                 .clickable {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(BrokerConfig.REFERRAL_URL))
                     runCatching { context.startActivity(intent) }
