@@ -78,7 +78,6 @@ fun SubscribeScreen(
     val scope = rememberCoroutineScope()
 
     val sessionToken = remember { SessionManager.sessionToken(context) }
-    val sessionUser = remember { SessionManager.currentUser(context) }
 
     // Plan info from the backend (single source of truth for price/currency).
     var plansLoading by remember { mutableStateOf(true) }
@@ -89,7 +88,7 @@ fun SubscribeScreen(
     var planFeatures by remember { mutableStateOf(listOf<String>()) }
 
     // Live account state.
-    var isPremium by remember { mutableStateOf(sessionUser?.isPremium ?: false) }
+    var isPremium by remember { mutableStateOf(SessionManager.isPremium(context)) }
     var trialDaysRemaining by remember { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
