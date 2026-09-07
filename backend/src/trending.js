@@ -220,4 +220,63 @@ async function fetchTrending(limit = 15) {
   throw new Error(failures || "Trending feeds are temporarily unavailable");
 }
 
-module.exports = { fetchTrending };
+// Micro-cache per symbol so bursts of concurrent client polls don't hammer
+// Coinbase/Binance — real quotes, just deduped for a couple of seconds.
+const quoteCache = {}; // symbol -> { at, price }
+const QUOTE_CACHE_MS = 2000;
+
+/**
+ * Fast, low-latency live spot price for a single symbol — used to make the
+ * Trending rows visibly tick in real time between the 3-minute full
+ * refreshes. Coinbase first (Render is Frankfurt-hosted; Binance 451s the
+ * EU), Binance as a secondary path. Returns null (never a fabricated
+ * number) if neither venue lists the symbol.
+ */
+async function fetchLiveQuote(symbol) {
+  const sym = String(symbol || "").toUpperCase();
+  const cached = quoteCache[sym];
+  if (cached && Date.now() - cached.at < QUOTE_CACHE_MS) return cached.price;
+
+  let price = null;
+  try {
+    const t = await fetchJson(`https://api.exchange.coinbase.com/products/${sym}-USD/ticker`);
+    const p = Number(t && t.price);
+    if (Number.isFinite(p) && p > 0) price = p;
+  } catch (_e) { /* try Binance next */ }
+
+  if (price === null) {
+    try {
+      const t = await fetchJson(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}USDT`);
+      const p = Number(t && t.price);
+      if (Number.isFinite(p) && p > 0) price = p;
+    } catch (_e) { /* honestly unavailable for this symbol */ }
+  }
+
+  if (price !== null) quoteCache[sym] = { at: Date.now(), price };
+  return price;
+}
+
+/**
+ * Live quotes for a batch of symbols, fetched concurrently. Returns only the
+ * symbols that actually resolved to a real price — no placeholders for the
+ * rest.
+ * @returns {Promise<Record<string, number>>}
+ */
+async function fetchLiveQuotes(symbols) {
+  const unique = [...new Set((symbols || []).map((s) => String(s || "").toUpperCase()).filter(Boolean))].slice(0, 25);
+  const results = await Promise.all(
+    unique.map(async (sym) => {
+      try {
+        const price = await fetchLiveQuote(sym);
+        return price !== null ? [sym, price] : null;
+      } catch (_e) {
+        return null;
+      }
+    })
+  );
+  const out = {};
+  for (const r of results) if (r) out[r[0]] = r[1];
+  return out;
+}
+
+module.exports = { fetchTrending, fetchLiveQuotes };

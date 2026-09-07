@@ -13,7 +13,7 @@ const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
-const { fetchTrending } = require("./src/trending");
+const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
 
 const app = express();
 
@@ -483,6 +483,23 @@ app.post("/api/community/join", requireAuth, async (req, res) => {
 
 // Public: total real member count (used on the Home screen community card —
 // no fabricated numbers, this is a literal COUNT of users who have joined).
+/**
+ * Fast live spot prices for the Trending rows currently on screen — polled
+ * every few seconds by the app so the section visibly ticks in real time
+ * between the heavier 3-minute /api/trending refreshes. Real Coinbase/
+ * Binance spot prices only; a symbol is simply omitted if no venue lists it.
+ */
+app.get("/api/trending/quotes", async (req, res) => {
+  try {
+    const symbols = String(req.query.symbols || "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (symbols.length === 0) return res.json({ quotes: {} });
+    const quotes = await fetchLiveQuotes(symbols);
+    res.json({ quotes });
+  } catch (err) {
+    res.status(502).json({ error: "Could not load live quotes right now.", detail: String(err.message || err) });
+  }
+});
+
 /** Public, live "Trending" tokens for the Home screen — top coins by market cap. */
 app.get("/api/trending", async (_req, res) => {
   try {
