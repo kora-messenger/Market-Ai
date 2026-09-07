@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 
 /** Soft, slow left-to-right shimmer sweep — light-theme friendly (no dark flash). */
 @Composable
-private fun rememberShimmerBrush(): Brush {
+internal fun rememberShimmerBrush(): Brush {
     val transition = rememberInfiniteTransition(label = "signals_shimmer")
     val translate by transition.animateFloat(
         initialValue = 0f,
@@ -60,7 +60,7 @@ private fun rememberShimmerBrush(): Brush {
 }
 
 @Composable
-private fun SkeletonBar(
+internal fun SkeletonBar(
     modifier: Modifier = Modifier,
     width: Dp? = null,
     height: Dp = 12.dp,

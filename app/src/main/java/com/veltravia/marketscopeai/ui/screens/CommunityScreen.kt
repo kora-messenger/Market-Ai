@@ -455,6 +455,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
             }
 
             when {
+                loading && posts.isEmpty() -> CommunityFeedSkeleton()
                 loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = AccentCyan)
                 }
@@ -1372,9 +1373,7 @@ private fun CommentsSheet(
 
             Spacer(Modifier.height(10.dp))
             when {
-                loading -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                }
+                loading -> CommentsSkeleton()
                 comments.isEmpty() && loadError == null -> Column(
                     Modifier.fillMaxWidth().padding(vertical = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
