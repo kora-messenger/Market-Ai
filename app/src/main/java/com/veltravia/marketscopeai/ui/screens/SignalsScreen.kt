@@ -109,6 +109,13 @@ fun SignalsScreen(
 
     val isAdmin = access?.optBoolean("isAdmin", false) == true
     val entitled = access?.optBoolean("entitled", false) == true
+    // True only for the very first load: stats + access (and, if entitled,
+    // the feed) haven't resolved yet. Once resolved this never flips back
+    // to true, so switching the Month/Week range never re-shows the skeleton.
+    // A feedError (e.g. not signed in) always breaks out of the skeleton
+    // immediately instead of spinning forever waiting on access/signals
+    // that will never arrive.
+    val showSkeleton = feedError == null && (stats == null || access == null || (entitled && signals == null))
 
     Column(
         modifier = Modifier
@@ -152,43 +159,47 @@ fun SignalsScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        // --- "At a glance" stats card (public, real aggregates) ---
-        GlanceCard(stats, range) { range = it }
-        Spacer(Modifier.height(20.dp))
+        if (showSkeleton) {
+            SignalsFeedSkeleton()
+        } else {
+            // --- "At a glance" stats card (public, real aggregates) ---
+            GlanceCard(stats, range) { range = it }
+            Spacer(Modifier.height(20.dp))
 
-        // --- Feed or locked card ---
-        when {
-            entitled -> {
-                Text("Live trades", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(Modifier.height(12.dp))
-                val feed = signals
-                if (feedError != null) {
-                    ErrorNote(feedError!!)
-                    Spacer(Modifier.height(20.dp))
-                } else if (feed == null) {
-                    androidx.compose.material3.CircularProgressIndicator(color = AccentCyan)
-                    Spacer(Modifier.height(20.dp))
-                } else if (feed.length() == 0) {
-                    EmptyFeedNote()
-                    Spacer(Modifier.height(20.dp))
-                } else {
-                    for (i in 0 until feed.length()) {
-                        val item = feed.optJSONObject(i) ?: continue
-                        DailySignalCard(item)
-                        Spacer(Modifier.height(14.dp))
+            // --- Feed or locked card ---
+            when {
+                entitled -> {
+                    Text("Live trades", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Spacer(Modifier.height(12.dp))
+                    val feed = signals
+                    if (feedError != null) {
+                        ErrorNote(feedError!!)
+                        Spacer(Modifier.height(20.dp))
+                    } else if (feed == null) {
+                        androidx.compose.material3.CircularProgressIndicator(color = AccentCyan)
+                        Spacer(Modifier.height(20.dp))
+                    } else if (feed.length() == 0) {
+                        EmptyFeedNote()
+                        Spacer(Modifier.height(20.dp))
+                    } else {
+                        for (i in 0 until feed.length()) {
+                            val item = feed.optJSONObject(i) ?: continue
+                            DailySignalCard(item)
+                            Spacer(Modifier.height(14.dp))
+                        }
+                        Text(
+                            "Outcomes are resolved automatically against live market prices every 15 minutes.",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                            color = TextMuted
+                        )
                     }
-                    Text(
-                        "Outcomes are resolved automatically against live market prices every 15 minutes.",
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                        color = TextMuted
-                    )
                 }
-            }
-            feedError != null && access == null -> {
-                ErrorNote(feedError!!)
-            }
-            else -> {
-                LockedSignalsCard()
+                feedError != null && access == null -> {
+                    ErrorNote(feedError!!)
+                }
+                else -> {
+                    LockedSignalsCard()
+                }
             }
         }
         Spacer(Modifier.height(32.dp))
