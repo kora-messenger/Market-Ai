@@ -68,6 +68,7 @@ import com.veltravia.marketscopeai.ui.screens.NotificationsScreen
 import com.veltravia.marketscopeai.ui.screens.CreateTradePlanScreen
 import com.veltravia.marketscopeai.ui.screens.ChartUploadScreen
 import com.veltravia.marketscopeai.ui.screens.FirstAnalysisScreen
+import com.veltravia.marketscopeai.ui.screens.SubscribeScreen
 import com.veltravia.marketscopeai.ui.screens.InstrumentPickerScreen
 import com.veltravia.marketscopeai.ui.screens.SignalCardScreen
 import com.veltravia.marketscopeai.ui.screens.ProfileScreen
@@ -85,6 +86,13 @@ import com.veltravia.marketscopeai.ui.screens.WelcomeScreen
 object PushRouter {
     @Volatile
     var pendingTab: Int? = null
+
+    /**
+     * True when a marketscopeai://subscribe deep link (the Subscribe button
+     * in the trial-expired email) is waiting to be handled. Compose state so
+     * the nav graph reacts the moment MainActivity sets it.
+     */
+    var pendingSubscribe by mutableStateOf(false)
 
     fun tabForRoute(route: String?): Int? = when (route) {
         "signals" -> 1
@@ -155,6 +163,14 @@ fun MarketAiApp() {
         }
     }
 
+    // Deep link marketscopeai://subscribe (trial-expired email button).
+    LaunchedEffect(PushRouter.pendingSubscribe) {
+        if (PushRouter.pendingSubscribe) {
+            PushRouter.pendingSubscribe = false
+            navController.navigate("subscribe")
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination
@@ -222,6 +238,11 @@ fun MarketAiApp() {
                     navController.navigate("first_signal/$analysisId") {
                         popUpTo("first_analysis")
                     }
+                },
+                onTrialExpired = {
+                    // 402 from the backend: the 7-day trial is over — take the
+                    // user straight to the real Subscribe screen.
+                    navController.navigate("subscribe")
                 }
             )
         }
@@ -262,6 +283,11 @@ fun MarketAiApp() {
         }
         composable("risk_calculator") {
             RiskCalculatorScreen(onBack = { navController.popBackStack() })
+        }
+        composable("subscribe") {
+            SubscribeScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
         composable("notifications") {
             NotificationsScreen(onBack = { navController.popBackStack() })

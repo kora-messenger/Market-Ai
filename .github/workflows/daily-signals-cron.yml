@@ -9,6 +9,8 @@ on:
     - cron: "*/15 * * * *"
     # 06:00 UTC = 07:00 Africa/Lagos — AI daily signal
     - cron: "0 6 * * *"
+    # hourly — send the 7-day trial-expired email the moment a trial lapses
+    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       job:
@@ -20,6 +22,7 @@ on:
           - price-check
           - auto-signal
           - market-alerts
+          - trial-check
 
 jobs:
   market-alerts:
@@ -64,5 +67,20 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{}' \
             "$RENDER_URL/api/daily-signals/auto"
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+
+  trial-check:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'trial-check')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send trial-expired emails
+        run: |
+          curl -sS -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "$RENDER_URL/api/trial/check-expiry"
         env:
           RENDER_URL: ${{ secrets.RENDER_URL }}

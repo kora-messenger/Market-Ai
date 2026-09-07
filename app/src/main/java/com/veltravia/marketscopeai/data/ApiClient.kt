@@ -290,6 +290,36 @@ object ApiClient {
         request(request)
     }
 
+    /** Public subscription plan info (price, currency, payments live or not). */
+    suspend fun fetchSubscriptionPlans(): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/subscription/plans")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Start a Premium checkout. Returns { authorizationUrl, reference } on success;
+     *  throws MarketAiException with the server's honest message if payments are not live yet. */
+    suspend fun startSubscriptionCheckout(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/subscription/checkout")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post("{}".toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Current premium/trial state for the signed-in user. */
+    suspend fun fetchSubscriptionStatus(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/subscription/status")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Trial status for the signed-in user: trialActive, trialDaysRemaining, isPremium, etc. */
     suspend fun fetchTrialStatus(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

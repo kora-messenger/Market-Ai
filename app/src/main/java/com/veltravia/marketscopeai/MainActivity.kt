@@ -48,9 +48,23 @@ class MainActivity : ComponentActivity() {
             com.veltravia.marketscopeai.ui.PushRouter.tabForRoute(route)
     }
 
+    /**
+     * marketscopeai://subscribe deep link — the Subscribe button in the
+     * trial-expired email opens this. The landing page in the browser fires
+     * the link; MainActivity hands it to the nav graph, which opens the
+     * real Subscribe screen.
+     */
+    private fun handleDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "marketscopeai" && data.host == "subscribe") {
+            com.veltravia.marketscopeai.ui.PushRouter.pendingSubscribe = true
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handlePushIntent(intent)
+        handleDeepLink(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,6 +72,7 @@ class MainActivity : ComponentActivity() {
         // Notification channels (signals / community / general).
         com.veltravia.marketscopeai.push.MarketScopeFcmService.createChannels(applicationContext)
         handlePushIntent(intent)
+        handleDeepLink(intent)
         // Covers users who installed an update over an existing install and
         // never ran the onboarding notification prompt (see kdoc above).
         ensureNotificationPermission()

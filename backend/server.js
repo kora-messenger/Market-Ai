@@ -3,11 +3,12 @@
  * Runs server-side so the app holds zero AI provider keys.
  */
 const express = require("express");
+const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
-const { sendWelcomeEmail, sendSecurityAlert } = require("./src/mailer");
+const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -15,6 +16,67 @@ const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
 const { fetchTrending } = require("./src/trending");
 
 const app = express();
+
+// --- Paystack webhook: registered before the global JSON parser because the
+// signature is an HMAC-SHA512 over the RAW request body. Route-level raw
+// body parser only applies if it runs first, which it does here. ---
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
+const SUBSCRIBE_URL = process.env.SUBSCRIBE_URL || "https://market-ai-api-jwfb.onrender.com/subscribe";
+const SUB_CURRENCY = (process.env.SUB_CURRENCY || "USD").toUpperCase();
+const SUB_PRICE = Number(process.env.SUB_PRICE || "9.99"); // price per month, 2 decimals
+
+app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" }), async (req, res) => {
+  if (!PAYSTACK_SECRET_KEY) {
+    // Payments not live yet — nothing to process. Answer 200 so Paystack doesn't retry forever.
+    return res.sendStatus(200);
+  }
+  try {
+    const signature = req.headers["x-paystack-signature"] || "";
+    const expected = crypto.createHmac("sha512", PAYSTACK_SECRET_KEY).update(req.body).digest("hex");
+    if (signature !== expected) {
+      return res.status(401).json({ error: "Invalid signature" });
+    }
+    const event = JSON.parse(req.body.toString("utf8"));
+    if (event.event === "charge.success" && event.data && event.data.reference) {
+      // Never trust the webhook payload alone — verify the transaction with Paystack.
+      const vRes = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(event.data.reference)}`,
+        { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`, Accept: "application/json" } }
+      );
+      const vBody = await vRes.json().catch(() => ({}));
+      const data = vBody && vBody.data;
+      if (vRes.ok && data && data.status === "success") {
+        const googleSub = data.metadata && data.metadata.google_sub;
+        const amount = typeof data.amount === "number" ? data.amount : null;
+        const currency = data.currency || SUB_CURRENCY;
+        if (pool && googleSub) {
+          const { rows } = await pool.query(
+            `SELECT id FROM users WHERE google_sub = $1`,
+            [googleSub]
+          );
+          if (rows.length) {
+            await pool.query(
+              `INSERT INTO subscription_payments (user_id, reference, amount, currency, status, paid_at)
+               VALUES ($1, $2, $3, $4, 'success', now())
+               ON CONFLICT (reference) DO NOTHING`,
+              [rows[0].id, data.reference, amount, currency]
+            );
+            await pool.query(
+              `UPDATE users SET is_premium = true WHERE id = $1`,
+              [rows[0].id]
+            );
+            console.log(`[subscription] premium activated for google_sub ${googleSub} (ref ${data.reference})`);
+          }
+        }
+      }
+    }
+    return res.sendStatus(200);
+  } catch (err) {
+    console.error("[subscription] webhook error:", String(err.message || err));
+    return res.sendStatus(200); // Paystack retries on non-2xx; log instead of failing
+  }
+});
+
 app.use(express.json({ limit: "25mb" }));
 
 const PORT = process.env.PORT || 3000;
@@ -58,6 +120,16 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ NOT NULL DEFAULT now();
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expired_email_sent_at TIMESTAMPTZ;
+    CREATE TABLE IF NOT EXISTS subscription_payments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id),
+      reference TEXT UNIQUE NOT NULL,
+      amount INTEGER,
+      currency TEXT,
+      status TEXT NOT NULL DEFAULT 'success',
+      paid_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
@@ -453,6 +525,167 @@ app.get("/api/community/status", requireAuth, async (req, res) => {
 });
 
 // --- Trial status: 7 days of full free access from account creation, then Premium required ---
+// --- Subscribe: email link landing page -> deep link into the app's Subscribe screen ---
+// The trial-expired email's Subscribe button opens this page; it immediately
+// tries to open the installed app at marketscopeai://subscribe and shows a
+// clear fallback for anyone without the app on this device.
+app.get("/subscribe", (_req, res) => {
+  res.set("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>MarketScope AI — Subscribe</title></head>
+<body style="margin:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;">
+<div style="max-width:420px;margin:0 auto;padding:48px 20px;text-align:center;">
+<img src="https://raw.githubusercontent.com/kora-messenger/Market-Ai/main/branding/email_logo.png" width="84" height="84" alt="MarketScope AI" style="border-radius:19px;">
+<h1 style="font-size:20px;margin:24px 0 8px;">MarketScope AI Premium</h1>
+<p id="opening" style="font-size:15px;color:#6b6b6b;">Opening the app...</p>
+<div id="fallback" style="display:none;font-size:15px;color:#1a1a1a;line-height:1.6;">
+<p style="margin:0 0 12px;">If the app didn't open, tap the button below or make sure MarketScope AI is installed on this phone.</p>
+<a href="marketscopeai://subscribe" style="display:inline-block;padding:13px 34px;background:#1B2232;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;border-radius:10px;">Open Subscribe Screen</a>
+</div>
+</div>
+<script>
+setTimeout(function(){ window.location.href = "marketscopeai://subscribe"; }, 400);
+setTimeout(function(){
+  document.getElementById("opening").style.display = "none";
+  document.getElementById("fallback").style.display = "block";
+}, 3000);
+</script>
+</body></html>`);
+});
+
+// --- Subscription: public plan info (single source of truth for the app) ---
+app.get("/api/subscription/plans", (_req, res) => {
+  res.json({
+    currency: SUB_CURRENCY,
+    paymentsReady: Boolean(PAYSTACK_SECRET_KEY),
+    plans: [
+      {
+        id: "monthly",
+        name: "MarketScope AI Premium",
+        price: SUB_PRICE,
+        period: "month",
+        features: [
+          "Unlimited AI chart analysis",
+          "Daily AI & team trading signals",
+          "Full community access"
+        ]
+      }
+    ]
+  });
+});
+
+// --- Subscription: start a Paystack checkout (Premium, real payment) ---
+app.post("/api/subscription/checkout", requireAuth, async (req, res) => {
+  if (!PAYSTACK_SECRET_KEY) {
+    return res.status(503).json({
+      error: "Subscriptions are being activated right now. We'll notify you in the app the moment payments go live \u2014 thank you for your patience!"
+    });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, email FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length || !rows[0].email) {
+      return res.status(400).json({ error: "No email address on your account \u2014 needed for secure checkout." });
+    }
+    const reference = `msa-${req.session.sub.slice(0, 12)}-${Date.now()}`;
+    const initRes = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify({
+        email: rows[0].email,
+        amount: Math.round(SUB_PRICE * 100), // Paystack uses minor units
+        currency: SUB_CURRENCY,
+        reference,
+        callback_url: `${SUBSCRIBE_URL}?payment=done`,
+        metadata: { google_sub: req.session.sub }
+      })
+    });
+    const body = await initRes.json().catch(() => ({}));
+    if (!initRes.ok || !(body && body.data && body.data.authorization_url)) {
+      return res.status(502).json({ error: "Could not start checkout right now. Please try again shortly." });
+    }
+    return res.json({
+      authorizationUrl: body.data.authorization_url,
+      reference: body.data.reference
+    });
+  } catch (err) {
+    return res.status(502).json({ error: "Could not start checkout right now.", detail: String(err.message || err) });
+  }
+});
+
+// --- Subscription: current premium state for the signed-in user ---
+app.get("/api/subscription/status", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT is_premium, trial_started_at, trial_expired_email_sent_at FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.json(trialInfo(rows[0]));
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load subscription status", detail: String(err.message || err) });
+  }
+});
+
+// --- Trial expiry emails: find users whose 7-day free trial just ended and
+// email them once. Called hourly by the GitHub Actions cron. ---
+app.post("/api/trial/check-expiry", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, google_sub, email, name
+       FROM users
+       WHERE is_premium = false
+         AND trial_started_at + interval '7 days' <= now()
+         AND trial_expired_email_sent_at IS NULL
+       ORDER BY trial_started_at ASC
+       LIMIT 50`
+    );
+    let sent = 0;
+    let failed = 0;
+    for (const u of rows) {
+      const r = await sendTrialExpiredEmail({
+        googleSub: u.google_sub,
+        email: u.email,
+        name: u.name
+      });
+      if (r.ok) {
+        // mark sent even if Brevo reported a dedupe skip — the send pipeline is healthy
+        await pool.query(
+          `UPDATE users SET trial_expired_email_sent_at = now() WHERE id = $1`,
+          [u.id]
+        );
+        sent++;
+      } else {
+        failed++;
+      }
+    }
+    return res.json({ checked: rows.length, sent, failed });
+  } catch (err) {
+    return res.status(500).json({ error: "Trial expiry check failed", detail: String(err.message || err) });
+  }
+});
+
 app.get("/api/trial/status", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });

@@ -29,6 +29,8 @@ const LOGO_URL =
   process.env.APP_LOGO_URL ||
   "https://raw.githubusercontent.com/kora-messenger/Market-Ai/main/branding/email_logo.png";
 const API_URL = "https://api.brevo.com/v3/smtp/email";
+const SUBSCRIBE_URL =
+  process.env.SUBSCRIBE_URL || "https://market-ai-api-jwfb.onrender.com/subscribe";
 const TIMEOUT_MS = 10_000;
 
 // Guard against duplicate security alerts for the same account within a
@@ -132,8 +134,12 @@ function renderText(content) {
     }
     lines.push("");
   }
-  lines.push(...content.paragraphsAfterFields || []);
-  if (content.paragraphsAfterFields && content.paragraphsAfterFields.length) lines.push("");
+  for (const p of content.paragraphsAfterFields || []) {
+    lines.push(p, "");
+  }
+  if (content.cta) {
+    lines.push(`${content.cta.label}: ${content.cta.url}`, "");
+  }
   lines.push(...content.signoff);
   return lines.join("\r\n");
 }
@@ -166,6 +172,13 @@ ${content.signoff.map(esc).join("<br>")}
   }
   for (const p of content.paragraphsAfterFields || []) {
     parts.push(`<p style="margin:0 0 16px;">${esc(p)}</p>`);
+  }
+  if (content.cta) {
+    parts.push(
+      `<div style="margin:24px 0 8px;text-align:center;">` +
+      `<a href="${content.cta.url}" style="display:inline-block;padding:13px 34px;background:#1B2232;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;border-radius:10px;">${esc(content.cta.label)}</a>` +
+      `</div>`
+    );
   }
   return wrap(parts.join("\n"));
 }
@@ -211,6 +224,7 @@ async function sendWelcomeEmail(user) {
         `Hello ${firstName(user.name)},`,
         "Welcome to MarketScope AI — we're glad to have you on board.",
         "Your account has been created successfully. You now have access to AI-powered chart analysis, daily trading signals, and our community of traders.",
+        "Your 7-day free premium trial starts now — full access to every MarketScope AI feature for the next 7 days, with no payment details required.",
         "To get the most out of MarketScope AI, complete your trading profile in the app and run your first chart analysis whenever you're ready.",
         `If you ever need help, just reply to this email or contact us at ${SUPPORT_EMAIL}.`
       ],
@@ -262,4 +276,36 @@ async function sendSecurityAlert(user, meta = {}) {
   }
 }
 
-module.exports = { sendWelcomeEmail, sendSecurityAlert, formatLagosTime, describeDevice };
+/** Trial-expired email — sent once, when the 7-day free premium trial ends. */
+async function sendTrialExpiredEmail(user) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    if (!user || !user.email) return { ok: false, reason: "no email address on account" };
+
+    const content = {
+      subject: "Your MarketScope AI free trial has ended",
+      paragraphs: [
+        `Hello ${firstName(user.name)},`,
+        "Your 7-day free premium trial has come to an end.",
+        "We hope you enjoyed AI-powered chart analysis, daily trading signals, and the trader community. To keep enjoying trading with full access, subscribe to MarketScope AI Premium."
+      ],
+      cta: {
+        label: "Subscribe to Premium",
+        url: SUBSCRIBE_URL
+      },
+      paragraphsAfterFields: [
+        "You can also subscribe anytime from the app \u2014 the Subscribe screen in your MarketScope AI profile."
+      ],
+      signoff: ["The MarketScope AI Team", "Veltravia Technologies"]
+    };
+
+    const messageId = await sendViaBrevo({ to: user.email, subject: content.subject, content });
+    console.log(`[mailer] trial-expired email sent to ${user.email} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] trial-expired email failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
+module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, formatLagosTime, describeDevice };

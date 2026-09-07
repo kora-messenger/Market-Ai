@@ -77,7 +77,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FirstAnalysisScreen(
-    onAnalysisComplete: (String) -> Unit
+    onAnalysisComplete: (String) -> Unit,
+    onTrialExpired: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -280,6 +281,7 @@ fun FirstAnalysisScreen(
                     } catch (e: ApiClient.TrialExpiredException) {
                         loading = false
                         error = e.message ?: "Your free trial has ended."
+                        onTrialExpired()
                     } catch (e: Exception) {
                         loading = false
                         error = e.message ?: "Analysis failed"
