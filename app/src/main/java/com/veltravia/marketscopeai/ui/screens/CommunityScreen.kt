@@ -31,11 +31,18 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +81,8 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
+import com.veltravia.marketscopeai.ui.theme.BearRed
+import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -110,7 +119,27 @@ data class CommunityPost(
     val allowComments: Boolean,
     val postType: String,
     val poll: CommunityPoll?,
-    val reactions: List<CommunityReaction>
+    val reactions: List<CommunityReaction>,
+    val outcomeTag: String? = null,
+    val viewCount: Int = 0
+)
+
+/** A real curated pinned post (from GET /api/community/pinned). */
+data class PinnedPost(
+    val id: String,
+    val title: String,
+    val authorName: String,
+    val createdAt: String
+)
+
+/** A real, engagement-ranked weekly proof post (from the leaderboard's topProofs). */
+data class ProofPost(
+    val postId: String,
+    val authorName: String,
+    val body: String,
+    val imageCount: Int,
+    val outcomeTag: String?,
+    val weekReactions: Int
 )
 
 data class PickedPostImage(val dataUrl: String)
@@ -170,6 +199,8 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
             allowComments = p.optBoolean("allowComments", true),
             postType = p.optString("postType", "text"),
             poll = parsePoll(p),
+            outcomeTag = p.optString("outcomeTag").takeIf { it.isNotBlank() && it != "null" },
+            viewCount = p.optInt("viewCount", 0),
             reactions = (0 until reactions.length()).map { r ->
                 val o = reactions.getJSONObject(r)
                 CommunityReaction(
@@ -206,6 +237,34 @@ private fun relativeTime(iso: String): String = try {
     }
 } catch (e: Exception) { "" }
 
+private fun parsePinned(json: JSONObject): List<PinnedPost> {
+    val arr = json.optJSONArray("pinned") ?: JSONArray()
+    return (0 until arr.length()).map { i ->
+        val o = arr.getJSONObject(i)
+        PinnedPost(
+            id = o.optString("id"),
+            title = o.optString("title").ifBlank { "Pinned post" },
+            authorName = o.optString("authorName").ifBlank { "Trader" },
+            createdAt = o.optString("createdAt")
+        )
+    }
+}
+
+private fun parseTopProofs(leaderboard: JSONObject): List<ProofPost> {
+    val arr = leaderboard.optJSONArray("topProofs") ?: JSONArray()
+    return (0 until arr.length()).map { i ->
+        val o = arr.getJSONObject(i)
+        ProofPost(
+            postId = o.optString("postId"),
+            authorName = o.optString("authorName").ifBlank { "Trader" },
+            body = o.optString("body"),
+            imageCount = o.optInt("imageCount", 0),
+            outcomeTag = o.optString("outcomeTag").takeIf { it.isNotBlank() && it != "null" },
+            weekReactions = o.optInt("weekReactions", 0)
+        )
+    }
+}
+
 private fun avatarTint(name: String): Color =
     if (name.hashCode() % 2 == 0) AccentViolet.copy(alpha = 0.12f) else AccentCyan.copy(alpha = 0.12f)
 
@@ -238,6 +297,13 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
     var viewerPost by remember { mutableStateOf<CommunityPost?>(null) }
     var viewerIndex by remember { mutableStateOf(0) }
     var isAdmin by remember { mutableStateOf(false) }
+    var composerOutcomeTag by remember { mutableStateOf<String?>(null) }
+
+    var pinnedPosts by remember { mutableStateOf<List<PinnedPost>>(emptyList()) }
+    var pinnedIndex by remember { mutableStateOf(0) }
+    var showPinnedList by remember { mutableStateOf(false) }
+    var proofPosts by remember { mutableStateOf<List<ProofPost>>(emptyList()) }
+    val viewedPostIds = remember { mutableStateOf(mutableSetOf<String>()) }
 
     val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
@@ -309,7 +375,27 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                     val access = ApiClient.fetchSignalAccess(token)
                     isAdmin = access.optBoolean("isAdmin", false)
                 } catch (_: Exception) { }
+                try {
+                    pinnedPosts = parsePinned(ApiClient.fetchPinnedPosts(token))
+                } catch (_: Exception) { }
+                try {
+                    proofPosts = parseTopProofs(ApiClient.fetchLeaderboard(token))
+                } catch (_: Exception) { }
             }
+        }
+    }
+
+    fun registerView(postId: String) {
+        if (token == null || postId in viewedPostIds.value) return
+        viewedPostIds.value = (viewedPostIds.value + postId).toMutableSet()
+        scope.launch {
+            try {
+                val resp = ApiClient.registerPostView(token, postId)
+                val newCount = resp.optInt("viewCount", -1)
+                if (newCount >= 0) {
+                    posts = posts.map { if (it.id == postId) it.copy(viewCount = newCount) else it }
+                }
+            } catch (_: Exception) { /* view tracking is best-effort, never blocks the UI */ }
         }
     }
 
@@ -326,7 +412,10 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
         scope.launch {
             try {
                 val resp = if (composerMode == "text") {
-                    ApiClient.createCommunityPost(token, text, pickedImages.map { it.dataUrl })
+                    ApiClient.createCommunityPost(
+                        token, text, pickedImages.map { it.dataUrl },
+                        outcomeTag = if (pickedImages.isNotEmpty()) composerOutcomeTag else null
+                    )
                 } else {
                     ApiClient.createCommunityPoll(
                         token, text,
@@ -339,6 +428,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                 totalPosts += 1
                 composerText = TextFieldValue("")
                 pickedImages.clear()
+                composerOutcomeTag = null
                 pollOptions.clear()
                 pollOptions.addAll(listOf(TextFieldValue(""), TextFieldValue("")))
                 composerMode = "text"
@@ -436,12 +526,21 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                     Icon(Icons.Filled.Groups, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            "MarketScope AI Community",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "MarketScope AI Community",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.Filled.Verified,
+                                contentDescription = "Official community",
+                                tint = AccentCyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                         Text(
                             if (memberCount >= 0) "$memberCount traders joined · $totalPosts posts"
                             else "Live trading community",
@@ -497,6 +596,34 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        if (pinnedPosts.isNotEmpty()) {
+                            item {
+                                PinnedPostsWidget(
+                                    pinned = pinnedPosts,
+                                    index = pinnedIndex,
+                                    onIndexChange = { pinnedIndex = it },
+                                    expanded = showPinnedList,
+                                    onToggleExpanded = { showPinnedList = !showPinnedList },
+                                    onOpenTop5 = onOpenLeaderboard,
+                                    onOpenPinned = { pinnedId ->
+                                        showPinnedList = false
+                                        val idx = posts.indexOfFirst { it.id == pinnedId }
+                                        if (idx >= 0) {
+                                            // Header items before `items(posts)`: pinned widget, proof row,
+                                            // weekly-competition card, composer — count only the ones present.
+                                            val headerCount = (if (pinnedPosts.isNotEmpty()) 1 else 0) +
+                                                (if (proofPosts.isNotEmpty()) 1 else 0) + 2
+                                            scope.launch { listState.animateScrollToItem(idx + headerCount) }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        if (proofPosts.isNotEmpty()) {
+                            item {
+                                FeaturedProofRow(proofPosts)
+                            }
+                        }
                         item {
                             WeeklyCompetitionCard(onOpen = onOpenLeaderboard)
                         }
@@ -511,6 +638,8 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                                 onAllowCommentsChange = { allowComments = it },
                                 pickedImages = pickedImages,
                                 imageProcessing = imageProcessing,
+                                outcomeTag = composerOutcomeTag,
+                                onOutcomeTagChange = { composerOutcomeTag = it },
                                 onPickImage = {
                                     pickImage.launch(
                                         androidx.activity.result.PickVisualMediaRequest(
@@ -536,7 +665,8 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                                 onOpenImage = { idx ->
                                     viewerPost = post
                                     viewerIndex = idx
-                                }
+                                },
+                                onRegisterView = { registerView(post.id) }
                             )
                         }
                         if (loadingMore) {
@@ -644,6 +774,180 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
 // --- weekly competition card -----------------------------------------------------------
 
 @Composable
+@Composable
+private fun PinnedPostsWidget(
+    pinned: List<PinnedPost>,
+    index: Int,
+    onIndexChange: (Int) -> Unit,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onOpenTop5: () -> Unit,
+    onOpenPinned: (String) -> Unit
+) {
+    val safeIndex = index.coerceIn(0, pinned.size - 1)
+    Column {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(14.dp),
+                shadowElevation = 1.dp,
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Filled.PushPin, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "PINNED \u00B7 ${safeIndex + 1}/${pinned.size}",
+                            fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, color = AccentViolet
+                        )
+                        Text(
+                            pinned[safeIndex].title,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { onOpenPinned(pinned[safeIndex].id) }
+                        )
+                    }
+                    if (pinned.size > 1) {
+                        IconButton(
+                            onClick = { onIndexChange((safeIndex - 1 + pinned.size) % pinned.size) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous pinned post", tint = TextMuted, modifier = Modifier.size(16.dp))
+                        }
+                        IconButton(
+                            onClick = { onIndexChange((safeIndex + 1) % pinned.size) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next pinned post", tint = TextMuted, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    IconButton(onClick = onToggleExpanded, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = if (expanded) "Hide pinned posts" else "Show all pinned posts",
+                            tint = TextMuted, modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+            Surface(
+                color = Color(0xFFFEF3C7),
+                shape = RoundedCornerShape(14.dp),
+                onClick = onOpenTop5
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Top 5", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFB45309))
+                }
+            }
+        }
+        if (expanded) {
+            Spacer(Modifier.height(8.dp))
+            Surface(color = Color.White, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    Text(
+                        "Curated pinned posts",
+                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextMuted,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                    pinned.forEachIndexed { i, item ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenPinned(item.id) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(AccentViolet.copy(alpha = 0.12f))
+                            ) {
+                                Text("${i + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AccentViolet)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(relativeTime(item.createdAt), fontSize = 10.5.sp, color = TextMuted)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeaturedProofRow(proofs: List<ProofPost>) {
+    Column {
+        Text(
+            "Featured trader proof this week",
+            fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(proofs, key = { it.postId }) { proof ->
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.width(150.dp)
+                ) {
+                    Column {
+                        coil.compose.AsyncImage(
+                            model = ApiClient.communityImageUrl(proof.postId, 0),
+                            contentDescription = "Weekly proof from ${proof.authorName}",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                        )
+                        Column(Modifier.padding(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    proof.authorName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (proof.outcomeTag != null) {
+                                Spacer(Modifier.height(4.dp))
+                                val tint = if (proof.outcomeTag == "win") BullGreen else BearRed
+                                Surface(color = tint.copy(alpha = 0.12f), shape = RoundedCornerShape(6.dp)) {
+                                    Text(
+                                        if (proof.outcomeTag == "win") "Profited" else "Lesson learned",
+                                        fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, color = tint,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text("Weekly proof \u00B7 ${proof.weekReactions} reactions", fontSize = 9.5.sp, color = TextMuted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun WeeklyCompetitionCard(onOpen: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -704,6 +1008,8 @@ private fun PostComposer(
     onAllowCommentsChange: (Boolean) -> Unit,
     pickedImages: androidx.compose.runtime.snapshots.SnapshotStateList<PickedPostImage>,
     imageProcessing: Boolean,
+    outcomeTag: String?,
+    onOutcomeTagChange: (String?) -> Unit,
     onPickImage: () -> Unit,
     onRemoveImage: (Int) -> Unit,
     publishing: Boolean,
@@ -795,6 +1101,31 @@ private fun PostComposer(
                         color = if (pickedImages.size < 4) AccentCyan else TextMuted,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                     )
+                }
+                if (pickedImages.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Tag the outcome (optional, your call)", fontSize = 11.5.sp, color = TextMuted)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("win" to "Profited", "loss" to "Lesson learned").forEach { (tag, label) ->
+                            val selected = outcomeTag == tag
+                            val tint = if (tag == "win") BullGreen else BearRed
+                            Surface(
+                                color = if (selected) tint.copy(alpha = 0.14f) else Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) tint else Color(0xFFE2E8F0)),
+                                onClick = { onOutcomeTagChange(if (selected) null else tag) }
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (selected) tint else TextMuted,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             } else {
                 Text("Ask the community", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
@@ -944,9 +1275,14 @@ private fun PostCard(
     onVote: (String) -> Unit,
     onOpenComments: () -> Unit,
     onPin: () -> Unit,
-    onOpenImage: (Int) -> Unit
+    onOpenImage: (Int) -> Unit,
+    onRegisterView: () -> Unit
 ) {
     var showReactionRow by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Registers a real, deduped view once per composition (per session per post).
+    LaunchedEffect(post.id) { onRegisterView() }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1040,8 +1376,22 @@ private fun PostCard(
                         post.body,
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = if (expanded) Int.MAX_VALUE else 8,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable { expanded = !expanded }
                     )
+                }
+                if (post.outcomeTag != null) {
+                    Spacer(Modifier.height(8.dp))
+                    val tint = if (post.outcomeTag == "win") BullGreen else BearRed
+                    Surface(color = tint.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
+                        Text(
+                            if (post.outcomeTag == "win") "\uD83C\uDFC6 Profited \u2014 author\u2019s tag" else "\uD83D\uDCDA Lesson learned \u2014 author\u2019s tag",
+                            fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = tint,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                 }
                 if (post.imageCount > 0) {
                     Spacer(Modifier.height(8.dp))
@@ -1159,6 +1509,29 @@ private fun PostCard(
                             )
                         }
                     }
+                }
+                Spacer(Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = TextMuted, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.viewCount}", fontSize = 12.sp, color = TextMuted)
+                }
+                Spacer(Modifier.width(12.dp))
+                Surface(
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(8.dp),
+                    onClick = {
+                        val shared = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(
+                                android.content.Intent.EXTRA_TEXT,
+                                "${post.authorName} on MarketScope AI Community:\n\n${post.body}"
+                            )
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shared, "Share post"))
+                    }
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = "Share post", tint = TextMuted, modifier = Modifier.size(14.dp))
                 }
             }
         }

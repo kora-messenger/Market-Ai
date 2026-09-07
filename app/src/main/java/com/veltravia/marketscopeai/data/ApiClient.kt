@@ -208,11 +208,19 @@ object ApiClient {
         request(request)
     }
 
-    /** Publish a text post to the community. Returns { post: {...} }. */
-    suspend fun createCommunityPost(sessionToken: String, body: String, images: List<String> = emptyList()): JSONObject =
+    /** Publish a text post to the community. [outcomeTag] ("win"/"loss") is optional and
+     * only meaningful when [images] is non-empty — it's the author's own self-reported
+     * trade outcome, never inferred by the app. Returns { post: {...} }. */
+    suspend fun createCommunityPost(
+        sessionToken: String,
+        body: String,
+        images: List<String> = emptyList(),
+        outcomeTag: String? = null
+    ): JSONObject =
         withContext(Dispatchers.IO) {
             val payload = JSONObject().put("body", body)
             if (images.isNotEmpty()) payload.put("images", JSONArray().apply { images.forEach { put(it) } })
+            if (outcomeTag != null) payload.put("outcomeTag", outcomeTag)
             val request = Request.Builder()
                 .url("${ApiConfig.BASE_URL}/api/community/posts")
                 .addHeader("Authorization", "Bearer $sessionToken")
@@ -220,6 +228,26 @@ object ApiClient {
                 .build()
             request(request)
         }
+
+    /** Real curated pinned-posts list (most-recently-pinned first). Returns { pinned: [...] }. */
+    suspend fun fetchPinnedPosts(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/community/pinned")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Registers a real, deduped view of a post. Returns { viewCount }. Fire-and-forget. */
+    suspend fun registerPostView(sessionToken: String, postId: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/community/posts/$postId/view")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post("{}".toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
 
     /** Toggle one emoji reaction on a post. Returns { emoji, active }. */
     suspend fun toggleCommunityReaction(
