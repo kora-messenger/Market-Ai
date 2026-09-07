@@ -45,8 +45,8 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
-import com.veltravia.marketscopeai.ui.theme.NavyBlack
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
+import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import java.text.NumberFormat
@@ -149,7 +149,7 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
                 text = "Analyze Now!",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = NavyBlack
+                color = Color.White
             )
         }
 
@@ -206,7 +206,7 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
             Text(
                 "Potential Gain",
                 style = MaterialTheme.typography.labelSmall,
-                color = NavyBlack.copy(alpha = 0.6f)
+                color = TextPrimary.copy(alpha = 0.6f)
             )
             Spacer(Modifier.height(2.dp))
             val gain = projection.finalEquity - projection.startingEquity
@@ -221,7 +221,7 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
             Text(
                 "Equity path across 12 disciplined trades",
                 style = MaterialTheme.typography.labelSmall,
-                color = NavyBlack.copy(alpha = 0.55f)
+                color = TextPrimary.copy(alpha = 0.55f)
             )
             Spacer(Modifier.height(8.dp))
             EquityBars(projection)
@@ -240,8 +240,8 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(riskPctLabel, style = MaterialTheme.typography.labelSmall, color = NavyBlack.copy(alpha = 0.55f))
-                Text(winRateLabel, style = MaterialTheme.typography.labelSmall, color = NavyBlack.copy(alpha = 0.55f))
+                Text(riskPctLabel, style = MaterialTheme.typography.labelSmall, color = TextPrimary.copy(alpha = 0.55f))
+                Text(winRateLabel, style = MaterialTheme.typography.labelSmall, color = TextPrimary.copy(alpha = 0.55f))
             }
 
             Spacer(Modifier.height(6.dp))
@@ -249,7 +249,7 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
                 "This is a graphical illustration — not the exact order of outcomes. " +
                     "It shows how small, repeatable edges can compound.",
                 style = MaterialTheme.typography.labelSmall,
-                color = NavyBlack.copy(alpha = 0.45f)
+                color = TextPrimary.copy(alpha = 0.45f)
             )
         }
     }

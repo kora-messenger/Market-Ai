@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
-import com.veltravia.marketscopeai.ui.theme.NavyBlack
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
@@ -177,7 +176,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
                 text = "Enable notifications",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = NavyBlack
+                color = Color.White
             )
         }
 

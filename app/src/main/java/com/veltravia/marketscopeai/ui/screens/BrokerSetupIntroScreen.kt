@@ -47,8 +47,8 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
-import com.veltravia.marketscopeai.ui.theme.NavyBlack
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
+import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 
@@ -134,7 +134,7 @@ fun BrokerSetupIntroScreen(
                         .background(GoldAmber),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("EX", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = NavyBlack)
+                    Text("EX", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 }
                 Spacer(Modifier.width(10.dp))
                 Column {
@@ -227,10 +227,10 @@ fun BrokerSetupIntroScreen(
                 "Continue with ${BrokerConfig.NAME}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = NavyBlack
+                color = Color.White
             )
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = NavyBlack, modifier = Modifier.size(18.dp))
+            Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
 
         Spacer(Modifier.height(14.dp))

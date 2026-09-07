@@ -70,7 +70,7 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
-import com.veltravia.marketscopeai.ui.theme.NavyBlack
+import com.veltravia.marketscopeai.ui.theme.DarkInk
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
@@ -264,7 +264,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .size(26.dp)
                             .clip(CircleShape)
-                            .background(NavyBlack),
+                            .background(DarkInk),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Filled.NorthEast, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
@@ -344,7 +344,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
-                .background(NavyBlack)
+                .background(DarkInk)
                 .clickable {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(BrokerConfig.REFERRAL_URL))
                     runCatching { context.startActivity(intent) }

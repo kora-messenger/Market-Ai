@@ -13,6 +13,13 @@ val BullGreen = Color(0xFF16A34A)
 val BearRed = Color(0xFFDC2626)
 val GoldAmber = Color(0xFFD97706)
 
+/** A genuine near-black — used for deliberate dark-accent surfaces (CTA
+ *  buttons, badge circles) that should stay dark for contrast even though
+ *  the app's page background is white. Distinct from [NavyBlack] below,
+ *  which resolves to the page background and must never be used for
+ *  foreground content on light cards. */
+val DarkInk = Color(0xFF0B0E14)
+
 /** The one and only palette: MarketScope AI is always light/white (like the FxLens reference). */
 data class MarketAiPalette(
     val background: Color,

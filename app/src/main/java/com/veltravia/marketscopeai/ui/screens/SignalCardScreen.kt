@@ -68,8 +68,8 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.BullGreen
+import com.veltravia.marketscopeai.ui.theme.DarkInk
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
-import com.veltravia.marketscopeai.ui.theme.NavyBlack
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
@@ -308,7 +308,7 @@ private fun TradeAnalysisBody(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(50)),
-                colors = ButtonDefaults.buttonColors(containerColor = NavyBlack),
+                colors = ButtonDefaults.buttonColors(containerColor = DarkInk),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 14.dp)
             ) {
                 Icon(Icons.Filled.Calculate, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
