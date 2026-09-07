@@ -139,8 +139,8 @@ object ApiClient {
     suspend fun pinCommunityPost(sessionToken: String, postId: String): JSONObject =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
-                .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/pin")
-                .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .url("${ApiConfig.BASE_URL}/api/community/posts/$postId/pin")
+                .addHeader("Authorization", "Bearer $sessionToken")
                 .post("{}".toRequestBody("application/json".toMediaType()))
                 .build()
             request(request)
@@ -148,7 +148,7 @@ object ApiClient {
 
     /** Auth-protected URL of a post image at [position] (loaded via the Coil loader with the session token). */
     fun communityImageUrl(postId: String, position: Int): String =
-        "${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/images/${'$'}position"
+        "${ApiConfig.BASE_URL}/api/community/posts/$postId/images/$position"
 
     /** Publish a poll: 2-6 options with labels. Returns { post: {...} }. */
     suspend fun createCommunityPoll(
@@ -165,8 +165,8 @@ object ApiClient {
             .put("pollOptions", arr)
             .put("allowComments", allowComments)
         val request = Request.Builder()
-            .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts")
-            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+            .url("${ApiConfig.BASE_URL}/api/community/posts")
+            .addHeader("Authorization", "Bearer $sessionToken")
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
         request(request)
@@ -177,8 +177,8 @@ object ApiClient {
         withContext(Dispatchers.IO) {
             val payload = JSONObject().put("optionId", optionId)
             val request = Request.Builder()
-                .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/vote")
-                .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .url("${ApiConfig.BASE_URL}/api/community/posts/$postId/vote")
+                .addHeader("Authorization", "Bearer $sessionToken")
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
                 .build()
             request(request)
@@ -187,8 +187,8 @@ object ApiClient {
     /** Weekly competition standings: { weekStart, nextReset, standings, myRank, myScore, lastWeekWinners }. */
     suspend fun fetchLeaderboard(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("${'$'}{ApiConfig.BASE_URL}/api/community/leaderboard")
-            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+            .url("${ApiConfig.BASE_URL}/api/community/leaderboard")
+            .addHeader("Authorization", "Bearer $sessionToken")
             .get()
             .build()
         request(request)
@@ -201,8 +201,8 @@ object ApiClient {
         limit: Int = 20
     ): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("${'$'}{ApiConfig.BASE_URL}/api/community/feed?offset=${'$'}offset&limit=${'$'}limit")
-            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+            .url("${ApiConfig.BASE_URL}/api/community/feed?offset=$offset&limit=$limit")
+            .addHeader("Authorization", "Bearer $sessionToken")
             .get()
             .build()
         request(request)
@@ -214,8 +214,8 @@ object ApiClient {
             val payload = JSONObject().put("body", body)
             if (images.isNotEmpty()) payload.put("images", JSONArray().apply { images.forEach { put(it) } })
             val request = Request.Builder()
-                .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts")
-                .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .url("${ApiConfig.BASE_URL}/api/community/posts")
+                .addHeader("Authorization", "Bearer $sessionToken")
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
                 .build()
             request(request)
@@ -229,8 +229,8 @@ object ApiClient {
     ): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject().put("emoji", emoji)
         val request = Request.Builder()
-            .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/react")
-            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+            .url("${ApiConfig.BASE_URL}/api/community/posts/$postId/react")
+            .addHeader("Authorization", "Bearer $sessionToken")
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
         request(request)
@@ -240,8 +240,8 @@ object ApiClient {
     suspend fun fetchPostComments(sessionToken: String, postId: String): JSONArray =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
-                .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/comments")
-                .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+                .url("${ApiConfig.BASE_URL}/api/community/posts/$postId/comments")
+                .addHeader("Authorization", "Bearer $sessionToken")
                 .get()
                 .build()
             val json = request(request)
@@ -258,8 +258,8 @@ object ApiClient {
         val payload = JSONObject().put("body", body)
         if (parentId != null) payload.put("parentId", parentId)
         val request = Request.Builder()
-            .url("${'$'}{ApiConfig.BASE_URL}/api/community/posts/${'$'}postId/comments")
-            .addHeader("Authorization", "Bearer ${'$'}sessionToken")
+            .url("${ApiConfig.BASE_URL}/api/community/posts/$postId/comments")
+            .addHeader("Authorization", "Bearer $sessionToken")
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
         request(request)

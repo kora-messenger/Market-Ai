@@ -113,7 +113,7 @@ fun FirstAnalysisScreen(
 
         // Personalized greeting, same energy as the reference recording.
         Text(
-            "Okay ${'$'}{firstName.uppercase()},",
+            "Okay ${firstName.uppercase()},",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
