@@ -330,6 +330,20 @@ object ApiClient {
         }
     }
 
+    /** Saves the onboarding questionnaire answers server-side so completion
+     *  survives sign-out / reinstall / new devices. Auth-gated (Bearer token).
+     *  The sign-in response's questionnaireCompleted then routes returning
+     *  users straight to Home — only genuinely-new users see the questionnaire. */
+    suspend fun saveQuestionnaire(sessionToken: String, answers: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("answers", answers)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/profile/questionnaire")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Always-live multi-asset watchlist (Futures/Forex/Crypto) — real feeds, no auth needed. */
     suspend fun fetchMarketsWatchlist(): JSONArray = withContext(Dispatchers.IO) {
         val request = Request.Builder()

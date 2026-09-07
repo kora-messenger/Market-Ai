@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,8 +40,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.QuestionnaireAnswers
 import com.veltravia.marketscopeai.data.SessionManager
+import kotlinx.coroutines.launch
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
@@ -72,6 +75,8 @@ private const val MAX_TIMEFRAMES = 3
 @Composable
 fun QuestionnaireScreen(onDone: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
     val user = SessionManager.currentUser(context)
     val firstName = remember(user) {
         (user?.name ?: "trader").trim().split(" ").first().ifBlank { "trader" }
@@ -335,29 +340,49 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                 when (page) {
                     0 -> page = 1
                     1 -> page = 2
-                    else -> {
-                        SessionManager.saveQuestionnaire(
-                            context,
-                            QuestionnaireAnswers(
-                                experience = experience,
-                                goal = goal,
-                                capitalUsd = capital,
-                                assets = assets.toList(),
-                                style = style,
-                                timeframes = timeframes.toList(),
-                                entryCriteria = entryCriteria.trim(),
-                                emotionalStruggles = emotionalStruggles.trim(),
-                                dailyRoutine = dailyRoutine.trim()
-                            )
+                    else -> if (saving) {
+                        // Already persisting to the server — ignore extra taps.
+                    } else {
+                        val answers = QuestionnaireAnswers(
+                            experience = experience,
+                            goal = goal,
+                            capitalUsd = capital,
+                            assets = assets.toList(),
+                            style = style,
+                            timeframes = timeframes.toList(),
+                            entryCriteria = entryCriteria.trim(),
+                            emotionalStruggles = emotionalStruggles.trim(),
+                            dailyRoutine = dailyRoutine.trim()
                         )
-                        onDone()
+                        // Save locally first so this device routes correctly even
+                        // if the network hiccups, then persist to the backend so
+                        // completion survives sign-out / reinstall — sign-in checks
+                        // questionnaireCompleted server-side to skip the onboarding
+                        // questionnaire for returning users.
+                        SessionManager.saveQuestionnaire(context, answers)
+                        val token = SessionManager.sessionToken(context)
+                        if (token.isNullOrBlank()) {
+                            onDone()
+                        } else {
+                            saving = true
+                            scope.launch {
+                                runCatching { ApiClient.saveQuestionnaire(token, answers.toJson()) }
+                                    .onFailure {
+                                        // Local save already succeeded — a transient
+                                        // network failure never blocks onboarding.
+                                        android.util.Log.w("Questionnaire", "Server save failed", it)
+                                    }
+                                saving = false
+                                onDone()
+                            }
+                        }
                     }
                 }
             },
             enabled = when (page) {
                 0 -> page1Valid
                 1 -> page2Valid
-                else -> page3Valid
+                else -> page3Valid && !saving
             },
             modifier = Modifier
                 .fillMaxWidth()

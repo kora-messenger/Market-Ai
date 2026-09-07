@@ -56,7 +56,7 @@ import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 @Composable
-fun WelcomeScreen(onSignedIn: () -> Unit) {
+fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
@@ -133,6 +133,17 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
                                 // upserts the user row.
                                 val verified = ApiClient.authenticateWithGoogle(credential.idToken)
                                 val verifiedUser = verified.optJSONObject("user")
+                                // Server-authoritative onboarding state: the backend knows whether
+                                // this account has ever completed the questionnaire, so a returning
+                                // user (sign out -> sign in, or a fresh reinstall) skips straight to
+                                // Home — only genuinely-new accounts go through the questionnaire.
+                                val alreadyOnboarded = verifiedUser?.optBoolean("questionnaireCompleted", false) ?: false
+                                if (alreadyOnboarded) {
+                                    SessionManager.restoreOnboardedUser(
+                                        context,
+                                        verifiedUser?.optJSONObject("questionnaire")
+                                    )
+                                }
                                 SessionManager.saveSession(
                                     context,
                                     UserSession(
@@ -150,7 +161,7 @@ fun WelcomeScreen(onSignedIn: () -> Unit) {
                                         isPremium = verifiedUser?.optBoolean("isPremium", false) ?: false
                                     )
                                 )
-                                onSignedIn()
+                                onSignedIn(alreadyOnboarded)
                             } catch (e: Exception) {
                                 error = e.message ?: "Login failed. Please try again."
                             } finally {

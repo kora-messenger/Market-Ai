@@ -177,8 +177,13 @@ fun MarketAiApp() {
     ) {
         composable("welcome") {
             WelcomeScreen(
-                onSignedIn = {
-                    navController.navigate("questionnaire") {
+                onSignedIn = { alreadyOnboarded ->
+                    // Server-authoritative routing: a returning user (the backend
+                    // confirms this account already completed the questionnaire)
+                    // lands straight on Home — sign out / sign in never repeats
+                    // onboarding. Only genuinely-new accounts go through the
+                    // questionnaire flow.
+                    navController.navigate(if (alreadyOnboarded) "main" else "questionnaire") {
                         popUpTo("welcome") { inclusive = true }
                     }
                 }

@@ -180,6 +180,29 @@ object SessionManager {
         prefs(context).edit().clear().apply()
     }
 
+    /**
+     * Called right after sign-in when the backend confirms this user has
+     * already completed onboarding (questionnaireCompleted=true). Sign-out
+     * clears every local flag, so we restore them from the server's truth:
+     * questionnaire done + all intro screens marked seen, which makes both
+     * this session and future cold starts land straight on Home. If the
+     * server also has the saved answers (cross-device reinstall), restore
+     * those too so Profile shows the real answers again.
+     */
+    fun restoreOnboardedUser(context: Context, answers: JSONObject?) {
+        val editor = prefs(context).edit()
+            .putBoolean(KEY_QUESTIONNAIRE_DONE, true)
+            .putBoolean(KEY_COMMUNITY_JOINED, true)
+            .putBoolean(KEY_NOTIFICATIONS_PROMPT_SHOWN, true)
+            .putBoolean(KEY_PROJECTION_INTRO_SHOWN, true)
+            .putBoolean(KEY_BROKER_SETUP_SHOWN, true)
+            .putBoolean(KEY_SCREENSHOT_GUIDE_SHOWN, true)
+        if (answers != null && answers.length() > 0) {
+            editor.putString(KEY_QUESTIONNAIRE, answers.toString())
+        }
+        editor.apply()
+    }
+
     fun saveQuestionnaire(context: Context, answers: QuestionnaireAnswers) {
         prefs(context).edit()
             .putString(KEY_QUESTIONNAIRE, answers.toJson().toString())

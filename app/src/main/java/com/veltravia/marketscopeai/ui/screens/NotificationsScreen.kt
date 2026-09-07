@@ -24,6 +24,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import org.json.JSONObject
@@ -64,6 +67,19 @@ fun NotificationsScreen(onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var unread by remember { mutableStateOf(0) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Android 13+ requires POST_NOTIFICATIONS; per the app's design the OS
+    // dialog is only ever launched from an explicit button — here, so that
+    // returning users (who skip the onboarding intro) still have a real way
+    // to enable pushes.
+    var notificationsGranted by remember {
+        mutableStateOf(androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled())
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationsGranted = granted
+        SessionManager.setNotificationsEnabled(context, granted)
+    }
 
     fun load() {
         val token = SessionManager.sessionToken(context)
@@ -118,6 +134,38 @@ fun NotificationsScreen(onBack: () -> Unit) {
                 modifier = Modifier.align(Alignment.Center)
             )
         }
+
+        if (!notificationsGranted) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(AccentCyan.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Turn on notifications so signals and community replies reach you.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.size(8.dp))
+                TextButton(onClick = {
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        // Below Android 13 notifications are granted at install —
+                        // reflect the real state instead of showing a dead dialog.
+                        notificationsGranted = true
+                        SessionManager.setNotificationsEnabled(context, true)
+                    }
+                }) {
+                    Text("Turn on", fontWeight = FontWeight.Bold, color = AccentCyan)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
 
         when {
             rows == null && error == null -> Box(Modifier.fillMaxSize(), Alignment.Center) {

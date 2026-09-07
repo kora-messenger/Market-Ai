@@ -98,6 +98,16 @@ const pool = process.env.DATABASE_URL
 
 async function initDb() {
   if (!pool) return;
+  // One-time migration: when questionnaire_completed_at is being introduced,
+  // every user who already signed up has, by construction, gone through the
+  // mandatory onboarding questionnaire (the app cannot reach the main tabs
+  // without completing it) — so backfill them as completed. Brand-new users
+  // start with NULL and only get a completed_at once they actually save.
+  const preCheck = await pool.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'users' AND column_name = 'questionnaire_completed_at'`
+  );
+  const introducingQuestionnaire = preCheck.rowCount === 0;
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -122,6 +132,16 @@ async function initDb() {
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ NOT NULL DEFAULT now();
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expired_email_sent_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire JSONB;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire_completed_at TIMESTAMPTZ;
+  `);
+  if (introducingQuestionnaire) {
+    await pool.query(
+      `UPDATE users SET questionnaire_completed_at = created_at WHERE questionnaire_completed_at IS NULL`
+    );
+    console.log("[db] questionnaire columns added; existing users backfilled as completed");
+  }
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS subscription_payments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id),
@@ -360,10 +380,12 @@ app.post("/api/auth/google", async (req, res) => {
          ON CONFLICT (google_sub)
          DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, picture = EXCLUDED.picture
          RETURNING id, google_sub, email, name, picture, community_joined, community_joined_at,
-                   trial_started_at, is_premium, (xmax = 0) AS inserted_new`,
+                   trial_started_at, is_premium, questionnaire, questionnaire_completed_at,
+                   (xmax = 0) AS inserted_new`,
         [payload.sub, user.email, user.name, user.picture]
       );
       const isNewUser = Boolean(rows[0].inserted_new);
+      const questionnaireCompleted = rows[0].questionnaire_completed_at != null;
       user = {
         id: rows[0].id,
         googleSub: rows[0].google_sub,
@@ -372,6 +394,9 @@ app.post("/api/auth/google", async (req, res) => {
         picture: rows[0].picture,
         communityJoined: rows[0].community_joined,
         communityJoinedAt: rows[0].community_joined_at,
+        questionnaireCompleted,
+        questionnaire: questionnaireCompleted ? rows[0].questionnaire : null,
+        isNewUser,
         ...trialInfo(rows[0])
       };
     }
@@ -402,6 +427,36 @@ app.post("/api/auth/google", async (req, res) => {
       error: "Google token verification failed",
       reason: err && err.message ? String(err.message) : "unknown"
     });
+  }
+});
+
+// --- Trading profile (questionnaire) -----------------------------------
+// Saves the onboarding questionnaire server-side so completion survives
+// sign-out / reinstall / new devices. The app uses questionnaireCompleted
+// from the sign-in response to route: completed users go straight to Home;
+// only genuinely-new users go through the questionnaire flow.
+app.post("/api/profile/questionnaire", requireAuth, async (req, res) => {
+  const answers = req.body && req.body.answers;
+  if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+    return res.status(400).json({ error: "answers object is required" });
+  }
+  if (!pool) return res.status(503).json({ error: "Database is not available." });
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET questionnaire = $1, questionnaire_completed_at = now()
+       WHERE google_sub = $2
+       RETURNING questionnaire, questionnaire_completed_at`,
+      [JSON.stringify(answers), req.session.sub]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "User not found." });
+    return res.json({
+      questionnaire: rows[0].questionnaire,
+      questionnaireCompletedAt: rows[0].questionnaire_completed_at
+    });
+  } catch (err) {
+    console.error("[profile/questionnaire] error:", String(err.message || err));
+    return res.status(500).json({ error: "Could not save your trading profile." });
   }
 });
 
