@@ -51,6 +51,9 @@ object ApiClient {
      */
     class TrialExpiredException(message: String) : Exception(message)
 
+    /** Thrown when a free-tier user exhausts the daily chart-analysis allowance. */
+    class DailyLimitException(message: String) : Exception(message)
+
     suspend fun analyze(
         sessionToken: String,
         instrumentId: String,
@@ -74,6 +77,11 @@ object ApiClient {
             if (response.code == 402 && json.optBoolean("trialExpired", false)) {
                 throw TrialExpiredException(
                     json.optString("error", "Your free trial has ended.")
+                )
+            }
+            if (response.code == 429 && json.optBoolean("dailyLimitReached", false)) {
+                throw DailyLimitException(
+                    json.optString("error", "You've used all free analyses for today.")
                 )
             }
             if (!response.isSuccessful) {
@@ -476,7 +484,7 @@ object ApiClient {
     }
 
     /** The daily signals feed (entitled users only — 402 MarketAiException when locked). */
-    suspend fun fetchDailySignals(sessionToken: String, limit: Int = 50): JSONArray = withContext(Dispatchers.IO) {
+    suspend fun fetchDailySignalsFeed(sessionToken: String, limit: Int = 50): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/daily-signals?limit=$limit")
             .addHeader("Authorization", "Bearer $sessionToken")
@@ -490,7 +498,10 @@ object ApiClient {
                     json.optString("error", "Could not load daily signals (${response.code})")
                 )
             }
-            json.optJSONArray("signals") ?: JSONArray()
+            // { signals: [...], locked: bool, premiumSignalCount: int } — the
+            // free tier gets the latest signal + the lock state so the app can
+            // render an honest upgrade card instead of a blank wall.
+            json
         }
     }
 

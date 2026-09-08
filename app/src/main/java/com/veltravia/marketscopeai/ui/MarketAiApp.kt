@@ -339,7 +339,8 @@ fun MarketAiApp() {
                     navController.navigate("signal/${analysisId}") {
                         popUpTo("main")
                     }
-                }
+                },
+                onUpgradeRequired = { navController.navigate("subscribe") }
             )
         }
         composable("signal/{analysisId}") { entry ->

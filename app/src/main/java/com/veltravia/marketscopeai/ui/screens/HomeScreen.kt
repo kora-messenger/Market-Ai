@@ -110,6 +110,8 @@ fun HomeScreen(
     var memberCount by remember { mutableStateOf<Int?>(null) }
     var trialDaysRemaining by remember { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
     var isPremium by remember { mutableStateOf(SessionManager.isPremium(context)) }
+    // Free-tier allowance after the trial lapses: 3 chart analyses per day.
+    var analysesLeftToday by remember { mutableStateOf<Int?>(null) }
     val communityJoined = remember { SessionManager.communityJoined(context) }
 
     LaunchedEffect(Unit) {
@@ -127,6 +129,12 @@ fun HomeScreen(
                 SessionManager.updateTrialState(context, active, days, premium)
                 trialDaysRemaining = days
                 isPremium = premium
+                // Real remaining allowance from the server (only for lapsed
+                // free users — premium/trial responses report unlimited).
+                val usage = status.optJSONObject("analysisUsage")
+                if (usage != null && !usage.optBoolean("unlimited", true)) {
+                    analysesLeftToday = usage.optInt("remaining", 3)
+                }
             }
         }
     }
@@ -316,14 +324,24 @@ fun HomeScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    if (isPremium) "Active" else "$trialDaysRemaining day${if (trialDaysRemaining == 1) "" else "s"} left",
+                    when {
+                        isPremium -> "Active"
+                        trialDaysRemaining > 0 -> "$trialDaysRemaining day${if (trialDaysRemaining == 1) "" else "s"} left"
+                        else -> "Free plan"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    if (isPremium) "Enjoy unlimited access" else "View your plan in Profile",
+                    when {
+                        isPremium -> "Enjoy unlimited access"
+                        trialDaysRemaining > 0 -> "View your plan in Profile"
+                        analysesLeftToday != null ->
+                            "3 chart analyses a day — $analysesLeftToday left today"
+                        else -> "3 free chart analyses a day"
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = TextMuted
                 )

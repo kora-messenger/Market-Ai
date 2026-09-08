@@ -282,6 +282,10 @@ fun FirstAnalysisScreen(
                         loading = false
                         error = e.message ?: "Your free trial has ended."
                         onTrialExpired()
+                    } catch (e: ApiClient.DailyLimitException) {
+                        loading = false
+                        error = e.message
+                        onTrialExpired()
                     } catch (e: Exception) {
                         loading = false
                         error = e.message ?: "Analysis failed"

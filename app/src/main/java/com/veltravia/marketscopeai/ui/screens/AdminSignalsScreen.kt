@@ -98,7 +98,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
     LaunchedEffect(reloadKey) {
         val token = SessionManager.sessionToken(context) ?: return@LaunchedEffect
         try {
-            feed = ApiClient.fetchDailySignals(token, 100)
+            feed = ApiClient.fetchDailySignalsFeed(token, 100).optJSONArray("signals") ?: org.json.JSONArray()
             feedError = null
         } catch (e: Exception) {
             feedError = e.message ?: "Could not load signals"

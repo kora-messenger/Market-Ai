@@ -79,6 +79,10 @@ fun SignalsScreen(
     var stats by remember { mutableStateOf<JSONObject?>(null) }
     var access by remember { mutableStateOf<JSONObject?>(null) }
     var signals by remember { mutableStateOf<JSONArray?>(null) }
+    // Free-tier feed state: locked=true means "latest signal only, the rest
+    // is premium" — the backend returns the lock state with the feed.
+    var feedLocked by remember { mutableStateOf(false) }
+    var premiumSignalCount by remember { mutableStateOf(0) }
     var feedError by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
 
@@ -98,9 +102,11 @@ fun SignalsScreen(
         }
         try {
             access = ApiClient.fetchSignalAccess(token)
-            val entitled = access?.optBoolean("entitled", false) == true
+            val feed = ApiClient.fetchDailySignalsFeed(token, 50)
             feedError = null
-            signals = if (entitled) ApiClient.fetchDailySignals(token, 50) else null
+            feedLocked = feed.optBoolean("locked", false)
+            premiumSignalCount = feed.optInt("premiumSignalCount", 0)
+            signals = feed.optJSONArray("signals") ?: org.json.JSONArray()
         } catch (e: Exception) {
             feedError = e.message ?: "Could not load signals"
             signals = null
@@ -115,7 +121,7 @@ fun SignalsScreen(
     // A feedError (e.g. not signed in) always breaks out of the skeleton
     // immediately instead of spinning forever waiting on access/signals
     // that will never arrive.
-    val showSkeleton = feedError == null && (stats == null || access == null || (entitled && signals == null))
+    val showSkeleton = feedError == null && (stats == null || access == null || signals == null)
 
     Column(
         modifier = Modifier
@@ -168,7 +174,7 @@ fun SignalsScreen(
 
             // --- Feed or locked card ---
             when {
-                entitled -> {
+                entitled || feedLocked -> {
                     Text("Live trades", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Spacer(Modifier.height(12.dp))
                     val feed = signals
@@ -192,6 +198,12 @@ fun SignalsScreen(
                             style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
                             color = TextMuted
                         )
+                        if (feedLocked) {
+                            Spacer(Modifier.height(14.dp))
+                            LockedSignalsCard(
+                                historyCount = premiumSignalCount
+                            )
+                        }
                     }
                 }
                 feedError != null && access == null -> {
@@ -422,7 +434,7 @@ private fun StatusBadge(status: String, outcome: String) {
 }
 
 @Composable
-private fun LockedSignalsCard() {
+private fun LockedSignalsCard(historyCount: Int = 0) {
     var showDialog by remember { mutableStateOf(false) }
     if (showDialog) {
         androidx.compose.material3.AlertDialog(
@@ -475,6 +487,14 @@ private fun LockedSignalsCard() {
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )
+        if (historyCount > 1) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "You're seeing the latest call above — $historyCount published signals with full outcome history are waiting inside.",
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+        }
         Spacer(Modifier.height(16.dp))
         Box(
             modifier = Modifier

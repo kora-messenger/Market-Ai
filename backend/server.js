@@ -281,6 +281,20 @@ async function initDb() {
 
 const TRIAL_DAYS = 7;
 
+// Free-tier chart-analysis allowance per rolling 24h once the 7-day trial
+// has lapsed. Premium (and active-trial) users are unlimited.
+const FREE_ANALYSES_PER_DAY = 3;
+
+async function analysisUsage(userId) {
+  const { rows } = await pool.query(
+    `SELECT count(*)::int AS used FROM analyses
+     WHERE user_id = $1 AND created_at > now() - interval '24 hours'`,
+    [userId]
+  );
+  const used = rows[0].used;
+  return { used, limit: FREE_ANALYSES_PER_DAY, remaining: Math.max(0, FREE_ANALYSES_PER_DAY - used) };
+}
+
 function trialInfo(row) {
   const startedAt = new Date(row.trial_started_at);
   const endsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
@@ -794,7 +808,12 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
     if (!rows.length) {
       return res.status(404).json({ error: "User not found" });
     }
-    return res.json(trialInfo(rows[0]));
+    const trial = trialInfo(rows[0]);
+    if (trial.trialActive || rows[0].is_premium) {
+      return res.json({ ...trial, analysisUsage: { used: null, limit: null, remaining: null, unlimited: true } });
+    }
+    const usage = await analysisUsage(rows[0].id);
+    return res.json({ ...trial, analysisUsage: { ...usage, unlimited: false } });
   } catch (err) {
     return res.status(500).json({ error: "Could not load trial status", detail: String(err.message || err) });
   }
@@ -871,12 +890,19 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   }
 
   const trial = trialInfo(userRow);
-  if (!trial.trialActive) {
-    return res.status(402).json({
-      error: "Your 7-day free trial has ended. Premium plans are coming soon \u2014 stay tuned!",
-      trialExpired: true,
-      ...trial
-    });
+  const premium = Boolean(userRow.is_premium);
+  if (!trial.trialActive && !premium) {
+    // Trial lapsed without a subscription: the free tier keeps the core
+    // feature alive at 3 analyses per rolling 24h — the upgrade pressure
+    // comes from wanting more, never from a dead app.
+    const usage = await analysisUsage(userRow.id);
+    if (usage.used >= usage.limit) {
+      return res.status(429).json({
+        error: `You've used all ${usage.limit} free chart analyses for today. Premium gives you unlimited analyses plus the full signal history.`,
+        dailyLimitReached: true,
+        ...usage
+      });
+    }
   }
 
   // --- Stage 1: verify the CURRENT live market for this instrument ---
@@ -1312,19 +1338,24 @@ app.get("/api/daily-signals", requireAuth, async (req, res) => {
     const trial = trialInfo(userRows[0]);
     const admin = await isAdminRequest(req);
     const entitled = trial.trialActive || userRows[0].is_premium || admin;
-    if (!entitled) {
-      return res.status(402).json({
-        error: "Daily Signals is part of MarketScope AI Premium. Your free trial has ended.",
-        locked: true,
-        trialExpired: true
-      });
-    }
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const { rows } = await pool.query(
       `SELECT * FROM daily_signals ORDER BY published_at DESC LIMIT $1`,
       [limit]
     );
-    res.json({ signals: rows.map(signalToApi) });
+    if (!entitled) {
+      // Free tier: a real taste of the feed — the latest signal only —
+      // plus an honest count of how much more is behind the paywall.
+      const { rows: totalRows } = await pool.query(
+        `SELECT count(*)::int AS c FROM daily_signals`
+      );
+      return res.json({
+        signals: rows.slice(0, 1).map(signalToApi),
+        locked: true,
+        premiumSignalCount: totalRows[0].c
+      });
+    }
+    res.json({ signals: rows.map(signalToApi), locked: false });
   } catch (err) {
     res.status(500).json({ error: "Could not load signals", detail: String(err.message || err) });
   }

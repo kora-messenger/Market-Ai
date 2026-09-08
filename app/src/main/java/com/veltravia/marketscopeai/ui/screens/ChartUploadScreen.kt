@@ -68,7 +68,9 @@ import kotlinx.coroutines.launch
 fun ChartUploadScreen(
     instrumentId: String,
     onBack: () -> Unit,
-    onAnalysisComplete: (String) -> Unit
+    onAnalysisComplete: (String) -> Unit,
+    // Free tier exhausted its daily analyses (429) — offer the real upgrade path.
+    onUpgradeRequired: () -> Unit = {}
 ) {
     val instrument = remember(instrumentId) { InstrumentCatalog.byId(instrumentId) }
     val context = LocalContext.current
@@ -192,6 +194,10 @@ fun ChartUploadScreen(
                     } catch (e: ApiClient.TrialExpiredException) {
                         loading = false
                         error = e.message ?: "Your free trial has ended."
+                    } catch (e: ApiClient.DailyLimitException) {
+                        loading = false
+                        error = e.message
+                        onUpgradeRequired()
                     } catch (e: Exception) {
                         loading = false
                         error = e.message ?: "Analysis failed"
