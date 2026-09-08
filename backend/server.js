@@ -802,7 +802,7 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
