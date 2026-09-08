@@ -200,6 +200,28 @@ async function initDb() {
       body TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE signal_comments ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT true;
+    CREATE TABLE IF NOT EXISTS signal_comment_images (
+      comment_id UUID PRIMARY KEY REFERENCES signal_comments(id) ON DELETE CASCADE,
+      content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      data_base64 TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS signal_comment_reactions (
+      comment_id UUID REFERENCES signal_comments(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (comment_id, user_id, emoji)
+    );
+    CREATE TABLE IF NOT EXISTS signal_updates (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
+      parent_id UUID REFERENCES signal_updates(id) ON DELETE CASCADE,
+      author_name TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS trade_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id),
@@ -1894,44 +1916,266 @@ app.post("/api/daily-signals/:id/save", requireAuth, async (req, res) => {
   }
 });
 
-/** Flat comment list on a daily signal, oldest first. */
+// Reaction set for signal comments — separate from the 5 signal-level
+// reactions above; these sit under each individual trader comment.
+const SIGNAL_COMMENT_REACTION_EMOJIS = ["\u2764\uFE0F", "\u{1F602}", "\u{1F680}", "\u{1F44D}"]; // ❤️ 😂 🚀 👍
+
+/**
+ * Comment list on a daily signal, oldest first, with real per-comment
+ * reaction rollups and image attachment flags. Comments with a pending
+ * (unapproved) image are hidden from everyone except their author and the
+ * admin — genuine moderation, not a cosmetic label. Text-only comments are
+ * never gated.
+ */
 app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
   try {
+    const me = await currentUser(req);
+    const admin = await isAdminRequest(req);
     const { rows } = await pool.query(
-      `SELECT id, author_name, body, created_at FROM signal_comments
-       WHERE signal_id = $1::uuid ORDER BY created_at ASC LIMIT 200`,
+      `SELECT c.id, c.user_id, c.author_name, c.body, c.approved, c.created_at,
+              EXISTS(SELECT 1 FROM signal_comment_images i WHERE i.comment_id = c.id) AS has_image
+       FROM signal_comments c
+       WHERE c.signal_id = $1::uuid ORDER BY c.created_at ASC LIMIT 200`,
       [req.params.id]
     );
+    const visible = rows.filter((r) => r.approved || admin || (me && r.user_id === me.id));
+    const ids = visible.map((r) => r.id);
+    let reactionsByComment = {};
+    if (ids.length) {
+      const { rows: reactionRows } = await pool.query(
+        `SELECT comment_id, emoji, count(*)::int AS c, bool_or(user_id = $2::uuid) AS mine
+         FROM signal_comment_reactions WHERE comment_id = ANY($1::uuid[]) GROUP BY comment_id, emoji`,
+        [ids, me ? me.id : "00000000-0000-0000-0000-000000000000"]
+      );
+      for (const rr of reactionRows) {
+        (reactionsByComment[rr.comment_id] = reactionsByComment[rr.comment_id] || []).push(rr);
+      }
+    }
     res.json({
-      comments: rows.map((r) => ({ id: r.id, authorName: r.author_name, body: r.body, createdAt: r.created_at }))
+      comments: visible.map((r) => ({
+        id: r.id,
+        authorName: r.author_name,
+        body: r.body,
+        createdAt: r.created_at,
+        hasImage: r.has_image,
+        pendingReview: !r.approved,
+        isMine: !!(me && r.user_id === me.id),
+        reactions: SIGNAL_COMMENT_REACTION_EMOJIS.map((emoji) => {
+          const found = (reactionsByComment[r.id] || []).find((x) => x.emoji === emoji);
+          return { emoji, count: found ? found.c : 0, mine: found ? found.mine : false };
+        })
+      }))
     });
   } catch (err) {
     res.status(500).json({ error: "Could not load comments", detail: String(err.message || err) });
   }
 });
 
-/** Post a comment on a daily signal. */
+/** Post a comment on a daily signal, optionally with one attached image (a trade screenshot). Images require admin review before they're visible to other traders. */
 app.post("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
   const body = String((req.body || {}).body || "").trim();
   if (!body) return res.status(400).json({ error: "Comment body is required" });
+  if (body.length > 1000) return res.status(400).json({ error: "Comments are limited to 1000 characters." });
+  const imageDataUrl = (req.body || {}).image ? String((req.body || {}).image) : null;
+  if (imageDataUrl) {
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(imageDataUrl)) {
+      return res.status(400).json({ error: "Images must be png/jpeg/webp data URLs." });
+    }
+    const b64 = imageDataUrl.split(",")[1] || "";
+    if (b64.length > 4_000_000) {
+      return res.status(400).json({ error: "The image must be under 3MB." });
+    }
+  }
   try {
     const me = await currentUser(req);
     if (!me) return res.status(404).json({ error: "User not found" });
     const { rows: signalRows } = await pool.query(`SELECT id FROM daily_signals WHERE id = $1::uuid`, [req.params.id]);
     if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
+    const approved = !imageDataUrl; // text-only comments post instantly; screenshots wait for review
     const { rows } = await pool.query(
-      `INSERT INTO signal_comments (signal_id, user_id, author_name, author_email, body)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5) RETURNING id, author_name, body, created_at`,
-      [req.params.id, me.id, me.name, me.email, body.slice(0, 1000)]
+      `INSERT INTO signal_comments (signal_id, user_id, author_name, author_email, body, approved)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6) RETURNING id, author_name, body, created_at, approved`,
+      [req.params.id, me.id, me.name, me.email, body.slice(0, 1000), approved]
     );
     const c = rows[0];
-    res.status(201).json({ comment: { id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at } });
+    if (imageDataUrl) {
+      const m = imageDataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,/);
+      await pool.query(
+        `INSERT INTO signal_comment_images (comment_id, content_type, data_base64) VALUES ($1::uuid, $2, $3)`,
+        [c.id, m ? m[1] : "image/jpeg", imageDataUrl.split(",")[1] || ""]
+      );
+    }
+    res.status(201).json({
+      comment: {
+        id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at,
+        hasImage: !!imageDataUrl, pendingReview: !c.approved, isMine: true,
+        reactions: SIGNAL_COMMENT_REACTION_EMOJIS.map((emoji) => ({ emoji, count: 0, mine: false }))
+      }
+    });
   } catch (err) {
     res.status(500).json({ error: "Could not post comment", detail: String(err.message || err) });
+  }
+});
+
+/** Streams a signal comment's attached image. Pending (unapproved) images are only visible to their author or the admin. */
+app.get("/api/daily-signals/comments/:commentId/image", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    const admin = await isAdminRequest(req);
+    const { rows } = await pool.query(
+      `SELECT c.user_id, c.approved, i.content_type, i.data_base64
+       FROM signal_comments c JOIN signal_comment_images i ON i.comment_id = c.id
+       WHERE c.id = $1::uuid`,
+      [req.params.commentId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Image not found" });
+    const row = rows[0];
+    if (!row.approved && !admin && !(me && row.user_id === me.id)) {
+      return res.status(403).json({ error: "This image is awaiting review." });
+    }
+    const buf = Buffer.from(row.data_base64, "base64");
+    res.setHeader("Content-Type", row.content_type);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(buf);
+  } catch (err) {
+    res.status(500).json({ error: "Could not load image", detail: String(err.message || err) });
+  }
+});
+
+/** Toggle one of the 4 fixed reaction emoji on a signal comment for the signed-in user. */
+app.post("/api/daily-signals/comments/:commentId/react", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const emoji = String((req.body || {}).emoji || "");
+  if (!SIGNAL_COMMENT_REACTION_EMOJIS.includes(emoji)) {
+    return res.status(400).json({ error: "That reaction is not supported." });
+  }
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const { rows: existing } = await pool.query(
+      `SELECT 1 FROM signal_comment_reactions WHERE comment_id = $1::uuid AND user_id = $2::uuid AND emoji = $3`,
+      [req.params.commentId, me.id, emoji]
+    );
+    if (existing.length) {
+      await pool.query(
+        `DELETE FROM signal_comment_reactions WHERE comment_id = $1::uuid AND user_id = $2::uuid AND emoji = $3`,
+        [req.params.commentId, me.id, emoji]
+      );
+      return res.json({ mine: false });
+    }
+    await pool.query(
+      `INSERT INTO signal_comment_reactions (comment_id, user_id, emoji) VALUES ($1::uuid, $2::uuid, $3)`,
+      [req.params.commentId, me.id, emoji]
+    );
+    return res.json({ mine: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not update the reaction", detail: String(err.message || err) });
+  }
+});
+
+/**
+ * Live updates on a daily signal — real-time mentor/team commentary while a
+ * trade is being managed ("Apply good risk management" → "Close gold in
+ * profits"), returned as top-level updates each with their reply thread
+ * nested one level deep (matches the reference layout: "Mentor Desk" for
+ * the opening note, "Follow-up" for replies).
+ */
+app.get("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, parent_id, author_name, body, created_at FROM signal_updates
+       WHERE signal_id = $1::uuid ORDER BY created_at ASC LIMIT 200`,
+      [req.params.id]
+    );
+    const byId = {};
+    rows.forEach((r) => { byId[r.id] = { id: r.id, authorName: r.author_name, body: r.body, createdAt: r.created_at, replies: [] }; });
+    const top = [];
+    rows.forEach((r) => {
+      if (r.parent_id && byId[r.parent_id]) byId[r.parent_id].replies.push(byId[r.id]);
+      else top.push(byId[r.id]);
+    });
+    res.json({ updates: top });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load updates", detail: String(err.message || err) });
+  }
+});
+
+/** Post a live update (or a reply/follow-up) on a signal — admin/mentor desk only. */
+app.post("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only the MarketScope AI mentor desk can post live updates." });
+  }
+  const body = String((req.body || {}).body || "").trim();
+  if (!body) return res.status(400).json({ error: "Update body is required" });
+  if (body.length > 500) return res.status(400).json({ error: "Live updates are limited to 500 characters." });
+  const parentId = (req.body || {}).parentId ? String((req.body || {}).parentId) : null;
+  const authorName = String((req.body || {}).authorName || "").trim() || "Mentor Desk";
+  try {
+    const { rows: signalRows } = await pool.query(`SELECT id FROM daily_signals WHERE id = $1::uuid`, [req.params.id]);
+    if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
+    const { rows } = await pool.query(
+      `INSERT INTO signal_updates (signal_id, parent_id, author_name, body)
+       VALUES ($1::uuid, $2::uuid, $3, $4) RETURNING id, parent_id, author_name, body, created_at`,
+      [req.params.id, parentId, authorName, body.slice(0, 500)]
+    );
+    const u = rows[0];
+    res.status(201).json({ update: { id: u.id, authorName: u.author_name, body: u.body, createdAt: u.created_at, replies: [] } });
+  } catch (err) {
+    res.status(500).json({ error: "Could not post the update", detail: String(err.message || err) });
+  }
+});
+
+/** Admin: list pending (unapproved) signal-comment screenshots awaiting review. */
+app.get("/api/admin/signal-comments/pending", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Admin only." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.id, c.signal_id, c.author_name, c.body, c.created_at, s.instrument_display
+       FROM signal_comments c JOIN daily_signals s ON s.id = c.signal_id
+       WHERE c.approved = false ORDER BY c.created_at ASC LIMIT 50`
+    );
+    res.json({
+      pending: rows.map((r) => ({
+        id: r.id, signalId: r.signal_id, instrument: r.instrument_display,
+        authorName: r.author_name, body: r.body, createdAt: r.created_at
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load pending comments", detail: String(err.message || err) });
+  }
+});
+
+/** Admin: approve a pending signal-comment screenshot, making it visible to everyone. */
+app.post("/api/admin/signal-comments/:id/approve", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Admin only." });
+  try {
+    await pool.query(`UPDATE signal_comments SET approved = true WHERE id = $1::uuid`, [req.params.id]);
+    res.json({ approved: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not approve comment", detail: String(err.message || err) });
+  }
+});
+
+/** Admin: reject and delete a pending signal-comment screenshot. */
+app.post("/api/admin/signal-comments/:id/reject", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Admin only." });
+  try {
+    await pool.query(`DELETE FROM signal_comments WHERE id = $1::uuid`, [req.params.id]);
+    res.json({ rejected: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not reject comment", detail: String(err.message || err) });
   }
 });
 

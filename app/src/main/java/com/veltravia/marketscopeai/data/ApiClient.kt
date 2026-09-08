@@ -613,10 +613,11 @@ object ApiClient {
             json.optJSONArray("comments") ?: JSONArray()
         }
 
-    /** Add a comment on a daily signal. Returns { comment: {...} }. */
-    suspend fun addSignalComment(sessionToken: String, signalId: String, body: String): JSONObject =
+    /** Add a comment on a daily signal, optionally with an attached trade screenshot (jpg/png/webp data URL). Image comments stay pending until the mentor desk approves them. */
+    suspend fun addSignalComment(sessionToken: String, signalId: String, body: String, imageDataUrl: String? = null): JSONObject =
         withContext(Dispatchers.IO) {
             val payload = JSONObject().put("body", body)
+            if (imageDataUrl != null) payload.put("image", imageDataUrl)
             val request = Request.Builder()
                 .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/comments")
                 .addHeader("Authorization", "Bearer $sessionToken")
@@ -625,7 +626,82 @@ object ApiClient {
             request(request)
         }
 
-    /** Real OHLC candles for the live Market View chart (Coinbase / Yahoo). */
+    /** Full URL of a comment's attached screenshot — auth'd by the app-wide Coil loader. */
+    fun signalCommentImageUrl(commentId: String): String =
+        "${ApiConfig.BASE_URL}/api/daily-signals/comments/$commentId/image"
+
+    /** Toggle one of the 4 fixed reaction emoji on a signal comment (returns { mine }). */
+    suspend fun reactToSignalComment(sessionToken: String, commentId: String, emoji: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("emoji", emoji)
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/comments/$commentId/react")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Mentor-desk live updates on a signal, each with nested follow-up replies. */
+    suspend fun fetchSignalUpdates(sessionToken: String, signalId: String): JSONArray =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/updates")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            val json = request(request)
+            json.optJSONArray("updates") ?: JSONArray()
+        }
+
+    /** Mentor desk only: post a live update (or a follow-up, with parentId). */
+    suspend fun addSignalUpdate(sessionToken: String, signalId: String, body: String, parentId: String? = null, authorName: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("body", body).put("authorName", authorName)
+            if (parentId != null) payload.put("parentId", parentId)
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/updates")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Admin: pending signal-comment screenshots awaiting review. */
+    suspend fun fetchPendingSignalComments(sessionToken: String): JSONArray =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/admin/signal-comments/pending")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            val json = request(request)
+            json.optJSONArray("pending") ?: JSONArray()
+        }
+
+    /** Admin: approve a pending screenshot comment so everyone can see it. */
+    suspend fun approveSignalComment(sessionToken: String, commentId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/admin/signal-comments/$commentId/approve")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post("{}".toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Admin: reject and delete a pending screenshot comment. */
+    suspend fun rejectSignalComment(sessionToken: String, commentId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/admin/signal-comments/$commentId/reject")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post("{}".toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+        /** Real OHLC candles for the live Market View chart (Coinbase / Yahoo). */
     suspend fun fetchCandles(instrumentId: String, interval: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/markets/candles?id=$instrumentId&interval=$interval")

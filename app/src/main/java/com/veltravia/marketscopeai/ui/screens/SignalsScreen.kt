@@ -198,7 +198,7 @@ fun SignalsScreen(
                         for (i in 0 until feed.length()) {
                             val item = feed.optJSONObject(i) ?: continue
                             androidx.compose.runtime.key(item.optString("id", "$i")) {
-                                DailySignalCard(item)
+                                DailySignalCard(item, isAdmin = isAdmin)
                             }
                             Spacer(Modifier.height(14.dp))
                         }
@@ -332,7 +332,7 @@ private fun StatChip(label: String, value: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun DailySignalCard(item: JSONObject) {
+private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val token = remember { SessionManager.sessionToken(context) }
@@ -538,6 +538,7 @@ private fun DailySignalCard(item: JSONObject) {
     if (showComments && id.isNotEmpty()) {
         SignalCommentsSheet(
             signalId = id,
+            isAdmin = isAdmin,
             instrument = instrument,
             onDismiss = { showComments = false },
             onCountChange = { commentCount = it }

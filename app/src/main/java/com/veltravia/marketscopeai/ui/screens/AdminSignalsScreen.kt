@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -80,6 +81,9 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
     var feedError by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
 
+    // pending screenshot-comment moderation queue
+    var pendingComments by remember { mutableStateOf<JSONArray?>(null) }
+
     // form state
     var query by remember { mutableStateOf("") }
     var pickerOpen by remember { mutableStateOf(false) }
@@ -103,6 +107,11 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             feedError = null
         } catch (e: Exception) {
             feedError = e.message ?: "Could not load signals"
+        }
+        try {
+            pendingComments = ApiClient.fetchPendingSignalComments(token)
+        } catch (_: Exception) {
+            pendingComments = null // not admin / offline — section simply stays hidden
         }
     }
 
@@ -131,6 +140,68 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(horizontal = 4.dp)
         )
         Spacer(Modifier.height(16.dp))
+
+        // ---------- pending screenshot-comment reviews ----------
+        if (pendingComments != null && pendingComments!!.length() > 0) {
+            Text("Comment reviews (${pendingComments!!.length()})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GoldAmber)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Trader comments with screenshots stay hidden from everyone else until you approve them.",
+                style = MaterialTheme.typography.bodySmall, color = TextSecondary
+            )
+            Spacer(Modifier.height(8.dp))
+            for (i in 0 until pendingComments!!.length()) {
+                val pc = pendingComments!!.optJSONObject(i) ?: continue
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SurfaceLight)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(pc.optString("authorName"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Spacer(Modifier.width(6.dp))
+                            Text(pc.optString("instrument"), fontSize = 11.sp, color = TextMuted)
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Text(pc.optString("body"), fontSize = 12.sp, color = TextSecondary)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = {
+                        val token = SessionManager.sessionToken(context) ?: return@OutlinedButton
+                        scope.launch {
+                            try {
+                                ApiClient.rejectSignalComment(token, pc.optString("id"))
+                                reloadKey++
+                            } catch (ex: Exception) {
+                                Toast.makeText(context, ex.message ?: "Could not reject", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }, modifier = Modifier.height(32.dp)) {
+                        Text("Reject", fontSize = 11.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = {
+                        val token = SessionManager.sessionToken(context) ?: return@OutlinedButton
+                        scope.launch {
+                            try {
+                                ApiClient.approveSignalComment(token, pc.optString("id"))
+                                reloadKey++
+                            } catch (ex: Exception) {
+                                Toast.makeText(context, ex.message ?: "Could not approve", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }, modifier = Modifier.height(32.dp)) {
+                        Text("Approve", fontSize = 11.sp, color = BullGreen, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+        }
 
         // ---------- publish form ----------
         Text("Publish new signal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
