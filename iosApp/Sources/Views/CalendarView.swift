@@ -102,6 +102,15 @@ struct NewsRow: View {
 
 struct EventRow: View {
     let event: [String: Any]
+    private var timeText: String? {
+        guard let time = event["timestamp"] as? String,
+              let d = ISO8601DateFormatter().date(from: time) else { return nil }
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: d)
+    }
+
     private var impactColor: Color {
         switch event["impact"] as? String ?? "" {
         case "High": return Theme.bearRed
@@ -116,9 +125,8 @@ struct EventRow: View {
                 Text((event["country"] as? String ?? "").uppercased())
                     .font(.system(size: 11, weight: .heavy)).foregroundColor(Theme.textMuted)
                 Spacer()
-                if let time = event["timestamp"] as? String, let d = ISO8601DateFormatter().date(from: time) {
-                    let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
-                    Text(f.string(from: d)).font(.caption).foregroundColor(Theme.textMuted)
+                if let text = timeText {
+                    Text(text).font(.caption).foregroundColor(Theme.textMuted)
                 }
             }
             Text(event["title"] as? String ?? "")

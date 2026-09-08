@@ -23,44 +23,47 @@ enum ApiError: LocalizedError {
 }
 
 enum Api {
-    static func parseDict(_ text: String) throws -> [String: Any] {
-        let data = text.data(using: .utf8) ?? Data()
-        let obj = try JSONSerialization.jsonObject(with: data, options: [])
-        guard let dict = obj as? [String: Any] else { throw ApiError.emptyResponse }
-        return dict
-    }
-
-    static func parseArray(_ text: String) throws -> [[String: Any]] {
-        let data = text.data(using: .utf8) ?? Data()
-        let obj = try JSONSerialization.jsonObject(with: data, options: [])
-        if let arr = obj as? [[String: Any]] { return arr }
-        throw ApiError.emptyResponse
-    }
-
     // ------------------------------------------------------------- wrappers
 
-    private static func raw(
-        _ invoke: @escaping (@escaping (KJsonElement?, Error?) -> Void) -> Void
-    ) async throws -> String {
+    /// A JsonElement's description is its own JSON text (KotlinBase.description
+    /// calls Kotlin's toString()), so each element parses individually.
+    private static func parseElement(_ el: KJsonElement) -> Any? {
+        guard let data = String(describing: el).data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data)
+    }
+
+    private static func objectCall(
+        _ invoke: @escaping (@escaping ([String: KJsonElement]?, Error?) -> Void) -> Void
+    ) async throws -> [String: Any] {
         try await withCheckedThrowingContinuation { cont in
-            invoke { element, error in
+            invoke { dict, error in
                 if let error { cont.resume(throwing: error); return }
-                guard let element else { cont.resume(throwing: ApiError.emptyResponse); return }
-                cont.resume(returning: String(describing: element))
+                guard let dict else { cont.resume(throwing: ApiError.emptyResponse); return }
+                var out: [String: Any] = [:]
+                for (key, value) in dict {
+                    out[key] = parseElement(value) ?? NSNull()
+                }
+                cont.resume(returning: out)
             }
         }
     }
 
-    private static func objectCall(
-        _ invoke: @escaping (@escaping (KJsonElement?, Error?) -> Void) -> Void
-    ) async throws -> [String: Any] {
-        try parseDict(try await raw(invoke))
-    }
-
     private static func arrayCall(
-        _ invoke: @escaping (@escaping (KJsonElement?, Error?) -> Void) -> Void
+        _ invoke: @escaping (@escaping ([KJsonElement]?, Error?) -> Void) -> Void
     ) async throws -> [[String: Any]] {
-        try parseArray(try await raw(invoke))
+        try await withCheckedThrowingContinuation { cont in
+            invoke { arr, error in
+                if let error { cont.resume(throwing: error); return }
+                guard let arr else { cont.resume(throwing: ApiError.emptyResponse); return }
+                var out: [[String: Any]] = []
+                for el in arr {
+                    if let row = parseElement(el) as? [String: Any] {
+                        out.append(row)
+                    }
+                }
+                cont.resume(returning: out)
+            }
+        }
     }
 
     static func authenticate(idToken: String) async throws -> [String: Any] {
