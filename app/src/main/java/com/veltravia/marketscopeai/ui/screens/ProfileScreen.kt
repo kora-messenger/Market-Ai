@@ -33,10 +33,16 @@ import androidx.compose.material.icons.filled.PersonAddAlt
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WorkspacePremium
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -318,45 +324,151 @@ fun ProfileScreen(
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { if (!deleteBusy) showDeleteConfirm = false },
-            title = { Text("Delete your account?") },
-            text = {
-                Text(
-                    "We'll permanently erase your account, trade plans, and analyses within 30 days. " +
-                        "You can cancel this request any time before then from this screen."
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val t = token ?: return@TextButton
-                        scope.launch {
-                            deleteBusy = true
-                            try {
-                                val res = ApiClient.requestAccountDeletion(t)
-                                deletionRequestedAt = res.optString("deletionRequestedAt")
-                                showDeleteConfirm = false
-                            } catch (_: Exception) {
-                                // Leave the dialog open so the user can retry.
-                            }
-                            deleteBusy = false
-                        }
+        DeleteAccountSheet(
+            email = user?.email ?: "",
+            busy = deleteBusy,
+            onDismiss = { if (!deleteBusy) showDeleteConfirm = false },
+            onConfirm = {
+                val t = token ?: return@DeleteAccountSheet
+                scope.launch {
+                    deleteBusy = true
+                    try {
+                        val res = ApiClient.requestAccountDeletion(t)
+                        deletionRequestedAt = res.optString("deletionRequestedAt")
+                        showDeleteConfirm = false
+                    } catch (_: Exception) {
+                        // Leave the sheet open so the user can retry.
                     }
-                ) {
-                    if (deleteBusy) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                    } else {
-                        Text("Delete", color = BearRed)
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }, enabled = !deleteBusy) {
-                    Text("Cancel")
+                    deleteBusy = false
                 }
             }
         )
+    }
+}
+
+/**
+ * Permanent-deletion safety sheet — our own copy and colors (not a reskin),
+ * matching the checkbox + type-your-email confirmation pattern: an explicit
+ * "I understand" checkbox plus retyping the account email before the
+ * destructive action unlocks. Text is honest about our real flow (a
+ * 30-day, cancellable grace period), not FxLens's "can't be undone" claim.
+ */
+@Composable
+private fun DeleteAccountSheet(
+    email: String,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    var understood by remember { mutableStateOf(false) }
+    var typedEmail by remember { mutableStateOf("") }
+    val emailMatches = email.isNotBlank() && typedEmail.trim().equals(email.trim(), ignoreCase = true)
+    val canDelete = understood && emailMatches && !busy
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(enabled = !busy) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable(enabled = false) {} // absorb clicks, don't dismiss
+                .padding(horizontal = 24.dp, vertical = 24.dp)
+        ) {
+            Text(
+                "Permanently delete account?",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "We'll schedule your account, trade plans, and analyses for erasure in 30 days. " +
+                    "You can cancel this request anytime before then from Settings. For safety, " +
+                    "please check the box and type your email to proceed.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            Spacer(Modifier.height(18.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = !busy) { understood = !understood }
+            ) {
+                Checkbox(
+                    checked = understood,
+                    onCheckedChange = { understood = it },
+                    enabled = !busy,
+                    colors = CheckboxDefaults.colors(checkedColor = BearRed)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "I understand this action is permanent.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "Type your email to confirm",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextMuted
+            )
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = typedEmail,
+                onValueChange = { typedEmail = it },
+                placeholder = { Text(email) },
+                singleLine = true,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = BearRed,
+                    unfocusedBorderColor = BorderSubtle,
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
+                ) {
+                    Text("Cancel", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onConfirm,
+                    enabled = canDelete,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = BearRed,
+                        contentColor = Color.White,
+                        disabledContainerColor = BearRed.copy(alpha = 0.35f),
+                        disabledContentColor = Color.White.copy(alpha = 0.7f)
+                    )
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Text("Delete Account", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
 
