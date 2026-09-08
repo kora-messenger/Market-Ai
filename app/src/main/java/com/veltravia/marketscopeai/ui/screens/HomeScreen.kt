@@ -29,7 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Bookmark
@@ -100,7 +100,8 @@ fun HomeScreen(
     onSwitchTab: (Int) -> Unit,
     onOpenRiskCalculator: () -> Unit,
     onOpenNotifications: () -> Unit,
-    onCreateTradePlan: () -> Unit
+    onCreateTradePlan: () -> Unit,
+    onOpenCalendar: () -> Unit
 ) {
     val context = LocalContext.current
     val user = remember { SessionManager.currentUser(context) }
@@ -162,7 +163,7 @@ fun HomeScreen(
     val moreActions = listOf(
         QuickAction("Learning hub", Icons.Filled.School) { comingSoon("Learning hub") },
         QuickAction("Trade Plan", Icons.Filled.Assignment, onCreateTradePlan),
-        QuickAction("Journal", Icons.AutoMirrored.Filled.MenuBook) { comingSoon("Journal") }
+        QuickAction("Calendar", Icons.Filled.CalendarMonth) { onOpenCalendar() }
     )
 
     Column(

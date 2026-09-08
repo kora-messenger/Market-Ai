@@ -368,6 +368,38 @@ object ApiClient {
         }
     }
 
+    /** Public real economic calendar (NFP, CPI, rate decisions, etc.) — no auth needed. */
+    suspend fun fetchEconomicCalendar(): JSONArray = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/calendar/economic")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Could not load the economic calendar (${response.code})"))
+            }
+            json.optJSONArray("events") ?: JSONArray()
+        }
+    }
+
+    /** Public real Forex/Crypto/Stocks news — no auth needed. category: "all"|"forex"|"crypto"|"stocks". */
+    suspend fun fetchMarketNews(category: String = "all", limit: Int = 40): JSONArray = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/calendar/news?category=$category&limit=$limit")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Could not load market news (${response.code})"))
+            }
+            json.optJSONArray("items") ?: JSONArray()
+        }
+    }
+
     /** Public real total of users who have joined the community (no auth needed). */
     suspend fun fetchCommunityStats(): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

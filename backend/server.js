@@ -15,6 +15,7 @@ const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
 const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
 const { fetchWatchlist } = require("./src/markets");
+const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
 
 const app = express();
 
@@ -582,6 +583,29 @@ app.get("/api/markets/watchlist", async (_req, res) => {
     res.json({ rows, fetchedAt: new Date().toISOString() });
   } catch (err) {
     res.status(502).json({ error: "Could not load live market data right now.", detail: String(err.message || err) });
+  }
+});
+
+/** Public, real economic calendar (ForexFactory feed) — NFP, CPI, rate decisions, etc. */
+app.get("/api/calendar/economic", async (_req, res) => {
+  try {
+    const events = await fetchEconomicCalendar();
+    res.json({ events, fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(502).json({ error: "Could not load the economic calendar right now.", detail: String(err.message || err) });
+  }
+});
+
+/** Public, real aggregated Forex/Crypto/Stocks news (Investing.com, Cointelegraph, Yahoo Finance). */
+app.get("/api/calendar/news", async (req, res) => {
+  try {
+    const all = await fetchMarketNews();
+    const category = String(req.query.category || "all").toLowerCase();
+    const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
+    const filtered = category === "all" ? all : all.filter((n) => n.category === category);
+    res.json({ items: filtered.slice(0, limit), fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(502).json({ error: "Could not load market news right now.", detail: String(err.message || err) });
   }
 });
 
