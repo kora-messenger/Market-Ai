@@ -537,7 +537,7 @@ object ApiClient {
         }
     }
 
-    /** Admin: publish a curated daily signal. */
+    /** Admin: publish a curated daily signal. [mode] is "scalp" | "swing" | null. */
     suspend fun publishDailySignal(
         sessionToken: String,
         instrumentId: String,
@@ -546,7 +546,8 @@ object ApiClient {
         stopLoss: Double,
         takeProfits: List<Double>,
         thesis: String?,
-        strength: String
+        strength: String,
+        mode: String? = null
     ): JSONObject = withContext(Dispatchers.IO) {
         val body = JSONObject().apply {
             put("instrumentId", instrumentId)
@@ -556,6 +557,7 @@ object ApiClient {
             put("takeProfits", JSONArray(takeProfits))
             if (!thesis.isNullOrBlank()) put("thesis", thesis)
             put("strength", strength)
+            if (!mode.isNullOrBlank()) put("mode", mode)
         }
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/daily-signals")
@@ -575,6 +577,53 @@ object ApiClient {
             .build()
         request(request)
     }
+
+    /** Toggle one of the 5 fixed reaction emoji on a daily signal. Returns { emoji, active }. */
+    suspend fun reactToSignal(sessionToken: String, signalId: String, emoji: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("emoji", emoji)
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/react")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Toggle bookmarking a daily signal. Returns { saved: bool }. */
+    suspend fun toggleSavedSignal(sessionToken: String, signalId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/save")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post("{}".toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Flat, oldest-first comment list on a daily signal. */
+    suspend fun fetchSignalComments(sessionToken: String, signalId: String): JSONArray =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/comments")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            val json = request(request)
+            json.optJSONArray("comments") ?: JSONArray()
+        }
+
+    /** Add a comment on a daily signal. Returns { comment: {...} }. */
+    suspend fun addSignalComment(sessionToken: String, signalId: String, body: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("body", body)
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/comments")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
 
     /** Deletes a trade plan owned by the signed-in user. */
     suspend fun deleteTradePlan(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {

@@ -20,8 +20,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +58,7 @@ import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.ZoneId
@@ -190,7 +197,9 @@ fun SignalsScreen(
                     } else {
                         for (i in 0 until feed.length()) {
                             val item = feed.optJSONObject(i) ?: continue
-                            DailySignalCard(item)
+                            androidx.compose.runtime.key(item.optString("id", "$i")) {
+                                DailySignalCard(item)
+                            }
                             Spacer(Modifier.height(14.dp))
                         }
                         Text(
@@ -324,28 +333,81 @@ private fun StatChip(label: String, value: String, modifier: Modifier = Modifier
 
 @Composable
 private fun DailySignalCard(item: JSONObject) {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val token = remember { SessionManager.sessionToken(context) }
+
+    val id = item.optString("id", "")
     val instrument = item.optString("instrument", "")
     val direction = item.optString("direction", "long")
     val isLong = direction.equals("long", ignoreCase = true)
     val dirColor = if (isLong) BullGreen else BearRed
-    val dirLabel = if (isLong) "LONG" else "SHORT"
-    val author = item.optString("author", "owner")
-    val authorLabel = if (author == "ai") "AI-Generated" else "MarketScope AI Team"
+    val mode = item.optString("mode", "").takeIf { it.isNotBlank() }
     val entry = item.optDouble("entry", Double.NaN)
     val sl = item.optDouble("stopLoss", Double.NaN)
     val tps = item.optJSONArray("takeProfits")
     val firstTp = if (tps != null && tps.length() > 0) tps.optDouble(0) else Double.NaN
-    val finalTp = if (tps != null && tps.length() > 0) tps.optDouble(tps.length() - 1) else Double.NaN
     val rr = item.optDouble("riskReward", Double.NaN)
     val thesis = item.optString("thesis", "")
     val strength = item.optString("strength", "moderate")
     val status = item.optString("status", "live")
     val outcome = item.optString("outcome", "")
     val lastPrice = item.optDouble("lastPrice", Double.NaN)
-    val strengthColor = when (strength.lowercase()) {
-        "strong" -> BullGreen
-        "weak" -> BearRed
-        else -> GoldAmber
+    val author = item.optString("author", "owner")
+    val authorLabel = if (author == "ai") "AI-Generated" else "MarketScope AI Team"
+    val publishedAt = item.optString("publishedAt", "")
+
+    // Local, optimistic social state — seeded from the feed's rollup, updated
+    // instantly on tap and reconciled with the server response.
+    var reactions by remember(id) {
+        val list = item.optJSONArray("reactions")
+        val map = linkedMapOf<String, Pair<Int, Boolean>>()
+        if (list != null) {
+            for (i in 0 until list.length()) {
+                val r = list.optJSONObject(i) ?: continue
+                map[r.optString("emoji")] = r.optInt("count", 0) to r.optBoolean("mine", false)
+            }
+        }
+        mutableStateOf(map)
+    }
+    var saved by remember(id) { mutableStateOf(item.optBoolean("saved", false)) }
+    var saving by remember(id) { mutableStateOf(false) }
+    var commentCount by remember(id) { mutableStateOf(item.optInt("commentCount", 0)) }
+    var showComments by remember(id) { mutableStateOf(false) }
+    var detailsExpanded by remember(id) { mutableStateOf(false) }
+
+    fun toggleReaction(emoji: String) {
+        if (token == null || id.isEmpty()) return
+        val (count, mine) = reactions[emoji] ?: (0 to false)
+        reactions = reactions.toMutableMap().apply {
+            put(emoji, if (mine) (count - 1).coerceAtLeast(0) to false else count + 1 to true)
+        }
+        scope.launch {
+            try {
+                ApiClient.reactToSignal(token, id, emoji)
+            } catch (_: Exception) {
+                // revert on failure
+                reactions = reactions.toMutableMap().apply { put(emoji, count to mine) }
+            }
+        }
+    }
+
+    fun toggleSave() {
+        if (token == null || id.isEmpty() || saving) return
+        saving = true
+        val prev = saved
+        saved = !saved
+        scope.launch {
+            try {
+                val resp = ApiClient.toggleSavedSignal(token, id)
+                saved = resp.optBoolean("saved", saved)
+            } catch (_: Exception) {
+                saved = prev
+                android.widget.Toast.makeText(context, "Could not update saved state", android.widget.Toast.LENGTH_SHORT).show()
+            } finally {
+                saving = false
+            }
+        }
     }
 
     Column(
@@ -353,86 +415,221 @@ private fun DailySignalCard(item: JSONObject) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(SurfaceLight)
-            .border(1.dp, AccentCyan.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+            .border(1.dp, AccentCyan.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
             .padding(16.dp)
     ) {
+        SignalStatusPill(status, outcome)
+        Spacer(Modifier.height(14.dp))
+
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(instrument, fontWeight = FontWeight.Bold, style = androidx.compose.material3.MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Text(
-                dirLabel,
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(dirColor)
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            )
+            Text(dateTimeLine(publishedAt), fontSize = 12.sp, color = TextMuted)
+            if (mode != null) {
+                Text(mode.replaceFirstChar { it.uppercase() }, fontSize = 12.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+            }
         }
         Spacer(Modifier.height(6.dp))
-        Row {
-            Text(authorLabel, fontSize = 11.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(8.dp))
-            Text("·", fontSize = 11.sp, color = TextMuted)
-            Spacer(Modifier.width(8.dp))
-            Text("$strength conviction", fontSize = 11.sp, color = strengthColor, fontWeight = FontWeight.SemiBold)
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(dirColor)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(instrument, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = TextPrimary)
+            }
+            ConvictionPill(strength)
+        }
+        Spacer(Modifier.height(18.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            LevelCell("Entry", if (!entry.isNaN()) fmt(entry) else "—")
+            LevelCell("SL", if (!sl.isNaN()) fmt(sl) else "—")
+            LevelCell("Initial TP", if (!firstTp.isNaN()) fmt(firstTp) else "—")
+            LevelCell("R:R", if (!rr.isNaN()) "1:${"%.2f".format(rr)}" else "—")
+        }
+        Spacer(Modifier.height(16.dp))
+
+        // --- Reactions ---
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SIGNAL_REACTION_EMOJIS.forEach { emoji ->
+                val (count, mine) = reactions[emoji] ?: (0 to false)
+                ReactionPill(emoji, count, mine) { toggleReaction(emoji) }
+            }
         }
         Spacer(Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MiniStat("Entry", if (!entry.isNaN()) fmt(entry) else "—")
-            MiniStat("SL", if (!sl.isNaN()) fmt(sl) else "—")
-            MiniStat("TP1", if (!firstTp.isNaN()) fmt(firstTp) else "—")
-            MiniStat("Final TP", if (!finalTp.isNaN()) fmt(finalTp) else "—")
-            MiniStat("R:R", if (!rr.isNaN()) "1:$rr" else "—")
-        }
-        if (!lastPrice.isNaN()) {
-            Spacer(Modifier.height(8.dp))
+
+        // --- Save button ---
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White)
+                .border(1.dp, BorderSubtleColor(), RoundedCornerShape(12.dp))
+                .clickable(enabled = !saving) { toggleSave() }
+                .padding(vertical = 11.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                if (saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                contentDescription = null,
+                tint = if (saved) AccentCyan else TextSecondary,
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(Modifier.width(6.dp))
             Text(
-                "Live price: ${fmt(lastPrice)}",
-                fontSize = 11.sp,
-                color = TextMuted
+                if (saving) "Saving…" else if (saved) "Saved" else "Save",
+                color = if (saved) AccentCyan else TextSecondary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp
             )
         }
-        if (thesis.isNotBlank()) {
-            Spacer(Modifier.height(10.dp))
-            Text(thesis, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = TextSecondary)
-        }
         Spacer(Modifier.height(12.dp))
-        StatusBadge(status, outcome)
+
+        // --- Comments + View Details ---
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White)
+                    .border(1.dp, BorderSubtleColor(), RoundedCornerShape(20.dp))
+                    .clickable(enabled = id.isNotEmpty()) { showComments = true }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("$commentCount", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            }
+            Text(
+                if (detailsExpanded) "Hide Details" else "View Details",
+                color = AccentCyan,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                modifier = Modifier.clickable { detailsExpanded = !detailsExpanded }
+            )
+        }
+
+        if (detailsExpanded) {
+            Spacer(Modifier.height(12.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderSubtleColor()))
+            Spacer(Modifier.height(12.dp))
+            Row {
+                Text(authorLabel, fontSize = 11.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                Text("·", fontSize = 11.sp, color = TextMuted)
+                Spacer(Modifier.width(8.dp))
+                Text(if (isLong) "LONG" else "SHORT", fontSize = 11.sp, color = dirColor, fontWeight = FontWeight.SemiBold)
+            }
+            if (thesis.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Text(thesis, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+            if (!lastPrice.isNaN()) {
+                Spacer(Modifier.height(8.dp))
+                Text("Live price: ${fmt(lastPrice)}", fontSize = 11.sp, color = TextMuted)
+            }
+        }
+    }
+
+    if (showComments && id.isNotEmpty()) {
+        SignalCommentsSheet(
+            signalId = id,
+            instrument = instrument,
+            onDismiss = { showComments = false },
+            onCountChange = { commentCount = it }
+        )
     }
 }
 
+/** A single fixed-set reaction pill (👍 🔥 😮 👏 ❓), highlighted when the current user reacted. */
 @Composable
-private fun MiniStat(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 10.sp, color = TextMuted)
-        Spacer(Modifier.height(2.dp))
-        Text(value, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+private fun ReactionPill(emoji: String, count: Int, mine: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (mine) AccentCyan.copy(alpha = 0.14f) else Color.White)
+            .border(1.dp, if (mine) AccentCyan.copy(alpha = 0.4f) else BorderSubtleColor(), RoundedCornerShape(20.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(emoji, fontSize = 14.sp)
+        Spacer(Modifier.width(5.dp))
+        Text("$count", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (mine) AccentCyan else TextSecondary)
     }
 }
 
+/** Dark pill matching the reference's "strong"/"moderate"/"weak" conviction badge. */
 @Composable
-private fun StatusBadge(status: String, outcome: String) {
-    val (bg, fg, label) = when {
-        status == "closed" && outcome == "successful" -> Triple(BullGreen, Color.White, "CLOSED · WIN")
-        status == "closed" && outcome == "invalidated_sl" -> Triple(BearRed, Color.White, "CLOSED · LOSS")
-        status == "closed" && outcome == "expired_partial" -> Triple(GoldAmber, Color.White, "CLOSED · PARTIAL")
-        status == "closed" && outcome == "expired" -> Triple(TextMuted, Color.White, "CLOSED · EXPIRED")
-        status == "closed" && outcome == "breakeven" -> Triple(TextMuted, Color.White, "CLOSED · BREAKEVEN")
-        status == "closed" -> Triple(TextMuted, Color.White, "CLOSED")
-        outcome == "triggered_active" -> Triple(AccentCyan, Color.White, "LIVE · IN PROGRESS")
-        else -> Triple(AccentViolet, Color.White, "LIVE · AWAITING ENTRY")
+private fun ConvictionPill(strength: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(com.veltravia.marketscopeai.ui.theme.DarkInk)
+            .padding(horizontal = 14.dp, vertical = 7.dp)
+    ) {
+        Text(strength.lowercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+    }
+}
+
+/** One cell of the Entry / SL / Initial TP / R:R grid. */
+@Composable
+private fun LevelCell(label: String, value: String) {
+    Column {
+        Text(label, fontSize = 12.sp, color = TextMuted)
+        Spacer(Modifier.height(3.dp))
+        Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+    }
+}
+
+/** Top-left status pill — a light tint + dash/arrow icon, mirroring the reference's amber "— Breakeven" chip. */
+@Composable
+private fun SignalStatusPill(status: String, outcome: String) {
+    val (color, icon, label) = when {
+        status == "closed" && outcome == "successful" -> Triple(BullGreen, "\u25B2", "Win")
+        status == "closed" && outcome == "invalidated_sl" -> Triple(BearRed, "\u25BC", "Loss")
+        status == "closed" && outcome == "expired_partial" -> Triple(GoldAmber, "\u25D0", "Partial")
+        status == "closed" && outcome == "expired" -> Triple(TextMuted, "\u25CB", "Expired")
+        status == "closed" && outcome == "breakeven" -> Triple(GoldAmber, "\u2014", "Breakeven")
+        status == "closed" -> Triple(TextMuted, "\u25CB", "Closed")
+        outcome == "triggered_active" -> Triple(AccentCyan, "\u25CF", "In Progress")
+        else -> Triple(AccentViolet, "\u25CF", "Awaiting Entry")
     }
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(bg)
-            .padding(horizontal = 12.dp, vertical = 5.dp)
+            .background(color.copy(alpha = 0.14f))
+            .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = fg)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, fontSize = 12.sp, color = color, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(6.dp))
+            Text(label, fontSize = 13.sp, color = color, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
+/** A light gray border color that adapts with the theme's border token. */
+@Composable
+private fun BorderSubtleColor(): Color = com.veltravia.marketscopeai.ui.theme.BorderSubtle
+
+/** "Sep 7 · 10:16 AM" in the device's local timezone, from the backend's ISO-8601 publishedAt. */
+private fun dateTimeLine(iso: String): String {
+    if (iso.isBlank()) return ""
+    return try {
+        val instant = java.time.Instant.parse(iso)
+        val zoned = instant.atZone(ZoneId.systemDefault())
+        zoned.format(DateTimeFormatter.ofPattern("MMM d '\u00B7' h:mm a"))
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+private val SIGNAL_REACTION_EMOJIS = listOf("\uD83D\uDC4D", "\uD83D\uDD25", "\uD83D\uDE2E", "\uD83D\uDC4F", "\u2753")
 @Composable
 private fun LockedSignalsCard(historyCount: Int = 0) {
     var showDialog by remember { mutableStateOf(false) }

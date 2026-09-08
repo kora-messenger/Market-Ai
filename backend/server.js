@@ -175,6 +175,29 @@ async function initDb() {
       last_price DOUBLE PRECISION,
       last_price_at TIMESTAMPTZ
     );
+    ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS mode TEXT;
+    CREATE TABLE IF NOT EXISTS signal_reactions (
+      signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (signal_id, user_id, emoji)
+    );
+    CREATE TABLE IF NOT EXISTS signal_saves (
+      signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (signal_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS signal_comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      author_name TEXT NOT NULL,
+      author_email TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS trade_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id),
@@ -1269,13 +1292,17 @@ function isCronRequest(req) {
   return typeof header === "string" && header.length > 20 && header === CRON_SECRET;
 }
 
-function signalToApi(r) {
+const SIGNAL_REACTION_EMOJIS = ["\u{1F44D}", "\u{1F525}", "\u{1F62E}", "\u{1F44F}", "\u{2753}"]; // 👍 🔥 😮 👏 ❓
+
+function signalToApi(r, extra) {
+  const e = extra || {};
   return {
     id: r.id,
     author: r.author,
     instrumentId: r.instrument_id,
     instrument: r.instrument_display,
     direction: r.direction,
+    mode: r.mode || null,
     entry: r.entry,
     stopLoss: r.stop_loss,
     takeProfits: r.take_profits,
@@ -1288,8 +1315,56 @@ function signalToApi(r) {
     closedAt: r.closed_at,
     publishedAt: r.published_at,
     lastPrice: r.last_price,
-    lastPriceAt: r.last_price_at
+    lastPriceAt: r.last_price_at,
+    reactions: e.reactions || SIGNAL_REACTION_EMOJIS.map((emoji) => ({ emoji, count: 0, mine: false })),
+    commentCount: e.commentCount || 0,
+    saved: e.saved || false
   };
+}
+
+/**
+ * Batch-fetches reaction rollups, comment counts and "saved by me" flags for
+ * a set of signal ids in 3 queries total (mirrors the Community feed's
+ * ANY($1::uuid[]) pattern) — avoids an N+1 query per card in the feed.
+ */
+async function signalSocialExtras(signalIds, myUserId) {
+  const extras = {};
+  for (const id of signalIds) {
+    extras[id] = {
+      reactions: SIGNAL_REACTION_EMOJIS.map((emoji) => ({ emoji, count: 0, mine: false })),
+      commentCount: 0,
+      saved: false
+    };
+  }
+  if (!signalIds.length) return extras;
+  const { rows: reactionRows } = await pool.query(
+    `SELECT signal_id, emoji, count(*)::int AS c, bool_or(user_id = $2::uuid) AS mine
+     FROM signal_reactions WHERE signal_id = ANY($1::uuid[]) GROUP BY signal_id, emoji`,
+    [signalIds, myUserId]
+  );
+  for (const row of reactionRows) {
+    const bucket = extras[row.signal_id];
+    if (!bucket) continue;
+    const slot = bucket.reactions.find((r) => r.emoji === row.emoji);
+    if (slot) { slot.count = row.c; slot.mine = row.mine; }
+  }
+  const { rows: commentRows } = await pool.query(
+    `SELECT signal_id, count(*)::int AS c FROM signal_comments WHERE signal_id = ANY($1::uuid[]) GROUP BY signal_id`,
+    [signalIds]
+  );
+  for (const row of commentRows) {
+    if (extras[row.signal_id]) extras[row.signal_id].commentCount = row.c;
+  }
+  if (myUserId) {
+    const { rows: saveRows } = await pool.query(
+      `SELECT signal_id FROM signal_saves WHERE signal_id = ANY($1::uuid[]) AND user_id = $2::uuid`,
+      [signalIds, myUserId]
+    );
+    for (const row of saveRows) {
+      if (extras[row.signal_id]) extras[row.signal_id].saved = true;
+    }
+  }
+  return extras;
 }
 
 const SIGNAL_DAYS = 7 * 24 * 60 * 60 * 1000; // signals older than 7d close automatically
@@ -1355,13 +1430,14 @@ app.get("/api/daily-signals", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const { rows: userRows } = await pool.query(
-      `SELECT trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!userRows.length) return res.status(404).json({ error: "User not found" });
-    const trial = trialInfo(userRows[0]);
+    const me = userRows[0];
+    const trial = trialInfo(me);
     const admin = await isAdminRequest(req);
-    const entitled = trial.trialActive || userRows[0].is_premium || admin;
+    const entitled = trial.trialActive || me.is_premium || admin;
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const { rows } = await pool.query(
       `SELECT * FROM daily_signals ORDER BY published_at DESC LIMIT $1`,
@@ -1373,13 +1449,16 @@ app.get("/api/daily-signals", requireAuth, async (req, res) => {
       const { rows: totalRows } = await pool.query(
         `SELECT count(*)::int AS c FROM daily_signals`
       );
+      const sample = rows.slice(0, 1);
+      const extras = await signalSocialExtras(sample.map((r) => r.id), me.id);
       return res.json({
-        signals: rows.slice(0, 1).map(signalToApi),
+        signals: sample.map((r) => signalToApi(r, extras[r.id])),
         locked: true,
         premiumSignalCount: totalRows[0].c
       });
     }
-    res.json({ signals: rows.map(signalToApi), locked: false });
+    const extras = await signalSocialExtras(rows.map((r) => r.id), me.id);
+    res.json({ signals: rows.map((r) => signalToApi(r, extras[r.id])), locked: false });
   } catch (err) {
     res.status(500).json({ error: "Could not load signals", detail: String(err.message || err) });
   }
@@ -1391,7 +1470,7 @@ app.post("/api/daily-signals", requireAuth, async (req, res) => {
   if (!(await isAdminRequest(req))) {
     return res.status(403).json({ error: "Only the MarketScope AI team can publish daily signals." });
   }
-  const { instrumentId, direction, entry, stopLoss, takeProfits, thesis, strength } = req.body || {};
+  const { instrumentId, direction, entry, stopLoss, takeProfits, thesis, strength, mode } = req.body || {};
   const instrument = byId[(instrumentId || "").toLowerCase()];
   const tps = Array.isArray(takeProfits) ? takeProfits.filter((t) => Number.isFinite(Number(t))).map(Number).sort((a, b) => a - b) : [];
   const entryNum = Number(entry);
@@ -1409,18 +1488,20 @@ app.post("/api/daily-signals", requireAuth, async (req, res) => {
   if (!sidesOk) {
     return res.status(400).json({ error: "Stop loss must sit on the losing side of entry and every take profit on the winning side" });
   }
+  const modeLc = ["scalp", "swing"].includes(String(mode).toLowerCase()) ? String(mode).toLowerCase() : null;
   try {
     const rr = tps.length ? Number((Math.abs(tps[tps.length - 1] - entryNum) / Math.abs(entryNum - slNum)).toFixed(2)) : null;
     const { rows } = await pool.query(
       `INSERT INTO daily_signals
-         (author, instrument_id, instrument_display, direction, entry, stop_loss, take_profits, risk_reward, thesis, strength, status)
-       VALUES ('owner', $1, $2, $3, $4, $5, $6, $7, $8, $9, 'live')
+         (author, instrument_id, instrument_display, direction, entry, stop_loss, take_profits, risk_reward, thesis, strength, status, mode)
+       VALUES ('owner', $1, $2, $3, $4, $5, $6, $7, $8, $9, 'live', $10)
        RETURNING *`,
       [
         instrument.id, instrument.display, String(direction).toLowerCase(),
         entryNum, slNum, JSON.stringify(tps), rr,
         thesis ? String(thesis).slice(0, 2000) : null,
-        ["strong", "moderate", "weak"].includes(String(strength).toLowerCase()) ? String(strength).toLowerCase() : "moderate"
+        ["strong", "moderate", "weak"].includes(String(strength).toLowerCase()) ? String(strength).toLowerCase() : "moderate",
+        modeLc
       ]
     );
     res.status(201).json(signalToApi(rows[0]));
@@ -1434,13 +1515,14 @@ const DAILY_SIGNAL_SYSTEM_PROMPT = `You are the senior market analyst behind Mar
 {
   "instrumentId": "one of the provided ids",
   "direction": "long" | "short",
+  "mode": "scalp" | "swing",
   "entry": number,
   "stopLoss": number,
   "takeProfits": [number, number, number],
   "thesis": "2-3 sentences grounded in the price action shown (structure, momentum, key levels). No generic filler.",
   "strength": "strong" | "moderate" | "weak"
 }
-Rules: entry must sit within a few percent of the latest close; stop loss must be on the wrong side of entry (below for long, above for short); every take profit must be on the profitable side, ordered nearest first; risk:reward to the final target should be at least 1.5. If nothing qualifies, set strength "weak" and pick the least-bad setup anyway — never invent prices outside the data range shown.`;
+Rules: entry must sit within a few percent of the latest close; stop loss must be on the wrong side of entry (below for long, above for short); every take profit must be on the profitable side, ordered nearest first; risk:reward to the final target should be at least 1.5. "mode" reflects the real nature of the setup: "scalp" for a tight stop targeting a quick move (intraday), "swing" for a wider stop held over multiple days. If nothing qualifies, set strength "weak" and pick the least-bad setup anyway — never invent prices outside the data range shown.`;
 
 /** AI-generated daily call (cron or admin). Runs at most once per UTC day. */
 app.post("/api/daily-signals/auto", async (req, res) => {
@@ -1523,15 +1605,17 @@ app.post("/api/daily-signals/auto", async (req, res) => {
       return res.status(502).json({ error: "Model returned an invalid signal (SL/TP on wrong sides)", raw: signal });
     }
     const rr = tps.length ? Number((Math.abs(tps[tps.length - 1] - entryNum) / Math.abs(entryNum - slNum)).toFixed(2)) : null;
+    const aiMode = ["scalp", "swing"].includes(String(signal.mode).toLowerCase()) ? String(signal.mode).toLowerCase() : null;
     const { rows } = await pool.query(
       `INSERT INTO daily_signals
-         (author, instrument_id, instrument_display, direction, entry, stop_loss, take_profits, risk_reward, thesis, strength, status)
-       VALUES ('ai', $1, $2, $3, $4, $5, $6, $7, $8, $9, 'live')
+         (author, instrument_id, instrument_display, direction, entry, stop_loss, take_profits, risk_reward, thesis, strength, status, mode)
+       VALUES ('ai', $1, $2, $3, $4, $5, $6, $7, $8, $9, 'live', $10)
        RETURNING *`,
       [
         inst.id, inst.display, dir, entryNum, slNum, JSON.stringify(tps), rr,
         signal.thesis ? String(signal.thesis).slice(0, 2000) : null,
-        ["strong", "moderate", "weak"].includes(String(signal.strength).toLowerCase()) ? String(signal.strength).toLowerCase() : "moderate"
+        ["strong", "moderate", "weak"].includes(String(signal.strength).toLowerCase()) ? String(signal.strength).toLowerCase() : "moderate",
+        aiMode
       ]
     );
     res.status(201).json(signalToApi(rows[0]));
@@ -1642,6 +1726,105 @@ app.post("/api/daily-signals/:id/close", requireAuth, async (req, res) => {
     res.json(signalToApi(rows[0]));
   } catch (err) {
     res.status(500).json({ error: "Could not close signal", detail: String(err.message || err) });
+  }
+});
+
+const SIGNAL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Toggle one of the 5 fixed reaction emoji on a daily signal for the signed-in user. */
+app.post("/api/daily-signals/:id/react", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  const emoji = String((req.body || {}).emoji || "");
+  if (!SIGNAL_REACTION_EMOJIS.includes(emoji)) {
+    return res.status(400).json({ error: "That reaction is not supported." });
+  }
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const signalId = req.params.id;
+    const { rows: existing } = await pool.query(
+      `SELECT 1 FROM signal_reactions WHERE signal_id = $1::uuid AND user_id = $2::uuid AND emoji = $3`,
+      [signalId, me.id, emoji]
+    );
+    if (existing.length) {
+      await pool.query(
+        `DELETE FROM signal_reactions WHERE signal_id = $1::uuid AND user_id = $2::uuid AND emoji = $3`,
+        [signalId, me.id, emoji]
+      );
+      return res.json({ emoji, active: false });
+    }
+    await pool.query(
+      `INSERT INTO signal_reactions (signal_id, user_id, emoji) VALUES ($1::uuid, $2::uuid, $3)`,
+      [signalId, me.id, emoji]
+    );
+    return res.json({ emoji, active: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not update the reaction", detail: String(err.message || err) });
+  }
+});
+
+/** Toggle bookmarking a daily signal for the signed-in user (shown nowhere else yet — a real save, not a placeholder). */
+app.post("/api/daily-signals/:id/save", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const signalId = req.params.id;
+    const { rows: existing } = await pool.query(
+      `SELECT 1 FROM signal_saves WHERE signal_id = $1::uuid AND user_id = $2::uuid`,
+      [signalId, me.id]
+    );
+    if (existing.length) {
+      await pool.query(`DELETE FROM signal_saves WHERE signal_id = $1::uuid AND user_id = $2::uuid`, [signalId, me.id]);
+      return res.json({ saved: false });
+    }
+    await pool.query(`INSERT INTO signal_saves (signal_id, user_id) VALUES ($1::uuid, $2::uuid)`, [signalId, me.id]);
+    return res.json({ saved: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not update the saved state", detail: String(err.message || err) });
+  }
+});
+
+/** Flat comment list on a daily signal, oldest first. */
+app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, author_name, body, created_at FROM signal_comments
+       WHERE signal_id = $1::uuid ORDER BY created_at ASC LIMIT 200`,
+      [req.params.id]
+    );
+    res.json({
+      comments: rows.map((r) => ({ id: r.id, authorName: r.author_name, body: r.body, createdAt: r.created_at }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load comments", detail: String(err.message || err) });
+  }
+});
+
+/** Post a comment on a daily signal. */
+app.post("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  const body = String((req.body || {}).body || "").trim();
+  if (!body) return res.status(400).json({ error: "Comment body is required" });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const { rows: signalRows } = await pool.query(`SELECT id FROM daily_signals WHERE id = $1::uuid`, [req.params.id]);
+    if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
+    const { rows } = await pool.query(
+      `INSERT INTO signal_comments (signal_id, user_id, author_name, author_email, body)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5) RETURNING id, author_name, body, created_at`,
+      [req.params.id, me.id, me.name, me.email, body.slice(0, 1000)]
+    );
+    const c = rows[0];
+    res.status(201).json({ comment: { id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at } });
+  } catch (err) {
+    res.status(500).json({ error: "Could not post comment", detail: String(err.message || err) });
   }
 });
 

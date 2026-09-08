@@ -92,6 +92,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
     var tp3 by remember { mutableStateOf("") }
     var thesis by remember { mutableStateOf("") }
     var strength by remember { mutableStateOf("moderate") }
+    var mode by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
 
@@ -200,6 +201,13 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Mode:", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            StrengthChip("Scalp", mode == "scalp", AccentCyan) { mode = if (mode == "scalp") null else "scalp" }
+            StrengthChip("Swing", mode == "swing", AccentViolet) { mode = if (mode == "swing") null else "swing" }
+        }
+
+        Spacer(Modifier.height(14.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AdminField(entry, { entry = it }, "Entry", Modifier.weight(1f))
             AdminField(stopLoss, { stopLoss = it }, "Stop loss", Modifier.weight(1f))
@@ -251,9 +259,9 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
                     try {
                         val token = SessionManager.sessionToken(context)
                             ?: throw IllegalStateException("Not signed in")
-                        ApiClient.publishDailySignal(token, inst.id, direction, e, sl, tps, thesis.ifBlank { null }, strength)
+                        ApiClient.publishDailySignal(token, inst.id, direction, e, sl, tps, thesis.ifBlank { null }, strength, mode)
                         Toast.makeText(context, "Signal published", Toast.LENGTH_SHORT).show()
-                        entry = ""; stopLoss = ""; tp1 = ""; tp2 = ""; tp3 = ""; thesis = ""
+                        entry = ""; stopLoss = ""; tp1 = ""; tp2 = ""; tp3 = ""; thesis = ""; mode = null
                         reloadKey++
                     } catch (ex: Exception) {
                         formError = ex.message ?: "Could not publish"
