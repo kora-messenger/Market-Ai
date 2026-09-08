@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -155,9 +154,7 @@ fun SavedScreen(
             when {
                 plansError != null -> Unit // stay silent — signals section below still works
                 plans == null -> {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AccentCyan)
-                    }
+                    TradePlansSkeleton()
                 }
                 plans!!.length() == 0 -> {
                     Column(
@@ -246,9 +243,7 @@ fun SavedScreen(
                 )
             }
             filteredAnalyses == null -> item {
-                Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = AccentCyan)
-                }
+                SavedSignalsSkeleton()
             }
             filteredAnalyses.isEmpty() -> item {
                 EmptyState(
