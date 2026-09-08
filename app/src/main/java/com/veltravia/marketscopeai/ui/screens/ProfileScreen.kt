@@ -507,7 +507,7 @@ private fun SectionLabel(text: String, tint: Color = TextMuted) {
 }
 
 @Composable
-private fun SettingsGroup(borderColor: Color = BorderSubtle, content: @Composable Column.() -> Unit) {
+private fun SettingsGroup(borderColor: Color = BorderSubtle, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
