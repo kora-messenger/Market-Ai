@@ -368,7 +368,7 @@ private fun DailySignalCard(item: JSONObject) {
                 map[r.optString("emoji")] = r.optInt("count", 0) to r.optBoolean("mine", false)
             }
         }
-        mutableStateOf(map)
+        mutableStateOf<MutableMap<String, Pair<Int, Boolean>>>(map)
     }
     var saved by remember(id) { mutableStateOf(item.optBoolean("saved", false)) }
     var saving by remember(id) { mutableStateOf(false) }

@@ -67,6 +67,7 @@ private data class SignalComment(
  * Community CommentsSheet, minus threading (signal discussions don't need
  * replies). Real backend-persisted comments, optimistic send with rollback.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SignalCommentsSheet(
     signalId: String,
