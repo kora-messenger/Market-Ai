@@ -36,14 +36,13 @@ jobs:
 
       - name: Build iOS frameworks (device + simulator)
         run: |
-          ./gradlew :shared:linkReleaseFrameworkIosArm64 :shared:linkReleaseFrameworkIosX64 :shared:linkReleaseFrameworkIosSimulatorArm64 --no-daemon
+          ./gradlew :shared:linkReleaseFrameworkIosArm64 :shared:linkReleaseFrameworkIosSimulatorArm64 --no-daemon
 
       - name: Package universal xcframework
         run: |
           mkdir -p build/xcframework
           xcodebuild -create-xcframework \
             -framework shared/build/bin/iosArm64/releaseFramework/MarketScopeShared.framework \
-            -framework shared/build/bin/iosX64/releaseFramework/MarketScopeShared.framework \
             -framework shared/build/bin/iosSimulatorArm64/releaseFramework/MarketScopeShared.framework \
             -output build/xcframework/MarketScopeShared.xcframework
 
@@ -74,6 +73,7 @@ jobs:
             -scheme MarketScope \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/DerivedData \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
             build
 
