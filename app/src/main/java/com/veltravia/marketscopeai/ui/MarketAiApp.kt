@@ -75,6 +75,7 @@ import com.veltravia.marketscopeai.ui.screens.SignalCardScreen
 import com.veltravia.marketscopeai.ui.screens.ProfileScreen
 import com.veltravia.marketscopeai.ui.screens.ScreenshotGuideScreen
 import com.veltravia.marketscopeai.ui.screens.QuestionnaireScreen
+import com.veltravia.marketscopeai.ui.screens.MarketViewScreen
 import com.veltravia.marketscopeai.ui.screens.SavedScreen
 import com.veltravia.marketscopeai.ui.screens.SignalsScreen
 import com.veltravia.marketscopeai.ui.screens.AdminSignalsScreen
@@ -287,6 +288,13 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable("market/{id}") { entry ->
+            val id = entry.arguments?.getString("id") ?: ""
+            MarketViewScreen(
+                instrumentId = id,
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("risk_calculator") {
             RiskCalculatorScreen(onBack = { navController.popBackStack() })
         }
@@ -416,7 +424,8 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
                     onOpenNotifications = { navController.navigate("notifications") },
                     onCreateTradePlan = { navController.navigate("create_trade_plan") },
-                    onOpenCalendar = { navController.navigate("calendar") }
+                    onOpenCalendar = { navController.navigate("calendar") },
+                    onOpenMarket = { id -> navController.navigate("market/$id") }
                 )
                 1 -> SignalsScreen(
                     onOpenAdmin = { navController.navigate("signals_admin") }

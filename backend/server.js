@@ -14,7 +14,8 @@ const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
 const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
-const { fetchWatchlist } = require("./src/markets");
+const { fetchWatchlist, WATCHLIST } = require("./src/markets");
+const { fetchCandles } = require("./src/candles");
 const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
 
 const app = express();
@@ -667,6 +668,51 @@ app.get("/api/markets/watchlist", async (_req, res) => {
     res.json({ rows, fetchedAt: new Date().toISOString() });
   } catch (err) {
     res.status(502).json({ error: "Could not load live market data right now.", detail: String(err.message || err) });
+  }
+});
+
+/**
+ * Public, real OHLC candles for the Market View screen — the live
+ * candlestick chart behind each Watchlist row. Sources per asset class
+ * (Coinbase / Yahoo), 4H aggregated from real 1H bars, cached. Includes
+ * the instrument's Watchlist metadata (display name + subtitle) so the
+ * screen needs a single call.
+ */
+app.get("/api/markets/candles", async (req, res) => {
+  const id = String(req.query.id || "").toLowerCase();
+  const interval = String(req.query.interval || "15m").toLowerCase();
+  if (!id) {
+    return res.status(400).json({ error: "Missing ?id= instrument" });
+  }
+  const meta = WATCHLIST.find((w) => w.id === id) || null;
+  if (!meta) {
+    return res.status(404).json({ error: "Unknown market-view instrument" });
+  }
+  try {
+    const data = await fetchCandles(id, interval);
+    res.json({ ...data, display: meta.display, subtitle: meta.subtitle, fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(502).json({ error: "Could not load live candles right now.", detail: String(err.message || err) });
+  }
+});
+
+/** Public, real spot price for a single Watchlist instrument (reuses the
+ *  cached multi-feed price engine — Yahoo/Frankfurter/CoinGecko/Binance/
+ *  Stooq chains). The Market View screen polls this for its big live
+ *  ticking price, so it stays fast and cheap for one instrument. */
+app.get("/api/markets/price", async (req, res) => {
+  const id = String(req.query.id || "").toLowerCase();
+  if (!id) {
+    return res.status(400).json({ error: "Missing ?id= instrument" });
+  }
+  try {
+    const price = await fetchPrice(id);
+    if (price == null || !Number.isFinite(price)) {
+      return res.status(502).json({ error: "Live price temporarily unavailable for this instrument." });
+    }
+    res.json({ id, price, fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(502).json({ error: "Could not load live price right now.", detail: String(err.message || err) });
   }
 });
 

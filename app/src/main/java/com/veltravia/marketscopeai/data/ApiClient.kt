@@ -625,6 +625,24 @@ object ApiClient {
             request(request)
         }
 
+    /** Real OHLC candles for the live Market View chart (Coinbase / Yahoo). */
+    suspend fun fetchCandles(instrumentId: String, interval: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/markets/candles?id=$instrumentId&interval=$interval")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Real spot price for one Watchlist instrument (Market View's ticking price). */
+    suspend fun fetchMarketPrice(instrumentId: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/markets/price?id=$instrumentId")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Real account status for the Settings screen — is a deletion pending? */
     suspend fun fetchAccountStatus(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

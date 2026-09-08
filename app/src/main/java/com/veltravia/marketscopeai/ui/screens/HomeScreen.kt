@@ -101,7 +101,8 @@ fun HomeScreen(
     onOpenRiskCalculator: () -> Unit,
     onOpenNotifications: () -> Unit,
     onCreateTradePlan: () -> Unit,
-    onOpenCalendar: () -> Unit
+    onOpenCalendar: () -> Unit,
+    onOpenMarket: (String) -> Unit
 ) {
     val context = LocalContext.current
     val user = remember { SessionManager.currentUser(context) }
@@ -352,7 +353,7 @@ fun HomeScreen(
         Spacer(Modifier.height(28.dp))
 
         // --- Multi-asset live watchlist (Futures/Forex/Crypto) ---
-        MarketsWatchlistSection()
+        MarketsWatchlistSection(onOpenMarket = onOpenMarket)
 
         Spacer(Modifier.height(28.dp))
 

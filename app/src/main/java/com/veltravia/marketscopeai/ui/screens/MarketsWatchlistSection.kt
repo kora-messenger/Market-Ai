@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -102,7 +103,7 @@ private fun formatWatchPrice(id: String, v: Double): String {
  * so market movement is always visibly tracked — never simulated.
  */
 @Composable
-fun MarketsWatchlistSection() {
+fun MarketsWatchlistSection(onOpenMarket: (String) -> Unit) {
     var rows by remember { mutableStateOf<List<WatchRow>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var expandedSections by remember { mutableStateOf(setOf("Futures", "Forex", "Crypto")) }
@@ -181,7 +182,7 @@ fun MarketsWatchlistSection() {
                         }
                         if (expanded) {
                             items.forEachIndexed { i, row ->
-                                WatchlistRow(row)
+                                WatchlistRow(row) { onOpenMarket(row.id) }
                                 if (i != items.lastIndex) {
                                     HorizontalDivider(color = TextMuted.copy(alpha = 0.10f), thickness = 1.dp)
                                 }
@@ -228,7 +229,7 @@ private fun LiveIndicator() {
 }
 
 @Composable
-private fun WatchlistRow(row: WatchRow) {
+private fun WatchlistRow(row: WatchRow, onOpen: () -> Unit) {
     // Remembers the previous real price so each row can flash on its own
     // genuine tick — no shared/simulated animation, purely reactive to data.
     var lastPrice by remember(row.id) { mutableStateOf(row.price) }
@@ -261,6 +262,7 @@ private fun WatchlistRow(row: WatchRow) {
         modifier = Modifier
             .fillMaxWidth()
             .background(flashColor)
+            .clickable { onOpen() }
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
