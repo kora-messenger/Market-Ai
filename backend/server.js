@@ -219,9 +219,11 @@ async function initDb() {
       signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
       parent_id UUID REFERENCES signal_updates(id) ON DELETE CASCADE,
       author_name TEXT NOT NULL,
+      author_email TEXT NOT NULL DEFAULT '',
       body TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE signal_updates ADD COLUMN IF NOT EXISTS author_email TEXT NOT NULL DEFAULT '';
     CREATE TABLE IF NOT EXISTS trade_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id),
@@ -1935,7 +1937,9 @@ app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
     const admin = await isAdminRequest(req);
     const { rows } = await pool.query(
       `SELECT c.id, c.user_id, c.author_name, c.body, c.approved, c.created_at,
-              EXISTS(SELECT 1 FROM signal_comment_images i WHERE i.comment_id = c.id) AS has_image
+              EXISTS(SELECT 1 FROM signal_comment_images i WHERE i.comment_id = c.id) AS has_image,
+              NULLIF((SELECT u.picture FROM users u
+                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture
        FROM signal_comments c
        WHERE c.signal_id = $1::uuid ORDER BY c.created_at ASC LIMIT 200`,
       [req.params.id]
@@ -1957,6 +1961,7 @@ app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
       comments: visible.map((r) => ({
         id: r.id,
         authorName: r.author_name,
+        authorPicture: r.author_picture || "",
         body: r.body,
         createdAt: r.created_at,
         hasImage: r.has_image,
@@ -2090,12 +2095,19 @@ app.get("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
   if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
   try {
     const { rows } = await pool.query(
-      `SELECT id, parent_id, author_name, body, created_at FROM signal_updates
-       WHERE signal_id = $1::uuid ORDER BY created_at ASC LIMIT 200`,
+      `SELECT s.id, s.parent_id, s.author_name, s.body, s.created_at,
+              COALESCE(
+                NULLIF((SELECT u.picture FROM users u
+                        WHERE lower(u.email) = lower(s.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), ''),
+                NULLIF((SELECT u2.picture FROM users u2
+                        WHERE COALESCE(u2.picture, '') <> '' ORDER BY u2.created_at ASC LIMIT 1), '')
+              ) AS author_picture
+       FROM signal_updates s
+       WHERE s.signal_id = $1::uuid ORDER BY s.created_at ASC LIMIT 200`,
       [req.params.id]
     );
     const byId = {};
-    rows.forEach((r) => { byId[r.id] = { id: r.id, authorName: r.author_name, body: r.body, createdAt: r.created_at, replies: [] }; });
+    rows.forEach((r) => { byId[r.id] = { id: r.id, authorName: r.author_name, authorPicture: r.author_picture || "", body: r.body, createdAt: r.created_at, replies: [] }; });
     const top = [];
     rows.forEach((r) => {
       if (r.parent_id && byId[r.parent_id]) byId[r.parent_id].replies.push(byId[r.id]);
@@ -2123,12 +2135,13 @@ app.post("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
     const { rows: signalRows } = await pool.query(`SELECT id FROM daily_signals WHERE id = $1::uuid`, [req.params.id]);
     if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
     const { rows } = await pool.query(
-      `INSERT INTO signal_updates (signal_id, parent_id, author_name, body)
-       VALUES ($1::uuid, $2::uuid, $3, $4) RETURNING id, parent_id, author_name, body, created_at`,
-      [req.params.id, parentId, authorName, body.slice(0, 500)]
+      `INSERT INTO signal_updates (signal_id, parent_id, author_name, author_email, body)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5) RETURNING id, parent_id, author_name, body, created_at`,
+      [req.params.id, parentId, authorName, String(req.session.email || ""), body.slice(0, 500)]
     );
     const u = rows[0];
-    res.status(201).json({ update: { id: u.id, authorName: u.author_name, body: u.body, createdAt: u.created_at, replies: [] } });
+    const me = await pool.query(`SELECT picture FROM users WHERE google_sub = $1 AND COALESCE(picture,'') <> ''`, [req.session.sub]);
+    res.status(201).json({ update: { id: u.id, authorName: u.author_name, authorPicture: (me.rows[0] || {}).picture || "", body: u.body, createdAt: u.created_at, replies: [] } });
   } catch (err) {
     res.status(500).json({ error: "Could not post the update", detail: String(err.message || err) });
   }
@@ -2199,6 +2212,7 @@ function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor,
     id: row.id,
     authorName: row.author_name,
     authorEmail: row.author_email,
+    authorPicture: row.author_picture || "",
     isTeam: row.is_team,
     isTopContributor: isTopContributor || false,
     body: row.body,
@@ -2266,7 +2280,9 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
 
     const { rows: posts } = await pool.query(
       `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
-              (SELECT COUNT(*)::int FROM post_views v WHERE v.post_id = p.id) AS view_count
+              (SELECT COUNT(*)::int FROM post_views v WHERE v.post_id = p.id) AS view_count,
+              NULLIF((SELECT u.picture FROM users u
+                      WHERE lower(u.email) = lower(p.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture
        FROM community_posts p
        ORDER BY p.is_pinned DESC, p.created_at DESC
        LIMIT $1 OFFSET $2`,
@@ -2664,12 +2680,14 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const { rows } = await pool.query(
-      `SELECT id, author_name, author_email, body, parent_id, created_at
-       FROM post_comments WHERE post_id = $1::uuid
-       ORDER BY created_at ASC LIMIT 300`,
+      `SELECT c.id, c.author_name, c.author_email, c.body, c.parent_id, c.created_at,
+              NULLIF((SELECT u.picture FROM users u
+                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture
+       FROM post_comments c WHERE c.post_id = $1::uuid
+       ORDER BY c.created_at ASC LIMIT 300`,
       [req.params.id]
     );
-    return res.json({ comments: rows });
+    return res.json({ comments: rows.map((r) => ({ ...r, author_picture: r.author_picture || "" })) });
   } catch (err) {
     return res.status(500).json({ error: "Could not load comments", detail: String(err.message || err) });
   }

@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.ApiConfig
 import com.veltravia.marketscopeai.data.SessionManager
@@ -483,7 +484,6 @@ private fun AccountSummaryCard(
     savedPlanCount: Int?,
     onUpgrade: () -> Unit
 ) {
-    val initial = (name.firstOrNull() ?: 'T').uppercaseChar()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -492,23 +492,10 @@ private fun AccountSummaryCard(
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(AccentCyan, AccentViolet))),
-                contentAlignment = Alignment.Center
-            ) {
-                if (picture.isNotBlank()) {
-                    AsyncImage(
-                        model = picture,
-                        contentDescription = null,
-                        modifier = Modifier.size(56.dp).clip(CircleShape)
-                    )
-                } else {
-                    Text(initial.toString(), color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                }
-            }
+            UserAvatar(
+                photoUrl = picture.takeIf { it.isNotBlank() },
+                size = 56.dp
+            )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)

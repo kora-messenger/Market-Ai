@@ -60,6 +60,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -80,6 +81,7 @@ import java.util.UUID
 private data class SignalUpdate(
     val id: String,
     val authorName: String,
+    val authorPicture: String = "",
     val body: String,
     val createdAt: String,
     val replies: List<SignalUpdate> = emptyList()
@@ -88,6 +90,7 @@ private data class SignalUpdate(
 private data class SignalComment(
     val id: String,
     val authorName: String,
+    val authorPicture: String = "",
     val body: String,
     val createdAt: String,
     val hasImage: Boolean = false,
@@ -111,12 +114,6 @@ private fun timeAgo(iso: String): String {
             else -> "${mins / (60 * 24)}d ago"
         }
     } catch (_: Exception) { "" }
-}
-
-private fun initials(name: String): String {
-    val trimmed = name.trim()
-    return if (trimmed.isEmpty()) "?"
-    else trimmed.split(" ").take(2).mapNotNull { it.firstOrNull()?.uppercaseChar() }.joinToString("")
 }
 
 /**
@@ -198,9 +195,11 @@ fun SignalCommentsSheet(
         if (text.isEmpty() || token == null || sending) return
         sending = true
         val image = attachedImage
+        val me = SessionManager.currentUser(context)
         val optimistic = SignalComment(
             id = "tmp-${UUID.randomUUID()}",
-            authorName = "You",
+            authorName = me?.name?.takeIf { it.isNotBlank() } ?: "You",
+            authorPicture = me?.picture ?: "",
             body = text,
             createdAt = Instant.now().toString(),
             hasImage = image != null,
@@ -578,6 +577,7 @@ private fun signalUpdateFromJson(u: JSONObject): SignalUpdate {
     return SignalUpdate(
         id = u.optString("id"),
         authorName = u.optString("authorName").ifBlank { "Mentor Desk" },
+        authorPicture = u.optString("authorPicture"),
         body = u.optString("body"),
         createdAt = u.optString("createdAt"),
         replies = (0 until replies.length()).mapNotNull { i ->
@@ -598,6 +598,7 @@ private fun signalCommentFromJson(c: JSONObject): SignalComment {
     return SignalComment(
         id = c.optString("id"),
         authorName = c.optString("authorName").ifBlank { "Trader" },
+        authorPicture = c.optString("authorPicture"),
         body = c.optString("body"),
         createdAt = c.optString("createdAt"),
         hasImage = c.optBoolean("hasImage", false),
@@ -618,15 +619,7 @@ private fun MentorUpdateRow(update: SignalUpdate, isAdmin: Boolean, onReply: () 
             .padding(horizontal = 10.dp, vertical = 9.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(AccentViolet),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(initials(update.authorName), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
+            UserAvatar(photoUrl = update.authorPicture.takeIf { it.isNotBlank() }, size = 26.dp)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -687,21 +680,7 @@ private fun TraderCommentRow(
 ) {
     Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(if (comment.isMine) AccentCyan else SurfaceLight)
-                    .border(1.dp, BorderSubtle, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    initials(comment.authorName),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (comment.isMine) Color.White else TextSecondary
-                )
-            }
+            UserAvatar(photoUrl = comment.authorPicture.takeIf { it.isNotBlank() }, size = 26.dp)
             Spacer(Modifier.width(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(comment.authorName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)

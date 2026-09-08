@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -109,6 +110,7 @@ data class CommunityPost(
     val id: String,
     val authorName: String,
     val authorEmail: String,
+    val authorPicture: String = "",
     val isTeam: Boolean,
     val isTopContributor: Boolean,
     val isPinned: Boolean,
@@ -148,6 +150,7 @@ data class CommunityComment(
     val id: String,
     val parentId: String?,
     val authorName: String,
+    val authorPicture: String = "",
     val body: String,
     val createdAt: String,
     val pending: Boolean = false
@@ -189,6 +192,7 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
             id = p.optString("id"),
             authorName = p.optString("authorName").ifBlank { "Trader" },
             authorEmail = p.optString("authorEmail"),
+            authorPicture = p.optString("authorPicture"),
             isTeam = p.optBoolean("isTeam"),
             isTopContributor = p.optBoolean("isTopContributor"),
             isPinned = p.optBoolean("isPinned"),
@@ -220,6 +224,7 @@ private fun parseComments(json: JSONArray): List<CommunityComment> =
             id = c.optString("id"),
             parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
             authorName = c.optString("author_name").ifBlank { "Trader" },
+            authorPicture = c.optString("author_picture"),
             body = c.optString("body"),
             createdAt = c.optString("created_at")
         )
@@ -264,9 +269,6 @@ private fun parseTopProofs(leaderboard: JSONObject): List<ProofPost> {
         )
     }
 }
-
-private fun avatarTint(name: String): Color =
-    if (name.hashCode() % 2 == 0) AccentViolet.copy(alpha = 0.12f) else AccentCyan.copy(alpha = 0.12f)
 
 // --- screen -------------------------------------------------------------------------
 
@@ -763,6 +765,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
         CommentsSheet(
             post = post,
             myName = me?.name ?: "You",
+            myPicture = me?.picture ?: "",
             onDismiss = { openPost = null },
             onCountChange = { newCount ->
                 posts = posts.map { if (it.id == post.id) it.copy(commentCount = newCount) else it }
@@ -1291,20 +1294,7 @@ private fun PostCard(
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(avatarTint(post.authorName))
-                ) {
-                    Text(
-                        post.authorName.trim().take(1).uppercase(),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (post.authorName.hashCode() % 2 == 0) AccentViolet else AccentCyan
-                    )
-                }
+                UserAvatar(photoUrl = post.authorPicture.takeIf { it.isNotBlank() }, size = 38.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1641,6 +1631,7 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
 private fun CommentsSheet(
     post: CommunityPost,
     myName: String,
+    myPicture: String,
     onDismiss: () -> Unit,
     onCountChange: (Int) -> Unit
 ) {
@@ -1677,6 +1668,7 @@ private fun CommentsSheet(
             id = "tmp-${UUID.randomUUID()}",
             parentId = replyTo?.id,
             authorName = myName,
+            authorPicture = myPicture,
             body = text,
             createdAt = Instant.now().toString(),
             pending = true
@@ -1694,6 +1686,7 @@ private fun CommentsSheet(
                         id = c.optString("id"),
                         parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
                         authorName = c.optString("author_name").ifBlank { myName },
+                        authorPicture = c.optString("author_picture").ifBlank { myPicture },
                         body = c.optString("body"),
                         createdAt = c.optString("created_at")
                     ) else it
@@ -1832,20 +1825,10 @@ private fun CommentRow(
 ) {
     Column(Modifier.padding(vertical = 5.dp)) {
         Row(verticalAlignment = Alignment.Top) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(if (isReply) 26.dp else 30.dp)
-                    .clip(CircleShape)
-                    .background(avatarTint(comment.authorName))
-            ) {
-                Text(
-                    comment.authorName.trim().take(1).uppercase(),
-                    fontSize = if (isReply) 10.sp else 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (comment.authorName.hashCode() % 2 == 0) AccentViolet else AccentCyan
-                )
-            }
+            UserAvatar(
+                photoUrl = comment.authorPicture.takeIf { it.isNotBlank() },
+                size = if (isReply) 26.dp else 30.dp
+            )
             Spacer(Modifier.width(8.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
