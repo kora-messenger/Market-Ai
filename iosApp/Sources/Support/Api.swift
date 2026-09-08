@@ -2,9 +2,12 @@ import Foundation
 import MarketScopeShared
 
 /// Swift bridge over the Kotlin Multiplatform SharedApiClient.
-/// Kotlin suspend functions surface in Swift as completion-handler methods; each
-/// wrapper converts to async/await and parses the kotlinx JsonObject via
-/// JSONSerialization (JsonObject.toString() returns its JSON encoding).
+/// Kotlin suspend functions surface in Swift as completion-handler methods whose
+/// result type is the exported kotlinx JsonElement class; each wrapper converts
+/// to async/await and parses the JSON text (JsonElement.toString() is its
+/// JSON encoding) via JSONSerialization.
+typealias KJsonElement = MarketScopeShared.Kotlinx_serialization_jsonJsonElement
+
 enum ApiError: LocalizedError {
     case notConfigured(String)
     case emptyResponse
@@ -20,49 +23,44 @@ enum ApiError: LocalizedError {
 }
 
 enum Api {
-    static func parseDict(_ kotlinJson: AnyObject) throws -> [String: Any] {
-        let text = String(describing: kotlinJson)
+    static func parseDict(_ text: String) throws -> [String: Any] {
         let data = text.data(using: .utf8) ?? Data()
         let obj = try JSONSerialization.jsonObject(with: data, options: [])
         guard let dict = obj as? [String: Any] else { throw ApiError.emptyResponse }
         return dict
     }
 
-    static func parseArray(_ kotlinJson: AnyObject) throws -> [[String: Any]] {
-        let text = String(describing: kotlinJson)
+    static func parseArray(_ text: String) throws -> [[String: Any]] {
         let data = text.data(using: .utf8) ?? Data()
         let obj = try JSONSerialization.jsonObject(with: data, options: [])
         if let arr = obj as? [[String: Any]] { return arr }
-        if let dict = obj as? [String: Any], let rows = dict["items"] as? [[String: Any]] { return rows }
         throw ApiError.emptyResponse
     }
 
     // ------------------------------------------------------------- wrappers
 
-    private static func objectCall(
-        _ invoke: @escaping (@escaping (MarketScopeShared.JsonObject?, Error?) -> Void) -> Void
-    ) async throws -> [String: Any] {
+    private static func raw(
+        _ invoke: @escaping (@escaping (KJsonElement?, Error?) -> Void) -> Void
+    ) async throws -> String {
         try await withCheckedThrowingContinuation { cont in
-            invoke { obj, error in
+            invoke { element, error in
                 if let error { cont.resume(throwing: error); return }
-                guard let obj else { cont.resume(throwing: ApiError.emptyResponse); return }
-                do { cont.resume(returning: try parseDict(obj)) }
-                catch { cont.resume(throwing: error) }
+                guard let element else { cont.resume(throwing: ApiError.emptyResponse); return }
+                cont.resume(returning: String(describing: element))
             }
         }
     }
 
+    private static func objectCall(
+        _ invoke: @escaping (@escaping (KJsonElement?, Error?) -> Void) -> Void
+    ) async throws -> [String: Any] {
+        try parseDict(try await raw(invoke))
+    }
+
     private static func arrayCall(
-        _ invoke: @escaping (@escaping (MarketScopeShared.JsonArray?, Error?) -> Void) -> Void
+        _ invoke: @escaping (@escaping (KJsonElement?, Error?) -> Void) -> Void
     ) async throws -> [[String: Any]] {
-        try await withCheckedThrowingContinuation { cont in
-            invoke { arr, error in
-                if let error { cont.resume(throwing: error); return }
-                guard let arr else { cont.resume(throwing: ApiError.emptyResponse); return }
-                do { cont.resume(returning: try parseArray(arr)) }
-                catch { cont.resume(throwing: error) }
-            }
-        }
+        try parseArray(try await raw(invoke))
     }
 
     static func authenticate(idToken: String) async throws -> [String: Any] {

@@ -53,6 +53,13 @@ jobs:
           path: build/xcframework/MarketScopeShared.xcframework
           retention-days: 30
 
+      - name: Select newest Xcode
+        run: |
+          XCODE=$(ls /Applications | grep -E '^Xcode' | grep -v -i 'beta' | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "/Applications/$XCODE"
+          xcodebuild -version
+
       - name: Install xcodegen
         run: brew install xcodegen
 
