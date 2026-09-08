@@ -277,9 +277,9 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(
-                            if (selected) Brush.horizontalGradient(listOf(AccentCyan, AccentViolet))
-                            else null
+                        .then(
+                            if (selected) Modifier.background(Brush.horizontalGradient(listOf(AccentCyan, AccentViolet)))
+                            else Modifier
                         )
                         .border(
                             width = 1.dp,
