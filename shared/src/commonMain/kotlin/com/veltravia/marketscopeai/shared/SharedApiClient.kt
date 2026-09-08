@@ -86,6 +86,12 @@ object SharedApiClient {
                 ?: throw MarketAiException("Unexpected non-array response from $pathAndQuery")
         }
 
+    /** GET returning a JSON array nested under [key] (backend wraps feeds in objects). */
+    private suspend fun getNestedArray(pathAndQuery: String, key: String, token: String? = null): JsonArray {
+        val root = getJson(pathAndQuery, token)
+        return root[key] as? JsonArray ?: JsonArray(emptyList())
+    }
+
     private suspend fun postJson(
         path: String,
         payload: JsonObject,
@@ -119,7 +125,7 @@ object SharedApiClient {
     // -------------------------------------------------------------- analysis
 
     suspend fun fetchAnalyses(sessionToken: String, limit: Int = 30): JsonArray =
-        getArray("/api/analyses?limit=$limit", token = sessionToken)
+        getNestedArray("/api/analyses?limit=$limit", "analyses", token = sessionToken)
 
     suspend fun fetchAnalysis(sessionToken: String, id: String): JsonObject =
         getJson("/api/analyses/$id", token = sessionToken)
@@ -186,7 +192,7 @@ object SharedApiClient {
         )
 
     suspend fun fetchSignalComments(sessionToken: String, signalId: String): JsonArray =
-        getArray("/api/daily-signals/$signalId/comments", token = sessionToken)
+        getNestedArray("/api/daily-signals/$signalId/comments", "comments", token = sessionToken)
 
     suspend fun addSignalComment(sessionToken: String, signalId: String, body: String): JsonObject =
         postJson(
@@ -343,26 +349,25 @@ object SharedApiClient {
     // -------------------------------------------------------------- markets
 
     suspend fun fetchTrending(): JsonArray =
-        getArray("/api/trending")
+        getNestedArray("/api/trending", "tokens")
 
     suspend fun fetchMarketsWatchlist(): JsonArray =
-        getArray("/api/markets/watchlist")
+        getNestedArray("/api/markets/watchlist", "rows")
 
     suspend fun fetchEconomicCalendar(): JsonArray =
-        getArray("/api/calendar/economic")
+        getNestedArray("/api/calendar/economic", "events")
 
     suspend fun fetchMarketNews(category: String = "all", limit: Int = 40): JsonArray =
-        getArray("/api/calendar/news?category=$category&limit=$limit")
+        getNestedArray("/api/calendar/news?category=$category&limit=$limit", "items")
 
     /** Batched live quotes for the watchlist sparklines. Map symbol -> price. */
     suspend fun fetchTrendingQuotes(symbols: List<String>): Map<String, Double> {
         val qs = symbols.joinToString(",") { urlEncode(it) }
-        val arr = getArray("/api/trending/quotes?symbols=$qs")
+        val root = getJson("/api/trending/quotes?symbols=$qs")
+        val quotes = root["quotes"] as? JsonObject ?: return emptyMap()
         val out = linkedMapOf<String, Double>()
-        for (el in arr) {
-            val o = el as? JsonObject ?: continue
-            val sym = (o["symbol"] as? JsonPrimitive)?.content ?: continue
-            val price = (o["price"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: continue
+        for ((sym, el) in quotes) {
+            val price = (el as? JsonPrimitive)?.content?.toDoubleOrNull() ?: continue
             out[sym] = price
         }
         return out

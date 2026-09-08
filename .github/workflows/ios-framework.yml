@@ -1,7 +1,8 @@
 name: iOS Shared Framework
 
 # Builds the Kotlin Multiplatform shared module (MarketScopeShared) as static
-# frameworks for device + simulator and packages a universal .xcframework.
+# frameworks for device + simulator, packages a universal .xcframework, then
+# generates + compiles the SwiftUI app shell against it (simulator, unsigned).
 # Runs only on the kmp-scaffold branch / manual dispatch so main-branch pushes
 # don't burn macOS minutes (macOS runners bill at 10x).
 on:
@@ -9,6 +10,7 @@ on:
     branches: [kmp-scaffold]
     paths:
       - 'shared/**'
+      - 'iosApp/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - '.github/workflows/ios-framework.yml'
@@ -49,4 +51,27 @@ jobs:
         with:
           name: MarketScopeShared-xcframework
           path: build/xcframework/MarketScopeShared.xcframework
+          retention-days: 30
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: cd iosApp && xcodegen generate
+
+      - name: Build SwiftUI app (iOS simulator, unsigned)
+        run: |
+          cd iosApp
+          xcodebuild -project MarketScope.xcodeproj \
+            -scheme MarketScope \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarketScope-iOS-simulator-app
+          path: iosApp/build/DerivedData/Build/Products/*/MarketScope.app
           retention-days: 30

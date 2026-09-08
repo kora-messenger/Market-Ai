@@ -1,0 +1,40 @@
+name: MarketScope
+options:
+  bundleIdPrefix: com.veltravia
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "7.1.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+
+targets:
+  MarketScope:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    dependencies:
+      - package: GoogleSignIn
+      - framework: ../build/xcframework/MarketScopeShared.xcframework
+        embed: true
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: MarketScope AI
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Light
+        NSPhotoLibraryUsageDescription: "MarketScope AI needs photo access so you can attach chart screenshots for analysis."
+        GOOGLE_IOS_CLIENT_ID: ""
+        LSRequiresIPhoneOS: true
