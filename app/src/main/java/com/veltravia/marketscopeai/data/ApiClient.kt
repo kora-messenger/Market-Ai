@@ -625,6 +625,36 @@ object ApiClient {
             request(request)
         }
 
+    /** Real account status for the Settings screen — is a deletion pending? */
+    suspend fun fetchAccountStatus(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/account/status")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Requests account deletion (support erases the account within 30 days; cancellable). */
+    suspend fun requestAccountDeletion(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/account/delete-request")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post("".toRequestBody(null))
+            .build()
+        request(request)
+    }
+
+    /** Cancels a pending account deletion request. */
+    suspend fun cancelAccountDeletion(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/account/delete-request/cancel")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post("".toRequestBody(null))
+            .build()
+        request(request)
+    }
+
     /** Deletes a trade plan owned by the signed-in user. */
     suspend fun deleteTradePlan(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

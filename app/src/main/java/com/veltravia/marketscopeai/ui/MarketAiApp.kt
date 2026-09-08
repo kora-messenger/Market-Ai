@@ -437,7 +437,11 @@ private fun MainTabs(navController: NavHostController) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
-                    onOpenScreenshotGuide = { navController.navigate("screenshot_guide") }
+                    onOpenScreenshotGuide = { navController.navigate("screenshot_guide") },
+                    onOpenRiskCalculator = { navController.navigate("risk_calculator") },
+                    onOpenNotifications = { navController.navigate("notifications") },
+                    onOpenSubscribe = { navController.navigate("subscribe") },
+                    onViewSavedTradePlans = { currentTab = 3 }
                 )
             }
 

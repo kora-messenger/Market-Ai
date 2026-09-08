@@ -155,6 +155,7 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ;
     CREATE TABLE IF NOT EXISTS daily_signals (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       author TEXT NOT NULL DEFAULT 'owner',
@@ -572,6 +573,66 @@ app.post("/api/community/join", requireAuth, async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ error: "Could not join community", detail: String(err.message || err) });
+  }
+});
+
+// --- Account: real status + deletion request (Settings screen) ---
+// Deletion is a REQUEST, not an instant hard-delete: the account has rows
+// across trade_plans/analyses/community/signals that a same-instant cascade
+// would silently orphan or corrupt for other users (e.g. community posts).
+// Requesting sets a real timestamp the user can see and cancel; permanent
+// erasure is handled by support within 30 days, same model FxLens itself
+// (and most consumer apps) use for account deletion.
+app.get("/api/account/status", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT deletion_requested_at FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.json({ deletionRequestedAt: rows[0].deletion_requested_at });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load account status", detail: String(err.message || err) });
+  }
+});
+
+app.post("/api/account/delete-request", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users SET deletion_requested_at = COALESCE(deletion_requested_at, now())
+       WHERE google_sub = $1
+       RETURNING deletion_requested_at`,
+      [req.session.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    return res.json({ deletionRequestedAt: rows[0].deletion_requested_at });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not request account deletion", detail: String(err.message || err) });
+  }
+});
+
+app.post("/api/account/delete-request/cancel", requireAuth, async (req, res) => {
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    await pool.query(
+      `UPDATE users SET deletion_requested_at = NULL WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    return res.json({ deletionRequestedAt: null });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not cancel deletion request", detail: String(err.message || err) });
   }
 });
 
