@@ -1,0 +1,52 @@
+name: iOS Shared Framework
+
+# Builds the Kotlin Multiplatform shared module (MarketScopeShared) as static
+# frameworks for device + simulator and packages a universal .xcframework.
+# Runs only on the kmp-scaffold branch / manual dispatch so main-branch pushes
+# don't burn macOS minutes (macOS runners bill at 10x).
+on:
+  push:
+    branches: [kmp-scaffold]
+    paths:
+      - 'shared/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - '.github/workflows/ios-framework.yml'
+  workflow_dispatch:
+
+jobs:
+  build-xcframework:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-cleanup: on-success
+
+      - name: Build iOS frameworks (device + simulator)
+        run: |
+          ./gradlew :shared:linkReleaseFrameworkIosArm64 :shared:linkReleaseFrameworkIosSimulatorArm64 --no-daemon
+
+      - name: Package universal xcframework
+        run: |
+          mkdir -p build/xcframework
+          xcodebuild -create-xcframework \
+            -framework shared/build/bin/iosArm64/releaseFramework/MarketScopeShared.framework \
+            -framework shared/build/bin/iosSimulatorArm64/releaseFramework/MarketScopeShared.framework \
+            -output build/xcframework/MarketScopeShared.xcframework
+
+      - name: Upload xcframework artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarketScopeShared-xcframework
+          path: build/xcframework/MarketScopeShared.xcframework
+          retention-days: 30

@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Market Ai"
 include(":app")
+include(":shared")
