@@ -1424,7 +1424,7 @@ Respond ONLY with JSON:
   try {
     const orResult = await callOpenRouter({
       model: ANALYSIS_MODEL,
-      max_tokens: 4000,
+      max_tokens: 2500,
       reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
@@ -1447,8 +1447,14 @@ Respond ONLY with JSON:
     }, "analysis");
 
     if (!orResult.ok) {
+      const billingIssue = orResult.status === 402;
+      if (billingIssue) {
+        console.error("[analyze] OPENROUTER ACCOUNT OUT OF CREDIT — top up at https://openrouter.ai/settings/credits");
+      }
       return res.status(502).json({
-        error: "Our AI analysis service had a temporary hiccup. Please tap Analyze again.",
+        error: billingIssue
+          ? "Our AI analysis service is briefly unavailable. We're on it — please try again shortly."
+          : "Our AI analysis service had a temporary hiccup. Please tap Analyze again.",
         status: orResult.status,
         detail: orResult.detail.slice(0, 400)
       });
