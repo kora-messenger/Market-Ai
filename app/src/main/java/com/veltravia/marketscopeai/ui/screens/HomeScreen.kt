@@ -110,6 +110,7 @@ fun HomeScreen(
 
     var expanded by remember { mutableStateOf(false) }
     var memberCount by remember { mutableStateOf<Int?>(null) }
+    var onlineCount by remember { mutableStateOf<Int?>(null) }
     var trialDaysRemaining by remember { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
     var isPremium by remember { mutableStateOf(SessionManager.isPremium(context)) }
     // Free-tier allowance after the trial lapses: 3 chart analyses per day.
@@ -121,6 +122,7 @@ fun HomeScreen(
         // every time Home loads.
         runCatching { ApiClient.fetchCommunityStats() }.getOrNull()?.let {
             memberCount = it.optInt("totalMembers", memberCount ?: 0)
+            onlineCount = it.optInt("onlineCount", onlineCount ?: 0)
         }
         // Refresh trial state from the server so it never goes stale.
         SessionManager.sessionToken(context)?.let { token ->
@@ -300,7 +302,7 @@ fun HomeScreen(
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    memberCount?.let { "$it member${if (it == 1) "" else "s"}" } ?: "Loading…",
+                    memberCount?.let { "$it member${if (it == 1) "" else "s"}${onlineCount?.let { o -> if (o > 0) " · $o online" else "" } ?: ""}" } ?: "Loading…",
                     style = MaterialTheme.typography.labelMedium,
                     color = TextMuted
                 )

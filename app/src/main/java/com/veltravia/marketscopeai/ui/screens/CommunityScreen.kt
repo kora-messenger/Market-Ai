@@ -287,6 +287,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
     var posts by remember { mutableStateOf<List<CommunityPost>>(emptyList()) }
     var totalPosts by remember { mutableStateOf(0) }
     var memberCount by remember { mutableStateOf(-1) }
+    var onlineCount by remember { mutableStateOf(-1) }
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var hasMore by remember { mutableStateOf(false) }
@@ -376,6 +377,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
             try {
                 val stats = ApiClient.fetchCommunityStats()
                 memberCount = stats.optInt("totalMembers", -1)
+                onlineCount = stats.optInt("onlineCount", -1)
             } catch (_: Exception) { }
             if (token != null) {
                 try {
@@ -549,7 +551,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                             )
                         }
                         Text(
-                            if (memberCount >= 0) "$memberCount traders joined · $totalPosts posts"
+                            if (memberCount >= 0) "$memberCount traders joined · $onlineCount online now · $totalPosts posts"
                             else "Live trading community",
                             fontSize = 11.sp, color = TextMuted
                         )

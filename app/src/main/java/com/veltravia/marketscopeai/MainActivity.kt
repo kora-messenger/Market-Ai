@@ -41,6 +41,36 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
     }
 
+    // ---------- presence heartbeat (online status) ----------
+    // Pings the backend every 2 minutes while the app is in the FOREGROUND so
+    // the community can show an honest "online now" count. Stopped on onStop —
+    // a user who backgrounds the app is honestly no longer "online".
+    private val presenceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val presenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val presenceTick = object : Runnable {
+        override fun run() {
+            val token = com.veltravia.marketscopeai.data.SessionManager.sessionToken(applicationContext)
+            if (token != null) {
+                presenceExecutor.execute {
+                    kotlinx.coroutines.runBlocking {
+                        runCatching { com.veltravia.marketscopeai.data.ApiClient.presencePing(token) }
+                    }
+                }
+            }
+            presenceHandler.postDelayed(this, 120_000L)
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        presenceTick.run()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        presenceHandler.removeCallbacks(presenceTick)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Notification channels (signals / community / general).

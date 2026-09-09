@@ -163,6 +163,7 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
     CREATE TABLE IF NOT EXISTS daily_signals (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       author TEXT NOT NULL DEFAULT 'owner',
@@ -380,6 +381,13 @@ function requireAuth(req, res, next) {
   }
   try {
     req.session = jwt.verify(token, JWT_SECRET);
+    // Presence: any authenticated call means the user is actively using the
+    // app — fire-and-forget, never blocks or breaks the request.
+    if (pool) {
+      pool
+        .query(`UPDATE users SET last_seen_at = now() WHERE id = $1`, [req.session.sub])
+        .catch(() => {});
+    }
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired session" });
@@ -826,15 +834,105 @@ app.get("/api/community/stats", async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM users WHERE community_joined = true`
+      `SELECT
+         COUNT(*) FILTER (WHERE community_joined = true)::int AS total,
+         COUNT(*) FILTER (WHERE community_joined = true AND last_seen_at > now() - interval '5 minutes')::int AS online
+       FROM users`
     );
     const posts = await pool.query(`SELECT COUNT(*)::int AS total FROM community_posts`);
     return res.json({
       totalMembers: rows[0]?.total ?? 0,
+      onlineCount: rows[0]?.online ?? 0,
       totalPosts: posts.rows[0]?.total ?? 0
     });
   } catch (err) {
     return res.status(500).json({ error: "Could not load community stats", detail: String(err.message || err) });
+  }
+});
+
+/** Presence heartbeat — the app pings this while it is in the foreground so
+ *  "online now" stays truthful even when the user is sitting on a public
+ *  screen (no authenticated calls being made). */
+app.post("/api/presence/ping", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    await pool.query(`UPDATE users SET last_seen_at = now() WHERE id = $1`, [req.session.sub]);
+    res.json({ ok: true });
+  } catch (_err) {
+    res.json({ ok: true }); // presence is best-effort — never surface an error
+  }
+});
+
+/** Admin: list members with roles + presence (for the mentor manager). */
+app.get("/api/admin/members", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only the MarketScope AI team can manage members." });
+  }
+  const q = String(req.query.q || "").trim().toLowerCase();
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, email, picture, role, community_joined, created_at, last_seen_at
+         FROM users
+        WHERE ($1 = '' OR lower(name) LIKE '%' || $1 || '%' OR lower(email) LIKE '%' || $1 || '%')
+        ORDER BY (last_seen_at IS NULL), last_seen_at DESC NULLS LAST, created_at ASC
+        LIMIT 200`,
+      [q]
+    );
+    res.json({
+      members: rows.map((u) => ({
+        id: u.id,
+        name: u.name || u.email || "Member",
+        email: u.email,
+        picture: u.picture || null,
+        role: u.role || "member",
+        communityJoined: !!u.community_joined,
+        joinedAt: u.created_at,
+        lastSeenAt: u.last_seen_at,
+        online: u.last_seen_at != null && Date.now() - new Date(u.last_seen_at).getTime() < 5 * 60 * 1000
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load members", detail: String(err.message || err) });
+  }
+});
+
+/** Admin: promote/demote a member to mentor. Admins themselves are env-gated
+ *  and cannot be changed from the app. */
+app.post("/api/admin/members/:id/role", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only the MarketScope AI team can manage roles." });
+  }
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Member not found." });
+  const role = String((req.body || {}).role || "").toLowerCase();
+  if (!["member", "mentor"].includes(role)) {
+    return res.status(400).json({ error: "role must be 'member' or 'mentor'." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users SET role = $1
+        WHERE id = $2 AND role <> 'admin'
+        RETURNING id, name, email, picture, role, community_joined, created_at, last_seen_at`,
+      [role, req.params.id]
+    );
+    if (!rows.length) {
+      // either the member does not exist, or they are an admin (locked)
+      return res.status(404).json({ error: "Member not found or role is locked." });
+    }
+    const u = rows[0];
+    res.json({
+      member: {
+        id: u.id, name: u.name || u.email || "Member", email: u.email,
+        picture: u.picture || null, role: u.role || "member",
+        communityJoined: !!u.community_joined, joinedAt: u.created_at,
+        lastSeenAt: u.last_seen_at,
+        online: u.last_seen_at != null && Date.now() - new Date(u.last_seen_at).getTime() < 5 * 60 * 1000
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not update the role", detail: String(err.message || err) });
   }
 });
 

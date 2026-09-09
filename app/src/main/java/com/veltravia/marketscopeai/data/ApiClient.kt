@@ -567,6 +567,37 @@ object ApiClient {
         request(request)
     }
 
+    /** Presence heartbeat — keeps "online now" truthful while the app is open. */
+    suspend fun presencePing(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/presence/ping")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post("{}".toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Admin: list members with roles + presence, for the mentor manager. */
+    suspend fun fetchAdminMembers(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/members")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Admin: set a member's role ('member' or 'mentor'). Admins are locked. */
+    suspend fun setAdminMemberRole(sessionToken: String, memberId: String, role: String): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("role", role)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/members/$memberId/role")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Admin: manually close a signal with an outcome (for no-feed instruments). */
     suspend fun closeDailySignal(sessionToken: String, id: String, outcome: String): JSONObject = withContext(Dispatchers.IO) {
         val body = JSONObject().put("outcome", outcome)

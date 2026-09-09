@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
@@ -57,6 +59,7 @@ import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
+import com.veltravia.marketscopeai.ui.RoleBadge
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
@@ -99,6 +102,9 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
     var mode by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
+    var members by remember { mutableStateOf<org.json.JSONArray?>(null) }
+    var memberQuery by remember { mutableStateOf("") }
+    var busyMemberId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reloadKey) {
         val token = SessionManager.sessionToken(context) ?: return@LaunchedEffect
@@ -112,6 +118,11 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             pendingComments = ApiClient.fetchPendingSignalComments(token)
         } catch (_: Exception) {
             pendingComments = null // not admin / offline — section simply stays hidden
+        }
+        try {
+            members = ApiClient.fetchAdminMembers(token).optJSONArray("members") ?: org.json.JSONArray()
+        } catch (_: Exception) {
+            members = null
         }
     }
 
@@ -383,7 +394,129 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
                 }
             }
         }
+        Spacer(Modifier.height(28.dp))
+
+        // ---------- members & roles (mentor manager) ----------
+        if (members != null) {
+            Text("Members & roles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Promote trusted members to mentor — their name gets the violet Mentor badge everywhere. Admin roles are locked to your admin email(s).",
+                style = MaterialTheme.typography.bodySmall, color = TextMuted
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = memberQuery,
+                onValueChange = { memberQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Search name or email", color = TextMuted) },
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextPrimary,
+                    unfocusedTextColor = TextPrimary
+                )
+            )
+            Spacer(Modifier.height(10.dp))
+            val q = memberQuery.trim().lowercase()
+            var shown = 0
+            for (i in 0 until members!!.length()) {
+                val m = members!!.optJSONObject(i) ?: continue
+                val name = m.optString("name", "")
+                val email = m.optString("email", "")
+                if (q.isNotBlank() && !name.lowercase().contains(q) && !email.lowercase().contains(q)) continue
+                shown++
+                MemberRoleRow(m, busyMemberId == m.optString("id")) { role ->
+                    val token = SessionManager.sessionToken(context) ?: return@MemberRoleRow
+                    scope.launch {
+                        busyMemberId = m.optString("id")
+                        try {
+                            ApiClient.setAdminMemberRole(token, m.optString("id"), role)
+                            // refresh the member list so the badge/state is server-truth
+                            members = ApiClient.fetchAdminMembers(token).optJSONArray("members") ?: org.json.JSONArray()
+                            Toast.makeText(context, if (role == "mentor") "Promoted to mentor" else "Mentor role removed", Toast.LENGTH_SHORT).show()
+                        } catch (ex: Exception) {
+                            Toast.makeText(context, ex.message ?: "Could not update role", Toast.LENGTH_SHORT).show()
+                        } finally {
+                            busyMemberId = null
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (shown == 0) Text("No members match that search.", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+            Spacer(Modifier.height(8.dp))
+        }
+
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+/** One member row of the mentor manager: presence dot, name/email, role chip,
+ *  and the promote/demote action. Admins are shown but locked. */
+@Composable
+private fun MemberRoleRow(m: JSONObject, busy: Boolean, onSetRole: (String) -> Unit) {
+    val name = m.optString("name", "Member")
+    val email = m.optString("email", "")
+    val role = m.optString("role", "member")
+    val online = m.optBoolean("online", false)
+    val isAdmin = role.equals("admin", ignoreCase = true)
+    val isMentor = role.equals("mentor", ignoreCase = true)
+    val initials = name.trim().split(Regex("\\s+")).mapNotNull { it.firstOrNull()?.uppercaseChar() }.take(2).joinToString("")
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceLight)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(AccentCyan.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(initials.ifBlank { "?" }, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = AccentCyan)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.width(6.dp))
+                RoleBadge(role)
+                if (online) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(BullGreen)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text("online", fontSize = 9.5.sp, color = BullGreen, fontWeight = FontWeight.Medium)
+                }
+            }
+            Text(email, fontSize = 11.sp, color = TextMuted)
+        }
+        Spacer(Modifier.weight(1f))
+        when {
+            busy -> CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = AccentCyan)
+            isAdmin -> Text("Admin", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
+            isMentor -> OutlinedButton(
+                onClick = { onSetRole("member") },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.heightIn(min = 32.dp)
+            ) { Text("Remove mentor", fontSize = 11.sp, color = BearRed, fontWeight = FontWeight.SemiBold) }
+            else -> Button(
+                onClick = { onSetRole("mentor") },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet, contentColor = androidx.compose.ui.graphics.Color.White),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.heightIn(min = 32.dp)
+            ) { Text("Make mentor", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 
