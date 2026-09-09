@@ -520,15 +520,16 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
     }
 
     fun toggleTake() {
-        val prevTaken = taken ?: return
         if (token == null || id.isEmpty()) return
+        val prevTaken = taken ?: return
         val prevCount = takerCount
-        taken = !prevTaken
-        takerCount = if (taken) prevCount + 1 else (prevCount - 1).coerceAtLeast(0)
+        val newTaken = !prevTaken
+        taken = newTaken
+        takerCount = if (newTaken) prevCount + 1 else (prevCount - 1).coerceAtLeast(0)
         scope.launch {
             try {
                 val resp = ApiClient.toggleSignalTake(token, id)
-                taken = resp.optBoolean("taken", taken)
+                taken = resp.optBoolean("taken", newTaken)
                 takerCount = resp.optInt("takerCount", takerCount)
             } catch (_: Exception) {
                 taken = prevTaken
