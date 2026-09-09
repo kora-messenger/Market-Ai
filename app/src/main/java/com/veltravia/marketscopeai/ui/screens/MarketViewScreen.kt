@@ -105,6 +105,16 @@ private fun tradingViewSymbol(id: String): String = when (id) {
     }
 }
 
+/**
+ * TradingView's crypto data feed (proxied through Binance) has twice now
+ * frozen on a blank gray box inside our WebView — even after the cookie +
+ * watchdog fix that resolved the same bug for OANDA forex/metal symbols.
+ * Since our own Coinbase-backed candle chart is already verified reliable
+ * for every crypto pair, crypto instruments default to OUR chart; users can
+ * still tap through to the real TradingView chart if they want it.
+ */
+private fun isCryptoInstrument(id: String): Boolean = tradingViewSymbol(id).startsWith("BINANCE:")
+
 /** Maps our timeframe chips to TradingView interval parameter. */
 private fun tradingViewInterval(tf: String): String = when (tf) {
     "5m" -> "5"
@@ -163,7 +173,11 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
     var livePrice by remember { mutableStateOf<Double?>(null) }
     var priceError by remember { mutableStateOf(false) }
     var flashUp by remember { mutableStateOf<Boolean?>(null) }
-    var tvFailed by remember { mutableStateOf(false) }
+    var tvFailed by remember(id) { mutableStateOf(isCryptoInstrument(id)) }
+    // Only true once TradingView was actually attempted and genuinely failed —
+    // stays false when we simply default-skipped it for crypto, so the copy
+    // below stays honest instead of claiming a failure that never happened.
+    var tvEverFailed by remember(id) { mutableStateOf(false) }
     var tvRetryKey by remember { mutableStateOf(0) }
 
     // Real candle polling — full refresh every 30s per timeframe.
@@ -381,9 +395,9 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                     }
                 }
                 else -> {
-                    // Built-in chart fallback — still real data, just ours.
+                    // Built-in chart — our own reliable, real-data chart.
                     Text(
-                        "TradingView unreachable — showing the built-in chart.",
+                        if (tvEverFailed) "TradingView unreachable — showing the built-in chart." else "Live chart",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
@@ -398,7 +412,7 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                     Button(
                         onClick = { tvRetryKey++; tvFailed = false },
                         colors = ButtonDefaults.buttonColors(containerColor = AccentViolet, contentColor = Color.White)
-                    ) { Text("Try TradingView again") }
+                    ) { Text(if (tvEverFailed) "Try TradingView again" else "View on TradingView") }
                 }
             }
         } else {
@@ -406,7 +420,7 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                 TradingViewChart(
                     symbol = tradingViewSymbol(id),
                     tvInterval = tradingViewInterval(interval),
-                    onFailed = { tvFailed = true }
+                    onFailed = { tvFailed = true; tvEverFailed = true }
                 )
             }
         }
@@ -720,8 +734,14 @@ private fun TradingViewChart(
                                     if (failed || rendered) return
                                     checks++
                                     view?.evaluateJavascript(
+                                        // Require a canvas that's actually big on screen (real
+                                        // chart size, via getBoundingClientRect — CSS pixels,
+                                        // not the raw buffer attribute) so a small unrelated
+                                        // utility canvas can't false-positive this check and
+                                        // strand the user on a blank box forever.
                                         "(function(){var c=document.querySelectorAll('canvas');" +
-                                            "for(var i=0;i<c.length;i++){if(c[i].width>50)return true;}" +
+                                            "for(var i=0;i<c.length;i++){var r=c[i].getBoundingClientRect();" +
+                                            "if(r.width>150&&r.height>150)return true;}" +
                                             "return false;})()"
                                     ) { result ->
                                         when {
