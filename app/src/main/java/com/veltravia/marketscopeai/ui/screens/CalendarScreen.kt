@@ -409,7 +409,6 @@ private fun EventRow(ev: CalendarEvent, timeFmt: SimpleDateFormat) {
     }
 }
 
-@Composable
 /** News reshare text — Android share sheet on tap, clipboard on long-press. */
 private fun buildNewsShareText(item: NewsItem): String =
     "\uD83D\uDCF0 ${item.title}\n\n${item.source} — read it here:\n${item.link}\n\nvia MarketScope AI"
