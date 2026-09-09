@@ -141,6 +141,7 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expired_email_sent_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire JSONB;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire_completed_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
   `);
   if (introducingQuestionnaire) {
     await pool.query(
@@ -455,6 +456,12 @@ app.post("/api/auth/google", async (req, res) => {
       );
       const isNewUser = Boolean(rows[0].inserted_new);
       const questionnaireCompleted = rows[0].questionnaire_completed_at != null;
+      // Admin emails are promoted to a persistent role (drives the Admin
+      // badge in the community and lets admins post links un-checked).
+      if (ADMIN_EMAILS.includes(String(rows[0].email || "").toLowerCase())) {
+        await pool.query(`UPDATE users SET role = 'admin' WHERE id = $1 AND role <> 'admin'`, [rows[0].id]);
+        rows[0].role = "admin";
+      }
       user = {
         id: rows[0].id,
         googleSub: rows[0].google_sub,
@@ -463,6 +470,7 @@ app.post("/api/auth/google", async (req, res) => {
         picture: rows[0].picture,
         communityJoined: rows[0].community_joined,
         communityJoinedAt: rows[0].community_joined_at,
+        role: rows[0].role || "user",
         questionnaireCompleted,
         questionnaire: questionnaireCompleted ? rows[0].questionnaire : null,
         isNewUser,
@@ -1949,7 +1957,9 @@ app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
       `SELECT c.id, c.user_id, c.author_name, c.body, c.approved, c.created_at,
               EXISTS(SELECT 1 FROM signal_comment_images i WHERE i.comment_id = c.id) AS has_image,
               NULLIF((SELECT u.picture FROM users u
-                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture
+                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
+              COALESCE((SELECT u.role FROM users u
+                      WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role
        FROM signal_comments c
        WHERE c.signal_id = $1::uuid ORDER BY c.created_at ASC LIMIT 200`,
       [req.params.id]
@@ -1972,6 +1982,7 @@ app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
         id: r.id,
         authorName: r.author_name,
         authorPicture: r.author_picture || "",
+        authorRole: r.author_role || "user",
         body: r.body,
         createdAt: r.created_at,
         hasImage: r.has_image,
@@ -2008,6 +2019,10 @@ app.post("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
   try {
     const me = await currentUser(req);
     if (!me) return res.status(404).json({ error: "User not found" });
+    const linkVerdict = await guardLinks(me, body);
+    if (!linkVerdict.allowed) {
+      return res.status(422).json({ error: linkVerdict.error, linkBlocked: true });
+    }
     const { rows: signalRows } = await pool.query(`SELECT id FROM daily_signals WHERE id = $1::uuid`, [req.params.id]);
     if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
     const approved = !imageDataUrl; // text-only comments post instantly; screenshots wait for review
@@ -2211,10 +2226,129 @@ const REACTION_EMOJIS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F525}", "\u{1F680
 
 async function currentUser(req) {
   const { rows } = await pool.query(
-    `SELECT id, name, email, picture FROM users WHERE google_sub = $1`,
+    `SELECT id, name, email, picture, role FROM users WHERE google_sub = $1`,
     [req.session.sub]
   );
   return rows[0] || null;
+}
+
+// --- AI link monitor -------------------------------------------------------
+// Community content (posts + comments + signal comments) is scanned for
+// links. Non-admin links are judged by the SAME AI engine that powers the
+// chart analysis — no hardcoded blocklists, it reads the link AND the text
+// around it and decides: legit trading link vs scam/spam/DM-bait.
+// Fail-closed: if the check cannot run, the content is rejected with a
+// clear retry message — a missed scam costs traders money, a delayed
+// legit post costs nothing.
+
+const LINK_EXTRACT_RE = /(?:https?:\/\/|www\.|t\.me\/|wa\.me\/|bit\.ly\/|tinyurl\.com\/)[^\s<>"']+[^\s<>"'.,!?;:)]/gi;
+const linkVerdictCache = new Map(); // domain -> { allowed, reason, at }
+const LINK_CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
+
+function extractLinks(text) {
+  return [...String(text || "").matchAll(LINK_EXTRACT_RE)].map((m) => m[0]);
+}
+
+function linkDomain(link) {
+  try {
+    const withProto = /^https?:\/\//i.test(link) ? link : "https://" + link.replace(/^www\./i, "");
+    const u = new URL(withProto);
+    return u.hostname.toLowerCase().replace(/^www\./, "");
+  } catch (_e) {
+    return link.toLowerCase();
+  }
+}
+
+/**
+ * Judges the links inside a community post/comment body.
+ * Admins bypass entirely. Returns { allowed: true } or
+ * { allowed: false, error: friendly user-facing message }.
+ */
+async function guardLinks(author, body) {
+  const role = String((author && author.role) || "user");
+  if (role === "admin" || ADMIN_EMAILS.includes(String((author && author.email) || "").toLowerCase())) {
+    return { allowed: true };
+  }
+  const links = extractLinks(body);
+  if (!links.length) return { allowed: true };
+
+  const now = Date.now();
+  const toCheck = [];
+  const verdicts = [];
+  for (const link of links) {
+    const domain = linkDomain(link);
+    const cached = linkVerdictCache.get(domain);
+    if (cached && now - cached.at < LINK_CACHE_TTL_MS) {
+      verdicts.push({ link, domain, ...cached, cached: true });
+    } else {
+      toCheck.push({ link, domain });
+    }
+  }
+
+  if (toCheck.length) {
+    if (!OPENROUTER_API_KEY) {
+      return { allowed: false, error: "Links can't be posted right now — please try again in a moment or remove the link." };
+    }
+    let checked = [];
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: ANALYSIS_MODEL,
+          max_tokens: 400,
+          reasoning: { effort: "low" },
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are the link safety monitor for a trading community app. Judge each link from a trading context. " +
+                "ALLOW: reputable broker/exchange sites, financial news, charting tools, educational trading content, official docs, government/central-bank sites. " +
+                "BLOCK: WhatsApp/Telegram/Discord invite links and any DM-bait, signal-selling or VIP groups, socials used to funnel users, referral/affiliate spam, " +
+                "giveaways or get-rich schemes, unverified investment/cryptocurrency platforms, URL shorteners pointing anywhere unknown, phishing or brand lookalikes, " +
+                "gambling, adult content, malware. Judge the domain AND the surrounding message. " +
+                'Respond ONLY as JSON: {"verdicts":[{"domain":"...","allowed":true|false,"reason":"short"}]} with one entry per link.'
+            },
+            {
+              role: "user",
+              content: "Links to judge:\n" + toCheck.map((c) => "- " + c.link).join("\n") +
+                "\n\nFull message for context:\n" + String(body).slice(0, 1500)
+            }
+          ]
+        })
+      });
+      if (!response.ok) {
+        return { allowed: false, error: "Links can't be posted right now — please try again in a moment or remove the link." };
+      }
+      const data = await response.json();
+      const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+      checked = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];
+    } catch (_e) {
+      return { allowed: false, error: "Links can't be posted right now — please try again in a moment or remove the link." };
+    }
+    for (const c of toCheck) {
+      const v = checked.find((x) => String(x.domain || "").toLowerCase() === c.domain) || {};
+      const allowed = v.allowed === true;
+      const entry = { allowed, reason: String(v.reason || ""), at: now };
+      linkVerdictCache.set(c.domain, entry);
+      verdicts.push({ link: c.link, domain: c.domain, ...entry });
+    }
+  }
+
+  const blocked = verdicts.filter((v) => !v.allowed);
+  if (blocked.length) {
+    return {
+      allowed: false,
+      error:
+        "Links aren't allowed in the community — they keep traders safe from scams. " +
+        (blocked[0].reason ? `(${blocked[0].domain}: ${blocked[0].reason})` : "")
+    };
+  }
+  return { allowed: true };
 }
 
 function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor, viewCount) {
@@ -2223,6 +2357,7 @@ function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor,
     authorName: row.author_name,
     authorEmail: row.author_email,
     authorPicture: row.author_picture || "",
+    authorRole: row.author_role || "user",
     isTeam: row.is_team,
     isTopContributor: isTopContributor || false,
     body: row.body,
@@ -2292,7 +2427,9 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
       `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
               (SELECT COUNT(*)::int FROM post_views v WHERE v.post_id = p.id) AS view_count,
               NULLIF((SELECT u.picture FROM users u
-                      WHERE lower(u.email) = lower(p.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture
+                      WHERE lower(u.email) = lower(p.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
+              COALESCE((SELECT u.role FROM users u
+                      WHERE lower(u.email) = lower(p.author_email) LIMIT 1), 'user') AS author_role
        FROM community_posts p
        ORDER BY p.is_pinned DESC, p.created_at DESC
        LIMIT $1 OFFSET $2`,
@@ -2419,6 +2556,10 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
   try {
     const me = await currentUser(req);
     if (!me) return res.status(404).json({ error: "User not found" });
+    const linkVerdict = await guardLinks(me, body);
+    if (!linkVerdict.allowed) {
+      return res.status(422).json({ error: linkVerdict.error, linkBlocked: true });
+    }
     const isTeam = ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase());
     const { rows } = await pool.query(
       `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments, outcome_tag)
@@ -2692,12 +2833,14 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, c.author_name, c.author_email, c.body, c.parent_id, c.created_at,
               NULLIF((SELECT u.picture FROM users u
-                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture
+                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
+              COALESCE((SELECT u.role FROM users u
+                      WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role
        FROM post_comments c WHERE c.post_id = $1::uuid
        ORDER BY c.created_at ASC LIMIT 300`,
       [req.params.id]
     );
-    return res.json({ comments: rows.map((r) => ({ ...r, author_picture: r.author_picture || "" })) });
+    return res.json({ comments: rows.map((r) => ({ ...r, author_picture: r.author_picture || "", author_role: r.author_role || "user" })) });
   } catch (err) {
     return res.status(500).json({ error: "Could not load comments", detail: String(err.message || err) });
   }
@@ -2960,12 +3103,17 @@ app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
   try {
     const me = await currentUser(req);
     if (!me) return res.status(404).json({ error: "User not found" });
+    const linkVerdict = await guardLinks(me, body);
+    if (!linkVerdict.allowed) {
+      return res.status(422).json({ error: linkVerdict.error, linkBlocked: true });
+    }
     const { rows } = await pool.query(
       `INSERT INTO post_comments (post_id, user_id, author_name, author_email, body, parent_id)
        VALUES ($1::uuid, $2, $3, $4, $5, $6)
        RETURNING id, author_name, author_email, body, parent_id, created_at`,
       [req.params.id, me.id, me.name || "Trader", me.email || "", body, parentId]
     );
+    rows[0].author_role = me.role || "user";
     const { rows: post } = await pool.query(
       `SELECT user_id, author_name FROM community_posts WHERE id = $1::uuid`,
       [req.params.id]

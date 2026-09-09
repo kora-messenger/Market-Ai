@@ -60,6 +60,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.RoleBadge
 import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
@@ -91,6 +92,7 @@ private data class SignalComment(
     val id: String,
     val authorName: String,
     val authorPicture: String = "",
+    val authorRole: String = "user",
     val body: String,
     val createdAt: String,
     val hasImage: Boolean = false,
@@ -599,6 +601,7 @@ private fun signalCommentFromJson(c: JSONObject): SignalComment {
         id = c.optString("id"),
         authorName = c.optString("authorName").ifBlank { "Trader" },
         authorPicture = c.optString("authorPicture"),
+        authorRole = c.optString("authorRole", "user"),
         body = c.optString("body"),
         createdAt = c.optString("createdAt"),
         hasImage = c.optBoolean("hasImage", false),
@@ -684,6 +687,10 @@ private fun TraderCommentRow(
             Spacer(Modifier.width(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(comment.authorName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                if (comment.authorRole.equals("admin", true) || comment.authorRole.equals("mentor", true)) {
+                    Spacer(Modifier.width(6.dp))
+                    RoleBadge(comment.authorRole)
+                }
                 Spacer(Modifier.width(6.dp))
                 Text(timeAgo(comment.createdAt), fontSize = 10.sp, color = TextMuted)
             }

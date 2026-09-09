@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.RoleBadge
 import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
@@ -111,6 +112,7 @@ data class CommunityPost(
     val authorName: String,
     val authorEmail: String,
     val authorPicture: String = "",
+    val authorRole: String = "user",
     val isTeam: Boolean,
     val isTopContributor: Boolean,
     val isPinned: Boolean,
@@ -151,6 +153,7 @@ data class CommunityComment(
     val parentId: String?,
     val authorName: String,
     val authorPicture: String = "",
+    val authorRole: String = "user",
     val body: String,
     val createdAt: String,
     val pending: Boolean = false
@@ -193,6 +196,7 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
             authorName = p.optString("authorName").ifBlank { "Trader" },
             authorEmail = p.optString("authorEmail"),
             authorPicture = p.optString("authorPicture"),
+            authorRole = p.optString("authorRole", "user"),
             isTeam = p.optBoolean("isTeam"),
             isTopContributor = p.optBoolean("isTopContributor"),
             isPinned = p.optBoolean("isPinned"),
@@ -225,6 +229,7 @@ private fun parseComments(json: JSONArray): List<CommunityComment> =
             parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
             authorName = c.optString("author_name").ifBlank { "Trader" },
             authorPicture = c.optString("author_picture"),
+            authorRole = c.optString("author_role", "user"),
             body = c.optString("body"),
             createdAt = c.optString("created_at")
         )
@@ -1304,6 +1309,10 @@ private fun PostCard(
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
+                        if (post.authorRole.equals("admin", true) || post.authorRole.equals("mentor", true)) {
+                            Spacer(Modifier.width(6.dp))
+                            RoleBadge(post.authorRole)
+                        }
                         if (post.isTeam) {
                             Spacer(Modifier.width(6.dp))
                             Surface(color = AccentViolet.copy(alpha = 0.12f), shape = RoundedCornerShape(6.dp)) {
@@ -1687,6 +1696,7 @@ private fun CommentsSheet(
                         parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
                         authorName = c.optString("author_name").ifBlank { myName },
                         authorPicture = c.optString("author_picture").ifBlank { myPicture },
+                        authorRole = c.optString("author_role", "user"),
                         body = c.optString("body"),
                         createdAt = c.optString("created_at")
                     ) else it
@@ -1833,6 +1843,10 @@ private fun CommentRow(
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(comment.authorName, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                    if (comment.authorRole.equals("admin", true) || comment.authorRole.equals("mentor", true)) {
+                        Spacer(Modifier.width(6.dp))
+                        RoleBadge(comment.authorRole)
+                    }
                     Spacer(Modifier.width(6.dp))
                     Text(
                         (if (comment.pending) "sending…" else relativeTime(comment.createdAt)),
