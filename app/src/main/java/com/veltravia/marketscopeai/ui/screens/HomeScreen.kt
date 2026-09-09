@@ -193,7 +193,7 @@ fun HomeScreen(
                 return Offset.Zero
             }
 
-            override fun onPreFling(available: Velocity): Velocity {
+            override suspend fun onPreFling(available: Velocity): Velocity {
                 if (refreshing) return Velocity.Zero
                 if (pullDistance >= pullThresholdPx) {
                     // Released past the threshold — run the real refresh.
