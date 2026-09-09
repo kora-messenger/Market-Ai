@@ -84,6 +84,48 @@ app.use(express.json({ limit: "25mb" }));
 
 const PORT = process.env.PORT || 3000;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+
+/** Calls OpenRouter with one automatic retry for transient upstream failures
+ *  (429 rate-limited, or a 5xx from the model provider) — these are common
+ *  hiccups on a free-tier key/model, not real outages, and used to surface
+ *  as a hard "Analysis provider error" on the very first retry-able blip.
+ *  Every failure (transient or final) is logged with the real status/body
+ *  so it is diagnosable from Render logs instead of vanishing silently. */
+async function callOpenRouter(payload, label) {
+  const RETRYABLE = new Set([408, 429, 500, 502, 503, 504, 522, 524, 529]);
+  let lastStatus = 0;
+  let lastDetail = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let response;
+    try {
+      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      lastStatus = 0;
+      lastDetail = String(err.message || err);
+      console.error(`[openrouter:${label}] network error (attempt ${attempt}):`, lastDetail);
+      if (attempt === 1) { await new Promise(r => setTimeout(r, 1200)); continue; }
+      return { ok: false, status: 0, detail: lastDetail };
+    }
+    if (response.ok) return { ok: true, response };
+    lastStatus = response.status;
+    lastDetail = (await response.text()).slice(0, 500);
+    console.error(`[openrouter:${label}] HTTP ${lastStatus} (attempt ${attempt}):`, lastDetail);
+    if (attempt === 1 && RETRYABLE.has(lastStatus)) {
+      await new Promise(r => setTimeout(r, 1200));
+      continue;
+    }
+    return { ok: false, status: lastStatus, detail: lastDetail };
+  }
+  return { ok: false, status: lastStatus, detail: lastDetail };
+}
+
 const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || "";
 const JWT_SECRET = process.env.SESSION_JWT_SECRET || "";
 const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL || "google/gemini-3.8-flash";
@@ -469,6 +511,7 @@ app.post("/api/auth/google", async (req, res) => {
       name: payload.name || "Trader",
       picture: payload.picture || ""
     };
+    let isNewUser = false;
 
     if (pool) {
       const { rows } = await pool.query(
@@ -481,7 +524,7 @@ app.post("/api/auth/google", async (req, res) => {
                    (xmax = 0) AS inserted_new`,
         [payload.sub, user.email, user.name, user.picture]
       );
-      const isNewUser = Boolean(rows[0].inserted_new);
+      isNewUser = Boolean(rows[0].inserted_new);
       const questionnaireCompleted = rows[0].questionnaire_completed_at != null;
       // Admin emails are promoted to a persistent role (drives the Admin
       // badge in the community and lets admins post links un-checked).
@@ -1325,44 +1368,37 @@ Respond ONLY with JSON:
     : "";
   let validation;
   try {
-    const vResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: ANALYSIS_MODEL,
-        max_tokens: 1500,
-        reasoning: { effort: "low" },
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: CHART_VALIDATION_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Stated instrument: ${instrument.display} (4H and 15M charts).${livePriceLine}`
-              },
-              { type: "image_url", image_url: { url: imageH4 } },
-              { type: "image_url", image_url: { url: imageM15 } }
-            ]
-          }
-        ]
-      })
-    });
-    if (!vResponse.ok) {
-      const detail = await vResponse.text();
+    const vResult = await callOpenRouter({
+      model: ANALYSIS_MODEL,
+      max_tokens: 1500,
+      reasoning: { effort: "low" },
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: CHART_VALIDATION_PROMPT },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Stated instrument: ${instrument.display} (4H and 15M charts).${livePriceLine}`
+            },
+            { type: "image_url", image_url: { url: imageH4 } },
+            { type: "image_url", image_url: { url: imageM15 } }
+          ]
+        }
+      ]
+    }, "validation");
+    if (!vResult.ok) {
       return res.status(502).json({
-        error: "Analysis provider error (validation)",
-        status: vResponse.status,
-        detail: detail.slice(0, 400)
+        error: "Our AI analysis service had a temporary hiccup verifying your charts. Please tap Analyze again.",
+        status: vResult.status,
+        detail: vResult.detail.slice(0, 400)
       });
     }
-    const vData = await vResponse.json();
+    const vData = await vResult.response.json();
     validation = extractJson(vData.choices?.[0]?.message?.content || "");
   } catch (err) {
+    console.error("[analyze] validation stage threw:", err && err.message, err && err.stack);
     return res.status(502).json({
       error: "Could not verify the uploaded charts. Please try again.",
       detail: String(err.message || err)
@@ -1386,47 +1422,39 @@ Respond ONLY with JSON:
 
   // --- Stage 3: the real analysis, anchored to the verified live market ---
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: ANALYSIS_MODEL,
-        max_tokens: 4000,
-        reasoning: { effort: "low" },
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Instrument: ${instrument.display}. Mode: ${mode === "scalp" ? "Scalp (15M-biased)" : "Swing (4H-biased)"}.` +
-                  (livePrice != null
-                    ? ` Verified current market price of ${instrument.display}: ${livePrice}. Cross-check the chart against this live market — if the chart and the live market contradict each other, say so in the thesis.`
-                    : "")
-              },
-              { type: "image_url", image_url: { url: imageH4 } },
-              { type: "image_url", image_url: { url: imageM15 } }
-            ]
-          }
-        ]
-      })
-    });
+    const orResult = await callOpenRouter({
+      model: ANALYSIS_MODEL,
+      max_tokens: 4000,
+      reasoning: { effort: "low" },
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Instrument: ${instrument.display}. Mode: ${mode === "scalp" ? "Scalp (15M-biased)" : "Swing (4H-biased)"}.` +
+                (livePrice != null
+                  ? ` Verified current market price of ${instrument.display}: ${livePrice}. Cross-check the chart against this live market — if the chart and the live market contradict each other, say so in the thesis.`
+                  : "")
+            },
+            { type: "image_url", image_url: { url: imageH4 } },
+            { type: "image_url", image_url: { url: imageM15 } }
+          ]
+        }
+      ]
+    }, "analysis");
 
-    if (!response.ok) {
-      const detail = await response.text();
+    if (!orResult.ok) {
       return res.status(502).json({
-        error: "Analysis provider error",
-        status: response.status,
-        detail: detail.slice(0, 400)
+        error: "Our AI analysis service had a temporary hiccup. Please tap Analyze again.",
+        status: orResult.status,
+        detail: orResult.detail.slice(0, 400)
       });
     }
 
-    const data = await response.json();
+    const data = await orResult.response.json();
     const text = data.choices?.[0]?.message?.content || "";
     const analysis = extractJson(text);
 
@@ -1450,7 +1478,8 @@ Respond ONLY with JSON:
 
     return res.json({ ...result, ...trial });
   } catch (err) {
-    return res.status(500).json({ error: "Analysis failed", detail: String(err.message || err) });
+    console.error("[analyze] analysis stage threw:", err && err.message, err && err.stack);
+    return res.status(500).json({ error: "Analysis failed. Please tap Analyze again.", detail: String(err.message || err) });
   }
 });
 
