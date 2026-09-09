@@ -44,6 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.AndroidView
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.runtime.key
+import java.net.URLEncoder
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -77,6 +84,29 @@ private const val CANDLE_POLL_MS = 30_000L
 private const val PRICE_POLL_MS = 6_000L
 private const val FLASH_DECAY_MS = 700
 private val INTERVALS = listOf("5m", "15m", "1h", "4h", "1d")
+
+/** Maps a watchlist instrument id to its real TradingView symbol. */
+private fun tradingViewSymbol(id: String): String = when (id) {
+    "xauusd" -> "OANDA:XAUUSD"
+    "xagusd" -> "OANDA:XAGUSD"
+    "eurusd" -> "OANDA:EURUSD"
+    "gbpusd" -> "OANDA:GBPUSD"
+    "usdjpy" -> "OANDA:USDJPY"
+    "audusd" -> "OANDA:AUDUSD"
+    "btcusd" -> "BINANCE:BTCUSDT"
+    "ethusd" -> "BINANCE:ETHUSDT"
+    "solusd" -> "BINANCE:SOLUSDT"
+    else -> "OANDA:" + id.uppercase()
+}
+
+/** Maps our timeframe chips to TradingView interval parameter. */
+private fun tradingViewInterval(tf: String): String = when (tf) {
+    "5m" -> "5"
+    "15m" -> "15"
+    "1h" -> "60"
+    "4h" -> "240"
+    else -> "D"
+}
 
 private data class Candle(
     val t: Long,   // epoch seconds
@@ -126,6 +156,8 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
     var livePrice by remember { mutableStateOf<Double?>(null) }
     var priceError by remember { mutableStateOf(false) }
     var flashUp by remember { mutableStateOf<Boolean?>(null) }
+    var tvFailed by remember { mutableStateOf(false) }
+    var tvRetryKey by remember { mutableStateOf(0) }
 
     // Real candle polling — full refresh every 30s per timeframe.
     LaunchedEffect(id, interval, retryKey) {
@@ -301,66 +333,89 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
 
         Spacer(Modifier.height(14.dp))
 
-        // Chart
-        when {
-            loadError != null && candles == null -> Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(340.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(SurfaceLight),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(loadError ?: "", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = { retryKey++ },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = Color.White)
-                ) { Text("Retry") }
-            }
-            candles == null -> Column(modifier = Modifier.fillMaxWidth()) {
-                repeat(3) { i ->
-                    Box(
-                        modifier = Modifier
-                            .padding(vertical = 6.dp)
-                            .fillMaxWidth()
-                            .height(if (i == 1) 60.dp else 24.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(rememberShimmerBrush())
-                    )
-                    if (i != 2) Spacer(Modifier.height(10.dp))
-                }
-            }
-            else -> {
-                // Merge the live spot price into the last candle so the
-                // chart's newest bar moves with real ticks between refreshes.
-                val shown = remember(candles, livePrice) {
-                    val list = candles!!
-                    val p = livePrice ?: return@remember list
-                    val last = list.last()
-                    if (p == last.c) return@remember list
-                    list.dropLast(1) + last.copy(c = p, h = max(last.h, p), l = min(last.l, p))
-                }
-                CandleChart(
-                    id = id,
-                    candles = shown,
-                    livePrice = livePrice,
-                    interval = interval
-                )
-
-                // Range stats — all real values from the loaded series.
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+        // Chart — the real TradingView chart (same engine the reference
+        // platform uses), with our built-in canvas as an honest offline fallback.
+        val shown: List<Candle>? = remember(candles, livePrice) {
+            val list = candles ?: return@remember null
+            val p = livePrice ?: return@remember list
+            val last = list.last()
+            if (p == last.c) return@remember list
+            list.dropLast(1) + last.copy(c = p, h = max(last.h, p), l = min(last.l, p))
+        }
+        if (tvFailed) {
+            when {
+                loadError != null && candles == null -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(340.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(SurfaceLight),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    val high = shown.maxOf { it.h }
-                    val low = shown.minOf { it.l }
-                    RangeStat("Range high", formatPrice(id, high), Modifier.weight(1f))
-                    RangeStat("Range low", formatPrice(id, low), Modifier.weight(1f))
-                    RangeStat("Data feed", (source ?: "live").replaceFirstChar { it.uppercase() }, Modifier.weight(1f))
+                    Text("TradingView could not be reached and live candles are temporarily unavailable.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { retryKey++ },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = Color.White)
+                    ) { Text("Retry") }
                 }
+                shown == null -> Column(modifier = Modifier.fillMaxWidth()) {
+                    repeat(3) { i ->
+                        Box(
+                            modifier = Modifier
+                                .padding(vertical = 6.dp)
+                                .fillMaxWidth()
+                                .height(if (i == 1) 60.dp else 24.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(rememberShimmerBrush())
+                        )
+                        if (i != 2) Spacer(Modifier.height(10.dp))
+                    }
+                }
+                else -> {
+                    // Built-in chart fallback — still real data, just ours.
+                    Text(
+                        "TradingView unreachable — showing the built-in chart.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    CandleChart(
+                        id = id,
+                        candles = shown,
+                        livePrice = livePrice,
+                        interval = interval
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { tvRetryKey++; tvFailed = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet, contentColor = Color.White)
+                    ) { Text("Try TradingView again") }
+                }
+            }
+        } else {
+            key(interval, tvRetryKey) {
+                TradingViewChart(
+                    symbol = tradingViewSymbol(id),
+                    tvInterval = tradingViewInterval(interval),
+                    onFailed = { tvFailed = true }
+                )
+            }
+        }
+
+        // Range stats — real values from our live series, shown under either chart.
+        if (shown != null) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                val high = shown.maxOf { it.h }
+                val low = shown.minOf { it.l }
+                RangeStat("Range high", formatPrice(id, high), Modifier.weight(1f))
+                RangeStat("Range low", formatPrice(id, low), Modifier.weight(1f))
+                RangeStat("Data feed", (source ?: "live").replaceFirstChar { it.uppercase() }, Modifier.weight(1f))
             }
         }
 
@@ -583,6 +638,90 @@ private fun CandleChart(
                         chipPaint
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The real TradingView chart — embedded via TradingView's public chart widget,
+ * the same engine the reference platform serves on its web workstation.
+ * Full candlesticks, crosshair, zoom, indicators and drawing tools, themed
+ * light to match MarketScope. Timeframe comes from the app's own chips.
+ */
+@Composable
+private fun TradingViewChart(
+    symbol: String,
+    tvInterval: String,
+    onFailed: () -> Unit
+) {
+    var loaded by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val url = remember(symbol, tvInterval) {
+        "https://www.tradingview.com/widgetembed/?symbol=" +
+            URLEncoder.encode(symbol, "UTF-8") +
+            "&interval=" + tvInterval +
+            "&theme=light&style=1&timezone=Africa%2FLagos&locale=en" +
+            "&withdateranges=1&allow_symbol_change=0&save_image=0&hide_volume=0&hide_legend=0"
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(460.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(SurfaceLight)
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                            loaded = false
+                        }
+
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            if (!failed) loaded = true
+                        }
+
+                        override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                            if (request?.isForMainFrame == true && !failed) {
+                                failed = true
+                                onFailed()
+                            }
+                        }
+                    }
+                    loadUrl(url)
+                }
+            },
+            update = { }
+        )
+        if (!loaded && !failed) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(SurfaceLight),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(rememberShimmerBrush())
+                )
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .height(280.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(rememberShimmerBrush())
+                )
             }
         }
     }
