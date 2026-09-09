@@ -1543,6 +1543,7 @@ private fun PostCard(
 @Composable
 private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
     val poll = post.poll ?: return
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column {
         Text(
             post.body,
@@ -1632,6 +1633,33 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
             fontSize = 11.sp,
             color = TextMuted
         )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.White)
+                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                .clickable {
+                    val sb = StringBuilder("\uD83D\uDCCA MarketScope AI Poll\n")
+                    sb.append(post.body).append("\n")
+                    poll.options.forEach { option ->
+                        val count = poll.counts[option.id] ?: 0
+                        sb.append("\u2022 ").append(option.label).append(" — ").append(count).append(" votes\n")
+                    }
+                    sb.append("\nCast your vote on MarketScope AI")
+                    val shared = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shared, "Reshare poll"))
+                }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Share, contentDescription = "Reshare poll", tint = TextMuted, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Reshare poll", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+        }
     }
 }
 

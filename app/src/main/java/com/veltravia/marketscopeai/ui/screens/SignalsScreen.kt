@@ -539,6 +539,44 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
         }
     }
 
+    // FxLens-style reshare: hand the signal (or its settled result) to the
+    // Android share sheet so traders can forward it to WhatsApp/Telegram etc.
+    fun reshareSignal() {
+        val dirWord = if (isLong) "LONG" else "SHORT"
+        val arrow = if (isLong) "\uD83D\uDCC8" else "\uD83D\uDCC9"
+        val sb = StringBuilder()
+        if (status == "closed") {
+            val outcomeWord = when (outcome) {
+                "successful" -> "Take profit hit \u2705"
+                "invalidated_sl" -> "Stop loss hit \u274C"
+                else -> "Closed at breakeven"
+            }
+            sb.append(arrow).append(" MarketScope AI Result — ").append(instrument)
+                .append(" (").append(dirWord).append(")\n")
+            sb.append(outcomeWord)
+            if (!exitPrice.isNaN()) sb.append(" at ").append(fmt(exitPrice))
+            sb.append("\n")
+        } else {
+            sb.append(arrow).append(" MarketScope AI Signal — ").append(instrument)
+                .append(" (").append(dirWord).append(")\n")
+        }
+        if (!entry.isNaN()) sb.append("Entry: ").append(fmt(entry)).append("\n")
+        if (!sl.isNaN()) sb.append("Stop loss: ").append(fmt(sl)).append("\n")
+        if (!firstTp.isNaN()) sb.append("Initial TP: ").append(fmt(firstTp)).append("\n")
+        if (!rr.isNaN()) sb.append("R:R 1:").append("%.2f".format(rr)).append("\n")
+        sb.append("Conviction: ").append(strength.replaceFirstChar { it.uppercase() }).append("\n")
+        if (thesis.isNotBlank()) {
+            val t = thesis.trim()
+            sb.append("\n").append(if (t.length > 160) t.take(160) + "…" else t).append("\n")
+        }
+        sb.append("\nvia MarketScope AI")
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+        }
+        context.startActivity(android.content.Intent.createChooser(send, "Reshare signal"))
+    }
+
     // Outcome theming — a won/lost signal gets a colored wash + border + a
     // folded corner ribbon, exactly like a real settled trade result should
     // stand out from a still-live call.
@@ -658,6 +696,19 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
                 Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("$commentCount", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            }
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White)
+                    .border(1.dp, BorderSubtleColor(), RoundedCornerShape(20.dp))
+                    .clickable { reshareSignal() }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Share, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Reshare", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             }
             Text(
                 if (detailsExpanded) "Hide Details" else "View Details",

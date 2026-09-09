@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -302,6 +303,7 @@ private fun EventsList(events: List<CalendarEvent>) {
 
 @Composable
 private fun EventRow(ev: CalendarEvent, timeFmt: SimpleDateFormat) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val isPast = ev.timestamp < System.currentTimeMillis()
     val (dotColor, dotLabel) = when (ev.impact.lowercase()) {
         "high" -> BearRed to "High"
@@ -378,11 +380,34 @@ private fun EventRow(ev: CalendarEvent, timeFmt: SimpleDateFormat) {
                 color = TextMuted
             )
         }
+        androidx.compose.material3.IconButton(
+            onClick = {
+                val impactWord = ev.impact.replaceFirstChar { it.uppercase() }
+                val sb = StringBuilder("\uD83D\uDCC5 MarketScope AI Economic Calendar\n")
+                sb.append(ev.title).append(" (").append(ev.country).append(")\n")
+                sb.append(timeFmt.format(Date(ev.timestamp))).append(" · ").append(impactWord).append(" impact")
+                if (ev.forecast != null || ev.previous != null) {
+                    sb.append("\n")
+                    ev.forecast?.let { sb.append("Forecast: ").append(it).append("  ") }
+                    ev.previous?.let { sb.append("Previous: ").append(it) }
+                }
+                sb.append("\n\nvia MarketScope AI")
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, sb.toString())
+                }
+                context.startActivity(Intent.createChooser(send, "Reshare event"))
+            },
+            modifier = Modifier.size(30.dp)
+        ) {
+            Icon(Icons.Filled.Share, contentDescription = "Reshare event", tint = TextMuted, modifier = Modifier.size(14.dp))
+        }
     }
 }
 
 @Composable
 private fun NewsCard(item: NewsItem, onOpen: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val categoryColor = when (item.category) {
         "forex" -> AccentViolet
         "crypto" -> GoldAmber
@@ -453,6 +478,20 @@ private fun NewsCard(item: NewsItem, onOpen: () -> Unit) {
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color.White)
             )
+        }
+        Spacer(Modifier.width(4.dp))
+        androidx.compose.material3.IconButton(
+            onClick = {
+                val text = "\uD83D\uDCF0 ${item.title}\n\n${item.source} — read it here:\n${item.link}\n\nvia MarketScope AI"
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
+                context.startActivity(Intent.createChooser(send, "Reshare news"))
+            },
+            modifier = Modifier.size(34.dp)
+        ) {
+            Icon(Icons.Filled.Share, contentDescription = "Reshare news", tint = TextMuted, modifier = Modifier.size(16.dp))
         }
     }
 }
