@@ -308,4 +308,36 @@ async function sendTrialExpiredEmail(user) {
   }
 }
 
-module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, formatLagosTime, describeDevice };
+/** Ops: health-check failure alert to the owner inbox. Throttled so a
+ *  long outage sends at most one email per hour instead of one per cron tick. */
+let lastHealthAlertAt = 0;
+async function sendHealthAlertEmail(detail) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    const now = Date.now();
+    if (now - lastHealthAlertAt < 60 * 60 * 1000) {
+      return { ok: true, skipped: "throttled-within-1h", messageId: null };
+    }
+    const content = {
+      subject: "ALERT: MarketScope AI backend health check FAILED",
+      paragraphs: [
+        "The MarketScope AI backend health endpoint reported a problem.",
+        "The health check now performs a REAL database ping, so this alert means a critical dependency (database, auth, or push) is actually unreachable — not just unconfigured.",
+        `Failure detail: ${String(detail || "unknown").slice(0, 300)}`,
+        `Detected at: ${formatLagosTime(new Date().toISOString())} (WAT)`,
+        "Check the service on Render: https://dashboard.render.com/web/srv-dae7mh8u01pc73de6190"
+      ],
+      signoff: ["Automated health monitor,", "MarketScope AI Ops"]
+    };
+    const to = process.env.LOGIN_ALERT_EMAIL || process.env.BREVO_SENDER_EMAIL;
+    const messageId = await sendViaBrevo({ to, subject: content.subject, content });
+    lastHealthAlertAt = now;
+    console.log(`[mailer] health alert email sent to ${to} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] health alert failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
+module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, formatLagosTime, describeDevice };

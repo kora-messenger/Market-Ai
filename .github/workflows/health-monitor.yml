@@ -1,0 +1,44 @@
+name: Health monitor
+
+# Pings the real-DB health endpoint every 15 minutes. If it returns non-200
+# (database unreachable, auth/FCM unconfigured), fires an email alert to the
+# owner via the backend's Brevo mailer (mailer is DB-independent, so the
+# alert still gets out when the database itself is the problem).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        id: ping
+        run: |
+          set -x
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" \
+            --max-time 30 \
+            "https://market-ai-api-jwfb.onrender.com/health" || echo "000")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          cat /tmp/health.json || true
+
+      - name: Alert owner if unhealthy
+        if: steps.ping.outputs.status != '200'
+        run: |
+          DETAIL=$(cat /tmp/health.json 2>/dev/null | head -c 300 || echo "no response / timeout")
+          curl -sS -X POST \
+            --max-time 30 \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"detail\": \"health HTTP ${HEALTH_STATUS}: $DETAIL\"}" \
+            "https://market-ai-api-jwfb.onrender.com/api/admin/health-alert" \
+            -o /dev/null -w "alert-request HTTP %{http_code}\n"
+        env:
+          HEALTH_STATUS: ${{ steps.ping.outputs.status }}
+
+      - name: Fail the run if unhealthy (visible in Actions history)
+        if: steps.ping.outputs.status != '200'
+        run: |
+          echo "Health check failed with status ${{ steps.ping.outputs.status }}"
+          exit 1

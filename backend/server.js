@@ -8,7 +8,7 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
-const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail } = require("./src/mailer");
+const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -393,18 +393,35 @@ app.get("/privacy", (_req, res) => {
 });
 
 // --- Health ---
-app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
+app.get("/health", async (_req, res) => {
+  const config = {
+    database: Boolean(pool),
+    databaseConnected: false,
+    databaseError: null,
+    fcm: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
+    googleAuth: Boolean(GOOGLE_WEB_CLIENT_ID),
+    analysis: Boolean(OPENROUTER_API_KEY)
+  };
+  // Real connectivity check: env presence is NOT enough — a bad host or
+  // dead route would otherwise show green while every DB query fails.
+  if (pool) {
+    try {
+      const t0 = Date.now();
+      await pool.query("SELECT 1 AS ping");
+      config.databaseConnected = true;
+      config.databasePingMs = Date.now() - t0;
+    } catch (err) {
+      config.databaseError = String(err.message || err).slice(0, 200);
+      console.error("[health] DB ping FAILED:", config.databaseError);
+    }
+  }
+  const ok = config.databaseConnected && config.fcm && config.googleAuth;
+  res.status(ok ? 200 : 503).json({
+    ok,
     service: "market-ai-api",
     by: "Veltravia Technologies",
     time: new Date().toISOString(),
-    config: {
-      database: Boolean(pool),
-      fcm: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
-    googleAuth: Boolean(GOOGLE_WEB_CLIENT_ID),
-      analysis: Boolean(OPENROUTER_API_KEY)
-    }
+    config
   });
 });
 
@@ -556,6 +573,16 @@ app.post("/api/admin/login-email-test", async (req, res) => {
     security,
     sentTo: sample.email
   });
+});
+
+// --- Ops: health-down alert email (called by the health monitor cron) ---
+app.post("/api/admin/health-alert", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const detail = (req.body && (req.body.detail || req.body.error)) || "health check failed";
+  const result = await sendHealthAlertEmail(detail);
+  return res.json(result);
 });
 
 // --- Ops: verify the new-vs-returning upsert logic used to pick the email type ---
