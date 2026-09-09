@@ -340,4 +340,41 @@ async function sendHealthAlertEmail(detail) {
   }
 }
 
-module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, formatLagosTime, describeDevice };
+/** Community & signals stats report — real numbers gathered by the backend. */
+async function sendStatsReportEmail(stats) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    const content = {
+      subject: "MarketScope AI — Community & Signals Report",
+      paragraphs: [
+        "Here is the latest snapshot of the MarketScope AI community and signal desk, gathered live from the production database.",
+        "COMMUNITY",
+        "DAILY SIGNALS (this month)",
+        "New today — Share Your Win (v1.3.13): traders can mark \"I took this signal\" on won calls, share a comment plus a trader-proof screenshot (mentor-desk reviewed), and approved proofs appear as Win proofs under the signal and in the new Recent wins strip. The Team Console gained a Win reviews queue."
+      ],
+      fields: [
+        { label: "Members", value: String(stats.members) },
+        { label: "Online now", value: String(stats.online) },
+        { label: "Community posts", value: String(stats.posts) },
+        { label: "Post comments", value: String(stats.postComments) },
+        { label: "Published signals (month)", value: String(stats.signalsTotal) },
+        { label: "Live / closed", value: `${stats.signalsLive} / ${stats.signalsClosed}` },
+        { label: "Wins / losses", value: `${stats.wins} / ${stats.losses}` },
+        { label: "Win rate", value: `${stats.winRate}%` },
+        { label: "Average R:R", value: `1:${stats.avgRR}` },
+        { label: "Chart analyses", value: String(stats.analyses) },
+        { label: "Push devices", value: String(stats.pushDevices) }
+      ],
+      signoff: ["Solas,", "MarketScope AI"]
+    };
+    const to = process.env.LOGIN_ALERT_EMAIL || process.env.BREVO_SENDER_EMAIL;
+    const messageId = await sendViaBrevo({ to, subject: content.subject, content });
+    console.log(`[mailer] stats report email sent to ${to} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] stats report failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
+module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, formatLagosTime, describeDevice };

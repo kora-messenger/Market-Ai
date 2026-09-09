@@ -8,7 +8,7 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
-const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail } = require("./src/mailer");
+const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -652,6 +652,58 @@ app.post("/api/admin/login-email-test", async (req, res) => {
 });
 
 // --- Ops: health-down alert email (called by the health monitor cron) ---
+// --- Ops: email the owner a real community + signals stats report ---
+app.post("/api/admin/stats-report", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  try {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const agg = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM users)::int AS members,
+        (SELECT COUNT(*) FROM users WHERE last_seen_at > now() - interval '5 minutes')::int AS online,
+        (SELECT COUNT(*) FROM community_posts)::int AS posts,
+        (SELECT COUNT(*) FROM post_comments)::int AS post_comments,
+        (SELECT COUNT(*) FROM daily_signals WHERE created_at >= $1)::int AS signals_total,
+        (SELECT COUNT(*) FROM daily_signals WHERE status <> 'closed' AND created_at >= $1)::int AS signals_live,
+        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND created_at >= $1)::int AS signals_closed,
+        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND outcome = 'successful' AND created_at >= $1)::int AS wins,
+        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND outcome <> 'successful' AND created_at >= $1)::int AS losses,
+        (SELECT COALESCE(ROUND(AVG(risk_reward)::numeric, 2), 0) FROM daily_signals WHERE created_at >= $1 AND risk_reward IS NOT NULL)::float AS avg_rr,
+        (SELECT COUNT(*) FROM analyses)::int AS analyses,
+        (SELECT COUNT(*) FROM push_tokens)::int AS push_devices
+    `, [monthStart.toISOString()]);
+    const r = agg.rows[0] || {};
+    const decided = (r.wins || 0) + (r.losses || 0);
+    const winRate = decided > 0 ? Math.round(((r.wins || 0) / decided) * 100) : 0;
+    const result = await sendStatsReportEmail({
+      members: r.members || 0,
+      online: r.online || 0,
+      posts: r.posts || 0,
+      postComments: r.post_comments || 0,
+      signalsTotal: r.signals_total || 0,
+      signalsLive: r.signals_live || 0,
+      signalsClosed: r.signals_closed || 0,
+      wins: r.wins || 0,
+      losses: r.losses || 0,
+      winRate,
+      avgRR: Number(r.avg_rr) > 0 ? Number(r.avg_rr) : 0,
+      analyses: r.analyses || 0,
+      pushDevices: r.push_devices || 0
+    });
+    return res.json(result);
+  } catch (err) {
+    console.error("stats-report failed:", err);
+    return res.status(500).json({ error: "Could not build stats report" });
+  }
+});
+
 app.post("/api/admin/health-alert", async (req, res) => {
   if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
