@@ -751,12 +751,11 @@ private fun MiniBarChart(title: String, data: org.json.JSONArray, tint: androidx
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
-                    contentAlignment = Alignment.Bottom
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
                             .height((4 + (52 * frac)).dp)
                             .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
                             .background(if (count > 0) tint else tint.copy(alpha = 0.2f))
