@@ -2,12 +2,14 @@ package com.veltravia.marketscopeai.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -103,6 +105,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     var members by remember { mutableStateOf<org.json.JSONArray?>(null) }
+    var overview by remember { mutableStateOf<org.json.JSONObject?>(null) }
     var memberQuery by remember { mutableStateOf("") }
     var busyMemberId by remember { mutableStateOf<String?>(null) }
 
@@ -123,6 +126,11 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             members = ApiClient.fetchAdminMembers(token).optJSONArray("members") ?: org.json.JSONArray()
         } catch (_: Exception) {
             members = null
+        }
+        try {
+            overview = ApiClient.fetchAdminOverview(token)
+        } catch (_: Exception) {
+            overview = null
         }
     }
 
@@ -151,6 +159,78 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(horizontal = 4.dp)
         )
         Spacer(Modifier.height(16.dp))
+
+        // ---------- overview dashboard ----------
+        if (overview != null) {
+            val ov = overview!!
+            val m = ov.optJSONObject("members")
+            val an = ov.optJSONObject("analyses")
+            val sg = ov.optJSONObject("signals")
+            val cm = ov.optJSONObject("community")
+            Text("Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OverviewTile(
+                    label = "Members",
+                    value = m?.optInt("total", 0)?.toString() ?: "0",
+                    sub = "+" + (m?.optInt("last7d", 0) ?: 0) + " this week",
+                    tint = AccentCyan,
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewTile(
+                    label = "Online now",
+                    value = m?.optInt("online", 0)?.toString() ?: "0",
+                    sub = (m?.optInt("community", 0) ?: 0).toString() + " in community",
+                    tint = BullGreen,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OverviewTile(
+                    label = "Chart analyses",
+                    value = an?.optInt("total", 0)?.toString() ?: "0",
+                    sub = "+" + (an?.optInt("last7d", 0) ?: 0) + " this week",
+                    tint = AccentViolet,
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewTile(
+                    label = "Push devices",
+                    value = ov.optInt("pushDevices", 0).toString(),
+                    sub = "FCM registered",
+                    tint = GoldAmber,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OverviewTile(
+                    label = "Signals",
+                    value = (sg?.optInt("won", 0) ?: 0).toString() + "W / " + (sg?.optInt("lost", 0) ?: 0) + "L",
+                    sub = (sg?.optInt("open", 0) ?: 0).toString() + " open · auto-resolved at TP/SL",
+                    tint = AccentCyan,
+                    modifier = Modifier.weight(1f)
+                )
+                OverviewTile(
+                    label = "Community",
+                    value = (cm?.optInt("posts", 0) ?: 0).toString() + " posts",
+                    sub = (cm?.optInt("comments", 0) ?: 0).toString() + " comments · " + (cm?.optInt("pollVotes", 0) ?: 0) + " poll votes",
+                    tint = AccentViolet,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            val signups = ov.optJSONArray("signupsDaily")
+            if (signups != null && signups.length() > 0) {
+                MiniBarChart(title = "New members — last 14 days", data = signups, tint = AccentCyan)
+                Spacer(Modifier.height(10.dp))
+            }
+            val analysesDaily = ov.optJSONArray("analysesDaily")
+            if (analysesDaily != null && analysesDaily.length() > 0) {
+                MiniBarChart(title = "Chart analyses — last 7 days", data = analysesDaily, tint = AccentViolet)
+            }
+            Spacer(Modifier.height(24.dp))
+        }
 
         // ---------- pending screenshot-comment reviews ----------
         if (pendingComments != null && pendingComments!!.length() > 0) {
@@ -618,4 +698,78 @@ private fun AdminField(value: String, onChange: (String) -> Unit, placeholder: S
             focusedBorderColor = AccentCyan, cursorColor = AccentCyan
         )
     )
+}
+
+/** One stat tile of the overview dashboard. */
+@Composable
+private fun OverviewTile(label: String, value: String, sub: String, tint: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceLight)
+            .border(1.dp, tint.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Text(label, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(3.dp))
+        Text(value, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Spacer(Modifier.height(2.dp))
+        Text(sub, fontSize = 10.sp, color = TextMuted)
+    }
+}
+
+/** Tiny bar chart for daily counts — pure Compose boxes, no chart library. */
+@Composable
+private fun MiniBarChart(title: String, data: org.json.JSONArray, tint: androidx.compose.ui.graphics.Color) {
+    val counts = (0 until data.length()).mapNotNull { i ->
+        val o = data.optJSONObject(i) ?: return@mapNotNull null
+        o.optString("day", "") to o.optInt("count", 0)
+    }
+    val max = (counts.maxOfOrNull { it.second } ?: 0).coerceAtLeast(1)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceLight)
+            .padding(12.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(title, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Medium)
+            Text("peak $max", fontSize = 10.sp, color = TextMuted)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            counts.forEach { (_, count) ->
+                val frac = count.toFloat() / max
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
+                    contentAlignment = Alignment.Bottom
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((4 + (52 * frac)).dp)
+                            .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                            .background(if (count > 0) tint else tint.copy(alpha = 0.2f))
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            val first = counts.firstOrNull()?.first?.takeLast(5) ?: ""
+            val last = counts.lastOrNull()?.first?.takeLast(5) ?: ""
+            Text(first, fontSize = 9.sp, color = TextMuted)
+            Text(last, fontSize = 9.sp, color = TextMuted)
+        }
+    }
 }

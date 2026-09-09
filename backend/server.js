@@ -850,6 +850,78 @@ app.get("/api/community/stats", async (req, res) => {
   }
 });
 
+/** Admin: the Team Console overview dashboard — real aggregate numbers only,
+ *  no estimates. Everything here is a live COUNT from the database. */
+app.get("/api/admin/overview", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only the MarketScope AI team can view the overview." });
+  }
+  try {
+    const [members, signups, analyses, analysesDaily, signals, community, push] = await Promise.all([
+      pool.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS last7d,
+           COUNT(*) FILTER (WHERE community_joined = true)::int AS community,
+           COUNT(*) FILTER (WHERE last_seen_at > now() - interval '5 minutes')::int AS online,
+           COUNT(*) FILTER (WHERE trial_started_at > now() - interval '7 days' AND (is_premium = false OR is_premium IS NULL))::int AS trialsActive,
+           COUNT(*) FILTER (WHERE is_premium = true)::int AS premium
+         FROM users`
+      ),
+      // signups per day, last 14 days (for the mini chart)
+      pool.query(
+        `SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+                (SELECT COUNT(*)::int FROM users u WHERE u.created_at >= d.day AND u.created_at < d.day + interval '1 day') AS count
+           FROM generate_series(date_trunc('day', now()) - interval '13 days', date_trunc('day', now()), interval '1 day') AS d(day)
+           ORDER BY d.day`
+      ),
+      pool.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS last7d
+         FROM analyses`
+      ),
+      // analyses per day, last 7 days (for the mini chart)
+      pool.query(
+        `SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
+                (SELECT COUNT(*)::int FROM analyses a WHERE a.created_at >= d.day AND a.created_at < d.day + interval '1 day') AS count
+           FROM generate_series(date_trunc('day', now()) - interval '6 days', date_trunc('day', now()), interval '1 day') AS d(day)
+           ORDER BY d.day`
+      ),
+      pool.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE status <> 'closed')::int AS open,
+           COUNT(*) FILTER (WHERE status = 'closed' AND outcome = 'successful')::int AS won,
+           COUNT(*) FILTER (WHERE status = 'closed' AND outcome <> 'successful')::int AS lost
+         FROM daily_signals`
+      ),
+      pool.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM community_posts) AS posts,
+           (SELECT COUNT(*)::int FROM post_comments) AS comments,
+           (SELECT COUNT(*)::int FROM post_poll_votes) AS pollVotes,
+           (SELECT COUNT(*)::int FROM post_reactions) AS reactions
+        `
+      ),
+      pool.query(`SELECT COUNT(DISTINCT token)::int AS devices FROM push_tokens`)
+    ]);
+
+    res.json({
+      members: members.rows[0],
+      signupsDaily: signups.rows,
+      analyses: analyses.rows[0],
+      analysesDaily: analysesDaily.rows,
+      signals: signals.rows[0],
+      community: community.rows[0],
+      pushDevices: push.rows[0].devices
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load the overview", detail: String(err.message || err) });
+  }
+});
+
 /** Presence heartbeat — the app pings this while it is in the foreground so
  *  "online now" stays truthful even when the user is sitting on a public
  *  screen (no authenticated calls being made). */

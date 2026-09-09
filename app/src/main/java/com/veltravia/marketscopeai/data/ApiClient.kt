@@ -577,6 +577,16 @@ object ApiClient {
         request(request)
     }
 
+    /** Admin: the Team Console overview dashboard (real aggregate numbers). */
+    suspend fun fetchAdminOverview(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/overview")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Admin: list members with roles + presence, for the mentor manager. */
     suspend fun fetchAdminMembers(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
