@@ -2686,6 +2686,57 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
   }
 });
 
+/**
+ * Wall of Wins — the full, paginated wall of approved member win proofs,
+ * plus real wall stats (total shared wins, wins this week, traders sharing).
+ */
+app.get("/api/wins/wall", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 12, 1), 24);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  try {
+    const { rows } = await pool.query(
+      `SELECT t.id, t.comment, t.created_at, t.author_name, t.signal_id,
+              s.instrument_display, s.instrument_id, s.direction, s.exit_price,
+              EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              u.avatar_url
+       FROM signal_testimonials t
+       JOIN daily_signals s ON s.id = t.signal_id
+       LEFT JOIN users u ON u.id = t.user_id
+       WHERE t.status = 'approved'
+       ORDER BY t.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    const { rows: statRows } = await pool.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE t.created_at >= now() - interval '7 days')::int AS this_week,
+              COUNT(DISTINCT t.user_id)::int AS traders
+       FROM signal_testimonials t WHERE t.status = 'approved'`
+    );
+    const st = statRows[0] || { total: 0, this_week: 0, traders: 0 };
+    res.json({
+      wins: rows.map((r) => ({
+        id: r.id,
+        signalId: r.signal_id,
+        comment: r.comment,
+        createdAt: r.created_at,
+        authorName: r.author_name,
+        avatarUrl: r.avatar_url || null,
+        hasImage: r.has_image,
+        instrument: r.instrument_display,
+        instrumentId: r.instrument_id,
+        direction: r.direction,
+        exitPrice: r.exit_price
+      })),
+      stats: { total: st.total, thisWeek: st.this_week, traders: st.traders },
+      hasMore: rows.length === limit
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load the wall", detail: String(err.message || err) });
+  }
+});
+
 /** ---------- Admin: win review queue ---------- */
 
 /** Admin: list testimonials (default: pending) for the Team Console review queue. */

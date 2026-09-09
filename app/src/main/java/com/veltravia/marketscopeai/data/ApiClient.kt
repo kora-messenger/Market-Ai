@@ -771,6 +771,17 @@ object ApiClient {
             json.optJSONArray("featured") ?: JSONArray()
         }
 
+    /** Wall of Wins — paginated approved win proofs + wall stats. */
+    suspend fun fetchWinsWall(sessionToken: String, offset: Int = 0, limit: Int = 12): org.json.JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$BASE_URL/api/wins/wall?limit=$limit&offset=$offset")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            request(request)
+        }
+
     /** Admin: win testimonial review queue. */
     suspend fun fetchAdminTestimonials(sessionToken: String, status: String = "pending"): JSONArray =
         withContext(Dispatchers.IO) {

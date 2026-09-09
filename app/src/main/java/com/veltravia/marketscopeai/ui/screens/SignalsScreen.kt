@@ -92,7 +92,8 @@ import java.time.format.DateTimeFormatter
  */
 @Composable
 fun SignalsScreen(
-    onOpenAdmin: () -> Unit
+    onOpenAdmin: () -> Unit,
+    onOpenWall: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var range by remember { mutableStateOf("month") }
@@ -202,7 +203,20 @@ fun SignalsScreen(
             // --- Recent wins: latest approved shared proofs ---
             val featured = featuredWins
             if (featured != null && featured.length() > 0) {
-                Text("Recent wins", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Recent wins", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text(
+                        "Wall of Wins →",
+                        style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AccentCyan,
+                        modifier = Modifier.clickable { onOpenWall() }
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(featured.length()) { i ->

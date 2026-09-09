@@ -64,6 +64,7 @@ import com.veltravia.marketscopeai.ui.screens.CommunityScreen
 import com.veltravia.marketscopeai.ui.screens.LeaderboardScreen
 import com.veltravia.marketscopeai.ui.screens.HomeScreen
 import com.veltravia.marketscopeai.ui.screens.CalendarScreen
+import com.veltravia.marketscopeai.ui.screens.WallOfWinsScreen
 import com.veltravia.marketscopeai.ui.screens.RiskCalculatorScreen
 import com.veltravia.marketscopeai.ui.screens.NotificationsScreen
 import com.veltravia.marketscopeai.ui.screens.CreateTradePlanScreen
@@ -301,6 +302,9 @@ fun MarketAiApp() {
         composable("calendar") {
             CalendarScreen(onBack = { navController.popBackStack() })
         }
+        composable("wall_of_wins") {
+            WallOfWinsScreen(onBack = { navController.popBackStack() })
+        }
         composable("subscribe") {
             SubscribeScreen(
                 onBack = { navController.popBackStack() }
@@ -428,7 +432,8 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenMarket = { id -> navController.navigate("market/$id") }
                 )
                 1 -> SignalsScreen(
-                    onOpenAdmin = { navController.navigate("signals_admin") }
+                    onOpenAdmin = { navController.navigate("signals_admin") },
+                    onOpenWall = { navController.navigate("wall_of_wins") }
                 )
                 2 -> CommunityScreen(
                     onOpenLeaderboard = { navController.navigate("leaderboard") }
