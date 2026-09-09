@@ -3,7 +3,9 @@ package com.veltravia.marketscopeai.ui.screens
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -301,9 +305,11 @@ private fun EventsList(events: List<CalendarEvent>) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EventRow(ev: CalendarEvent, timeFmt: SimpleDateFormat) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val isPast = ev.timestamp < System.currentTimeMillis()
     val (dotColor, dotLabel) = when (ev.impact.lowercase()) {
         "high" -> BearRed to "High"
@@ -380,25 +386,23 @@ private fun EventRow(ev: CalendarEvent, timeFmt: SimpleDateFormat) {
                 color = TextMuted
             )
         }
-        androidx.compose.material3.IconButton(
-            onClick = {
-                val impactWord = ev.impact.replaceFirstChar { it.uppercase() }
-                val sb = StringBuilder("\uD83D\uDCC5 MarketScope AI Economic Calendar\n")
-                sb.append(ev.title).append(" (").append(ev.country).append(")\n")
-                sb.append(timeFmt.format(Date(ev.timestamp))).append(" · ").append(impactWord).append(" impact")
-                if (ev.forecast != null || ev.previous != null) {
-                    sb.append("\n")
-                    ev.forecast?.let { sb.append("Forecast: ").append(it).append("  ") }
-                    ev.previous?.let { sb.append("Previous: ").append(it) }
-                }
-                sb.append("\n\nvia MarketScope AI")
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, sb.toString())
-                }
-                context.startActivity(Intent.createChooser(send, "Reshare event"))
-            },
-            modifier = Modifier.size(30.dp)
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .combinedClickable(
+                    onClick = {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, buildEventShareText(ev, timeFmt))
+                        }
+                        context.startActivity(Intent.createChooser(send, "Reshare event"))
+                    },
+                    onLongClick = {
+                        clipboardManager.setText(AnnotatedString(buildEventShareText(ev, timeFmt)))
+                        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                ),
+            contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Filled.Share, contentDescription = "Reshare event", tint = TextMuted, modifier = Modifier.size(14.dp))
         }
@@ -406,8 +410,30 @@ private fun EventRow(ev: CalendarEvent, timeFmt: SimpleDateFormat) {
 }
 
 @Composable
+/** News reshare text — Android share sheet on tap, clipboard on long-press. */
+private fun buildNewsShareText(item: NewsItem): String =
+    "\uD83D\uDCF0 ${item.title}\n\n${item.source} — read it here:\n${item.link}\n\nvia MarketScope AI"
+
+/** Economic-event reshare text — share sheet on tap, clipboard on long-press. */
+private fun buildEventShareText(ev: CalendarEvent, timeFmt: SimpleDateFormat): String {
+    val impactWord = ev.impact.replaceFirstChar { it.uppercase() }
+    val sb = StringBuilder("\uD83D\uDCC5 MarketScope AI Economic Calendar\n")
+    sb.append(ev.title).append(" (").append(ev.country).append(")\n")
+    sb.append(timeFmt.format(Date(ev.timestamp))).append(" · ").append(impactWord).append(" impact")
+    if (ev.forecast != null || ev.previous != null) {
+        sb.append("\n")
+        ev.forecast?.let { sb.append("Forecast: ").append(it).append("  ") }
+        ev.previous?.let { sb.append("Previous: ").append(it) }
+    }
+    sb.append("\n\nvia MarketScope AI")
+    return sb.toString()
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun NewsCard(item: NewsItem, onOpen: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val categoryColor = when (item.category) {
         "forex" -> AccentViolet
         "crypto" -> GoldAmber
@@ -480,16 +506,23 @@ private fun NewsCard(item: NewsItem, onOpen: () -> Unit) {
             )
         }
         Spacer(Modifier.width(4.dp))
-        androidx.compose.material3.IconButton(
-            onClick = {
-                val text = "\uD83D\uDCF0 ${item.title}\n\n${item.source} — read it here:\n${item.link}\n\nvia MarketScope AI"
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, text)
-                }
-                context.startActivity(Intent.createChooser(send, "Reshare news"))
-            },
-            modifier = Modifier.size(34.dp)
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .combinedClickable(
+                    onClick = {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, buildNewsShareText(item))
+                        }
+                        context.startActivity(Intent.createChooser(send, "Reshare news"))
+                    },
+                    onLongClick = {
+                        clipboardManager.setText(AnnotatedString(buildNewsShareText(item)))
+                        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                ),
+            contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Filled.Share, contentDescription = "Reshare news", tint = TextMuted, modifier = Modifier.size(16.dp))
         }

@@ -2,7 +2,9 @@ package com.veltravia.marketscopeai.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -72,6 +74,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -1541,10 +1545,24 @@ private fun PostCard(
 
 // --- poll body ------------------------------------------------------------------------
 
+/** The poll reshare text — shared via the Android share sheet or copied to clipboard. */
+private fun buildPollShareText(post: CommunityPost, poll: CommunityPoll): String {
+    val sb = StringBuilder("\uD83D\uDCCA MarketScope AI Poll\n")
+    sb.append(post.body).append("\n")
+    poll.options.forEach { option ->
+        val count = poll.counts[option.id] ?: 0
+        sb.append("\u2022 ").append(option.label).append(" — ").append(count).append(" votes\n")
+    }
+    sb.append("\nCast your vote on MarketScope AI")
+    return sb.toString()
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
     val poll = post.poll ?: return
     val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     Column {
         Text(
             post.body,
@@ -1640,20 +1658,19 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
                 .clip(RoundedCornerShape(14.dp))
                 .background(Color.White)
                 .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
-                .clickable {
-                    val sb = StringBuilder("\uD83D\uDCCA MarketScope AI Poll\n")
-                    sb.append(post.body).append("\n")
-                    poll.options.forEach { option ->
-                        val count = poll.counts[option.id] ?: 0
-                        sb.append("\u2022 ").append(option.label).append(" — ").append(count).append(" votes\n")
+                .combinedClickable(
+                    onClick = {
+                        val shared = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, buildPollShareText(post, poll))
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shared, "Reshare poll"))
+                    },
+                    onLongClick = {
+                        clipboardManager.setText(AnnotatedString(buildPollShareText(post, poll)))
+                        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
                     }
-                    sb.append("\nCast your vote on MarketScope AI")
-                    val shared = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
-                    }
-                    context.startActivity(android.content.Intent.createChooser(shared, "Reshare poll"))
-                }
+                )
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

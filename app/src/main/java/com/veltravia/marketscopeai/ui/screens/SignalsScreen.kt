@@ -3,7 +3,9 @@ package com.veltravia.marketscopeai.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +52,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -420,9 +424,11 @@ private fun StatChip(label: String, value: String, modifier: Modifier = Modifier
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val token = remember { SessionManager.sessionToken(context) }
 
@@ -541,7 +547,7 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
 
     // FxLens-style reshare: hand the signal (or its settled result) to the
     // Android share sheet so traders can forward it to WhatsApp/Telegram etc.
-    fun reshareSignal() {
+    fun buildSignalShareText(): String {
         val dirWord = if (isLong) "LONG" else "SHORT"
         val arrow = if (isLong) "\uD83D\uDCC8" else "\uD83D\uDCC9"
         val sb = StringBuilder()
@@ -570,11 +576,20 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
             sb.append("\n").append(if (t.length > 160) t.take(160) + "…" else t).append("\n")
         }
         sb.append("\nvia MarketScope AI")
+        return sb.toString()
+    }
+    fun reshareSignal() {
         val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+            putExtra(android.content.Intent.EXTRA_TEXT, buildSignalShareText())
         }
         context.startActivity(android.content.Intent.createChooser(send, "Reshare signal"))
+    }
+    // FxLens-style "Copied to clipboard" — long-press the Reshare pill to
+    // copy the same text straight to the clipboard instead of the share sheet.
+    fun copySignalToClipboard() {
+        clipboardManager.setText(AnnotatedString(buildSignalShareText()))
+        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     // Outcome theming — a won/lost signal gets a colored wash + border + a
@@ -702,7 +717,10 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
                     .clip(RoundedCornerShape(20.dp))
                     .background(Color.White)
                     .border(1.dp, BorderSubtleColor(), RoundedCornerShape(20.dp))
-                    .clickable { reshareSignal() }
+                    .combinedClickable(
+                        onClick = { reshareSignal() },
+                        onLongClick = { copySignalToClipboard() }
+                    )
                     .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
