@@ -670,12 +670,12 @@ app.post("/api/admin/stats-report", async (req, res) => {
         (SELECT COUNT(*) FROM users WHERE last_seen_at > now() - interval '5 minutes')::int AS online,
         (SELECT COUNT(*) FROM community_posts)::int AS posts,
         (SELECT COUNT(*) FROM post_comments)::int AS post_comments,
-        (SELECT COUNT(*) FROM daily_signals WHERE created_at >= $1)::int AS signals_total,
-        (SELECT COUNT(*) FROM daily_signals WHERE status <> 'closed' AND created_at >= $1)::int AS signals_live,
-        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND created_at >= $1)::int AS signals_closed,
-        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND outcome = 'successful' AND created_at >= $1)::int AS wins,
-        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND outcome <> 'successful' AND created_at >= $1)::int AS losses,
-        (SELECT COALESCE(ROUND(AVG(risk_reward)::numeric, 2), 0) FROM daily_signals WHERE created_at >= $1 AND risk_reward IS NOT NULL)::float AS avg_rr,
+        (SELECT COUNT(*) FROM daily_signals WHERE published_at >= $1)::int AS signals_total,
+        (SELECT COUNT(*) FROM daily_signals WHERE status <> 'closed' AND published_at >= $1)::int AS signals_live,
+        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND published_at >= $1)::int AS signals_closed,
+        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND outcome = 'successful' AND published_at >= $1)::int AS wins,
+        (SELECT COUNT(*) FROM daily_signals WHERE status = 'closed' AND outcome <> 'successful' AND published_at >= $1)::int AS losses,
+        (SELECT COALESCE(ROUND(AVG(risk_reward)::numeric, 2), 0) FROM daily_signals WHERE published_at >= $1 AND risk_reward IS NOT NULL)::float AS avg_rr,
         (SELECT COUNT(*) FROM analyses)::int AS analyses,
         (SELECT COUNT(*) FROM push_tokens)::int AS push_devices
     `, [monthStart.toISOString()]);
