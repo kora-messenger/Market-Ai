@@ -352,6 +352,8 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
     val strength = item.optString("strength", "moderate")
     val status = item.optString("status", "live")
     val outcome = item.optString("outcome", "")
+    val resolvedBy = item.optString("resolvedBy", "")
+    val exitPrice = item.optDouble("exitPrice", Double.NaN)
     val lastPrice = item.optDouble("lastPrice", Double.NaN)
     val author = item.optString("author", "owner")
     val authorLabel = if (author == "ai") "AI-Generated" else "MarketScope AI Team"
@@ -418,7 +420,14 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
             .border(1.dp, AccentCyan.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
             .padding(16.dp)
     ) {
-        SignalStatusPill(status, outcome)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SignalStatusPill(status, outcome)
+            if (status == "closed" && resolvedBy == "auto") {
+                Spacer(Modifier.width(8.dp))
+                val exitLabel = if (exitPrice.isFinite()) " at ${fmt(exitPrice)}" else ""
+                Text("Resolved automatically$exitLabel", fontSize = 10.5.sp, color = TextMuted)
+            }
+        }
         Spacer(Modifier.height(14.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

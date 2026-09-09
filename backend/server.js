@@ -15,7 +15,7 @@ const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
 const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
 const { fetchWatchlist, WATCHLIST } = require("./src/markets");
-const { fetchCandles } = require("./src/candles");
+const { fetchCandles, INTERVALS } = require("./src/candles");
 const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
 
 const app = express();
@@ -184,6 +184,8 @@ async function initDb() {
       last_price_at TIMESTAMPTZ
     );
     ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS mode TEXT;
+    ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS exit_price DOUBLE PRECISION;
+    ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS resolved_by TEXT;
     CREATE TABLE IF NOT EXISTS signal_reactions (
       signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
       user_id UUID NOT NULL,
@@ -1491,6 +1493,8 @@ function signalToApi(r, extra) {
     closedAt: r.closed_at,
     publishedAt: r.published_at,
     lastPrice: r.last_price,
+    exitPrice: r.exit_price != null ? Number(r.exit_price) : null,
+    resolvedBy: r.resolved_by || null,
     lastPriceAt: r.last_price_at,
     reactions: e.reactions || SIGNAL_REACTION_EMOJIS.map((emoji) => ({ emoji, count: 0, mine: false })),
     commentCount: e.commentCount || 0,
@@ -1816,6 +1820,46 @@ function round(v) {
  * than 7 days close as expired_partial. Signals with no feed (synthetics)
  * stay open until the author closes them manually.
  */
+/** Resolve a signal's outcome by walking candles since publication.
+ *  Uses actual traded highs/lows — so a TP/SL spike that happens between the
+ *  15-minute checks is still caught. Conservative rule: a candle that trades
+ *  both SL and TP counts as SL (we never claim a win on ambiguous data). */
+function resolveFromCandles(sig, candles, intervalSec) {
+  const tps = Array.isArray(sig.take_profits) ? sig.take_profits.map(Number).filter(Number.isFinite) : [];
+  const isLong = sig.direction === "long";
+  // Long: furthest target = highest TP. Short: furthest = lowest TP.
+  // (Math.max for BOTH directions was a bug — shorts counted a TP1 touch as a full win.)
+  const finalTp = tps.length ? (isLong ? Math.max(...tps) : Math.min(...tps)) : null;
+  const startMs = new Date(sig.published_at).getTime() - intervalSec * 1000;
+  let triggeredAt = null;
+  let lastClose = null;
+  for (const c of candles) {
+    const ms = c.t * 1000;
+    if (ms < startMs) continue;
+    if (Number.isFinite(c.c)) lastClose = c.c;
+    if (triggeredAt == null && (isLong ? c.h >= sig.entry : c.l <= sig.entry)) {
+      triggeredAt = new Date(ms).toISOString();
+    }
+    const hitSl = isLong ? c.l <= sig.stop_loss : c.h >= sig.stop_loss;
+    const hitFinalTp = finalTp != null && (isLong ? c.h >= finalTp : c.l <= finalTp);
+    if (hitSl) {
+      return {
+        outcome: "invalidated_sl", exitPrice: sig.stop_loss,
+        closedAt: new Date(ms).toISOString(),
+        triggeredAt: triggeredAt || new Date(ms).toISOString(), lastClose
+      };
+    }
+    if (hitFinalTp) {
+      return {
+        outcome: "successful", exitPrice: finalTp,
+        closedAt: new Date(ms).toISOString(),
+        triggeredAt: triggeredAt || new Date(ms).toISOString(), lastClose
+      };
+    }
+  }
+  return { outcome: null, exitPrice: null, closedAt: null, triggeredAt, lastClose };
+}
+
 app.post("/api/daily-signals/price-check", async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   const authHeader = req.headers.authorization || "";
@@ -1837,28 +1881,60 @@ app.post("/api/daily-signals/price-check", async (req, res) => {
     );
     const results = [];
     for (const r of rows) {
-      const price = await fetchPrice(r.instrument_id);
-      if (price == null) {
-        results.push({ id: r.id, instrument: r.instrument_display, note: "no public feed — manual close required" });
-        continue;
-      }
-      const tps = Array.isArray(r.take_profits) ? r.take_profits.map(Number).filter(Number.isFinite) : [];
-      const finalTp = tps.length ? Math.max(...tps) : null;
-      const isLong = r.direction === "long";
-      let outcome = null;
-      let status = r.status;
-      if (isLong ? price <= r.stop_loss : price >= r.stop_loss) {
-        outcome = "invalidated_sl";
-        status = "closed";
-      } else if (finalTp != null && (isLong ? price >= finalTp : price <= finalTp)) {
-        outcome = "successful";
-        status = "closed";
-      } else if (isLong ? price >= r.entry : price <= r.entry) {
-        outcome = "triggered_active";
-        status = "live";
-      }
       const ageMs = Date.now() - new Date(r.published_at).getTime();
-      const triggered = r.triggered_at ? true : (outcome === "triggered_active");
+      // 15m candles give precise highs/lows while the signal is young;
+      // 1h candles give full coverage for older signals (up to ~6 days).
+      const interval = ageMs <= 30 * 60 * 60 * 1000 ? "15m" : "1h";
+      let candleResult = null;
+      try {
+        const data = await fetchCandles(r.instrument_id, interval);
+        if (Array.isArray(data.candles) && data.candles.length) {
+          candleResult = resolveFromCandles(r, data.candles, INTERVALS[interval]);
+        }
+      } catch (_e) { candleResult = null; }
+
+      let price = candleResult && candleResult.lastClose != null ? candleResult.lastClose : null;
+      let outcome = candleResult ? candleResult.outcome : null;
+      let status = r.status;
+      let exitPrice = null;
+      let closedAt = null;
+      let triggeredAt = candleResult ? candleResult.triggeredAt : null;
+
+      if (price == null) {
+        // Fallback: candles unavailable for this instrument — decide on spot price.
+        price = await fetchPrice(r.instrument_id);
+        if (price == null) {
+          results.push({ id: r.id, instrument: r.instrument_display, note: "no public feed — manual close required" });
+          continue;
+        }
+        const tps = Array.isArray(r.take_profits) ? r.take_profits.map(Number).filter(Number.isFinite) : [];
+        const isLong = r.direction === "long";
+        const finalTp = tps.length ? (isLong ? Math.max(...tps) : Math.min(...tps)) : null;
+        if (isLong ? price <= r.stop_loss : price >= r.stop_loss) {
+          outcome = "invalidated_sl";
+          exitPrice = r.stop_loss;
+        } else if (finalTp != null && (isLong ? price >= finalTp : price <= finalTp)) {
+          outcome = "successful";
+          exitPrice = finalTp;
+        } else if (isLong ? price >= r.entry : price <= r.entry) {
+          outcome = "triggered_active";
+        }
+      } else if (outcome == null) {
+        exitPrice = candleResult.exitPrice;
+        closedAt = candleResult.closedAt;
+      }
+
+      if (outcome === "successful" || outcome === "invalidated_sl") {
+        status = "closed";
+        closedAt = closedAt || new Date().toISOString();
+        exitPrice = exitPrice != null ? exitPrice : (candleResult ? candleResult.exitPrice : null);
+      } else if (price != null) {
+        // still open — flag it in-progress once price has reached the entry
+        const isLong = r.direction === "long";
+        if (isLong ? price >= r.entry : price <= r.entry) outcome = outcome || "triggered_active";
+      }
+
+      const triggered = r.triggered_at ? true : Boolean(triggeredAt) || outcome === "triggered_active";
       if (status !== "closed" && ageMs > SIGNAL_DAYS) {
         outcome = triggered ? "expired_partial" : "expired";
         status = "closed";
@@ -1866,12 +1942,25 @@ app.post("/api/daily-signals/price-check", async (req, res) => {
       await pool.query(
         `UPDATE daily_signals
          SET last_price = $1, last_price_at = now(), status = $2, outcome = $3,
-             triggered_at = COALESCE(triggered_at, CASE WHEN $4 THEN now() ELSE NULL END),
-             closed_at = CASE WHEN $2 = 'closed' THEN COALESCE(closed_at, now()) ELSE closed_at END
-         WHERE id = $5`,
-        [price, status, outcome, outcome === "triggered_active" || r.triggered_at != null, r.id]
+             triggered_at = COALESCE(triggered_at, $4),
+             closed_at = COALESCE(closed_at, $5),
+             exit_price = COALESCE(exit_price, $6),
+             resolved_by = COALESCE(resolved_by, $7)
+         WHERE id = $8`,
+        [
+          price, status, outcome || r.outcome,
+          triggeredAt || (outcome === "triggered_active" ? new Date().toISOString() : null),
+          status === "closed" ? (closedAt || new Date().toISOString()) : null,
+          exitPrice,
+          status === "closed" ? "auto" : null,
+          r.id
+        ]
       );
-      results.push({ id: r.id, instrument: r.instrument_display, price, status, outcome: outcome || r.outcome });
+      results.push({
+        id: r.id, instrument: r.instrument_display, price, status,
+        outcome: outcome || r.outcome,
+        resolvedBy: status === "closed" ? "auto" : null
+      });
     }
     res.json({ checked: results.length, results });
   } catch (err) {
@@ -1894,7 +1983,7 @@ app.post("/api/daily-signals/:id/close", requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `UPDATE daily_signals SET status = 'closed', outcome = $1, closed_at = now()
+      `UPDATE daily_signals SET status = 'closed', outcome = $1, closed_at = now(), resolved_by = 'manual'
        WHERE id = $2 RETURNING *`,
       [outcome, req.params.id]
     );

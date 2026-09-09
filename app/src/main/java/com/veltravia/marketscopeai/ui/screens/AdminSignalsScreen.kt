@@ -353,6 +353,11 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
 
         // ---------- live/recent signals + manual close ----------
         Text("All signals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Outcomes are marked automatically by the AI price monitor (every 15 min, against candle highs/lows). Manual close is only an override for special cases.",
+            style = MaterialTheme.typography.bodySmall, color = TextMuted
+        )
         Spacer(Modifier.height(10.dp))
         when {
             feedError != null -> Text(feedError!!, color = BearRed, style = MaterialTheme.typography.bodySmall)
@@ -401,8 +406,14 @@ private fun AdminSignalRow(item: JSONObject, onClose: (String) -> Unit) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("$instrument ${if (isLong) "▲" else "▼"}", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
+            val resolvedBy = item.optString("resolvedBy", "")
+            val resolvedTag = when (resolvedBy) {
+                "auto" -> " · auto"
+                "manual" -> " · manual"
+                else -> ""
+            }
             Text(
-                if (status == "closed") "CLOSED${if (outcome.isNotBlank()) " · ${outcome.replace('_', ' ')}" else ""}" else "OPEN",
+                if (status == "closed") "CLOSED · ${outcome.replace('_', ' ')}$resolvedTag" else "OPEN",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (status == "closed") TextMuted else AccentCyan
