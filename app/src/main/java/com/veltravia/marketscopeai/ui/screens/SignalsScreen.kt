@@ -38,7 +38,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.HorizontalRule
+import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -412,23 +418,42 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
         }
     }
 
-    Column(
+    // Outcome theming — a won/lost signal gets a colored wash + border + a
+    // folded corner ribbon, exactly like a real settled trade result should
+    // stand out from a still-live call.
+    val outcomeTint: Color? = when {
+        status != "closed" -> null
+        outcome == "successful" -> BullGreen
+        outcome == "invalidated_sl" -> BearRed
+        outcome == "expired_partial" || outcome == "breakeven" -> GoldAmber
+        else -> null
+    }
+    val cardBorderColor = outcomeTint?.copy(alpha = 0.45f) ?: AccentCyan.copy(alpha = 0.22f)
+    val cardBg = outcomeTint?.copy(alpha = 0.07f)?.let { tint ->
+        androidx.compose.ui.graphics.lerp(Color.White, outcomeTint, 0.07f)
+    } ?: SurfaceLight
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceLight)
-            .border(1.dp, AccentCyan.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
-            .padding(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            SignalStatusPill(status, outcome)
-            if (status == "closed" && resolvedBy == "auto") {
-                Spacer(Modifier.width(8.dp))
-                val exitLabel = if (exitPrice.isFinite()) " at ${fmt(exitPrice)}" else ""
-                Text("Resolved automatically$exitLabel", fontSize = 10.5.sp, color = TextMuted)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(cardBg)
+                .border(if (outcomeTint != null) 1.5.dp else 1.dp, cardBorderColor, RoundedCornerShape(16.dp))
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SignalStatusPill(status, outcome)
+                if (status == "closed" && resolvedBy == "auto") {
+                    Spacer(Modifier.width(8.dp))
+                    val exitLabel = if (exitPrice.isFinite()) " at ${fmt(exitPrice)}" else ""
+                    Text("Resolved automatically$exitLabel", fontSize = 10.5.sp, color = TextMuted)
+                }
             }
-        }
-        Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(14.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(dateTimeLine(publishedAt), fontSize = 12.sp, color = TextMuted)
@@ -542,6 +567,23 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
                 Text("Live price: ${fmt(lastPrice)}", fontSize = 11.sp, color = TextMuted)
             }
         }
+        }
+
+        // Folded-corner ribbon for a settled trade — "TAKE PROFIT HIT" (win),
+        // "STOP LOSS HIT" (loss), or "CLOSED AT BREAKEVEN" (partial/breakeven).
+        // Only ever shown once a signal is actually closed with that outcome.
+        if (outcomeTint != null) {
+            val ribbonLabel = when (outcome) {
+                "successful" -> "TAKE PROFIT HIT"
+                "invalidated_sl" -> "STOP LOSS HIT"
+                else -> "CLOSED AT BREAKEVEN"
+            }
+            OutcomeRibbon(
+                label = ribbonLabel,
+                color = outcomeTint,
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
+        }
     }
 
     if (showComments && id.isNotEmpty()) {
@@ -599,26 +641,54 @@ private fun LevelCell(label: String, value: String) {
 /** Top-left status pill — a light tint + dash/arrow icon, mirroring the reference's amber "— Breakeven" chip. */
 @Composable
 private fun SignalStatusPill(status: String, outcome: String) {
-    val (color, icon, label) = when {
-        status == "closed" && outcome == "successful" -> Triple(BullGreen, "\u25B2", "Win")
-        status == "closed" && outcome == "invalidated_sl" -> Triple(BearRed, "\u25BC", "Loss")
-        status == "closed" && outcome == "expired_partial" -> Triple(GoldAmber, "\u25D0", "Partial")
-        status == "closed" && outcome == "expired" -> Triple(TextMuted, "\u25CB", "Expired")
-        status == "closed" && outcome == "breakeven" -> Triple(GoldAmber, "\u2014", "Breakeven")
-        status == "closed" -> Triple(TextMuted, "\u25CB", "Closed")
-        outcome == "triggered_active" -> Triple(AccentCyan, "\u25CF", "In Progress")
-        else -> Triple(AccentViolet, "\u25CF", "Awaiting Entry")
+    data class PillSpec(val color: Color, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String)
+    val spec = when {
+        status == "closed" && outcome == "successful" -> PillSpec(BullGreen, Icons.Filled.Check, "Successful")
+        status == "closed" && outcome == "invalidated_sl" -> PillSpec(BearRed, Icons.Filled.Close, "Unsuccessful")
+        status == "closed" && outcome == "expired_partial" -> PillSpec(GoldAmber, Icons.Filled.PauseCircle, "Partial")
+        status == "closed" && outcome == "expired" -> PillSpec(TextMuted, Icons.Filled.HorizontalRule, "Expired")
+        status == "closed" && outcome == "breakeven" -> PillSpec(GoldAmber, Icons.Filled.HorizontalRule, "Breakeven")
+        status == "closed" -> PillSpec(TextMuted, Icons.Filled.HorizontalRule, "Closed")
+        outcome == "triggered_active" -> PillSpec(AccentCyan, Icons.Filled.Check, "In Progress")
+        else -> PillSpec(AccentViolet, Icons.Filled.Check, "Awaiting Entry")
     }
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(color.copy(alpha = 0.14f))
+            .background(spec.color.copy(alpha = 0.14f))
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 12.sp, color = color, fontWeight = FontWeight.Bold)
+            Icon(spec.icon, contentDescription = null, tint = spec.color, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(6.dp))
-            Text(label, fontSize = 13.sp, color = color, fontWeight = FontWeight.SemiBold)
+            Text(spec.label, fontSize = 13.sp, color = spec.color, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/** A folded-corner ribbon banner across the top-right of a settled signal's
+ *  card — mirrors a real settled-trade result badge, not a decoration. */
+@Composable
+private fun OutcomeRibbon(label: String, color: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .offset(x = 26.dp, y = 14.dp)
+            .graphicsLayer(rotationZ = 45f)
+            .width(150.dp)
+            .background(color)
+            .padding(vertical = 5.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
         }
     }
 }
