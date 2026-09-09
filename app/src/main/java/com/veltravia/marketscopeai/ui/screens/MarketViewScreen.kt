@@ -664,6 +664,7 @@ private fun TradingViewChart(
 ) {
     var loaded by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    var rendered by remember { mutableStateOf(false) }
     val url = remember(symbol, tvInterval) {
         "https://www.tradingview.com/widgetembed/?symbol=" +
             URLEncoder.encode(symbol, "UTF-8") +
@@ -684,6 +685,20 @@ private fun TradingViewChart(
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    // TradingView's live datafeed needs third-party cookies to
+                    // stream data — WebView blocks those by default, which
+                    // leaves the widget's OWN loading placeholder frozen on
+                    // screen forever (the flat gray box users were stuck on).
+                    android.webkit.CookieManager.getInstance().let { cm ->
+                        cm.setAcceptCookie(true)
+                        cm.setAcceptThirdPartyCookies(this, true)
+                    }
+                    // WebView's default UA sometimes gets served a stripped
+                    // page by TradingView; a normal mobile Chrome UA avoids that.
+                    settings.userAgentString =
+                        "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+                            "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                     setBackgroundColor(android.graphics.Color.TRANSPARENT)
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -692,6 +707,35 @@ private fun TradingViewChart(
 
                         override fun onPageFinished(view: WebView?, url: String?) {
                             if (!failed) loaded = true
+                            // Safety net: the HTML shell can finish loading while
+                            // the actual chart canvas never paints (blocked
+                            // datafeed, cookie policy, etc). Poll for a real
+                            // rendered canvas; if nothing shows up within ~9s,
+                            // fall back honestly to our own live-data chart
+                            // instead of leaving the user stuck on a gray box.
+                            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                            var checks = 0
+                            val poll = object : Runnable {
+                                override fun run() {
+                                    if (failed || rendered) return
+                                    checks++
+                                    view?.evaluateJavascript(
+                                        "(function(){var c=document.querySelectorAll('canvas');" +
+                                            "for(var i=0;i<c.length;i++){if(c[i].width>50)return true;}" +
+                                            "return false;})()"
+                                    ) { result ->
+                                        when {
+                                            result == "true" -> rendered = true
+                                            checks >= 6 && !failed -> {
+                                                failed = true
+                                                onFailed()
+                                            }
+                                            !failed && !rendered -> handler.postDelayed(this, 1500)
+                                        }
+                                    }
+                                }
+                            }
+                            handler.postDelayed(poll, 1500)
                         }
 
                         override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
