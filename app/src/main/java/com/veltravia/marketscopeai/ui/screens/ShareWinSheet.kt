@@ -69,6 +69,7 @@ import kotlinx.coroutines.launch
  * Traders add a comment and optionally attach their proof screenshot; the
  * result goes to the mentor desk for review before it appears publicly.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ShareWinSheet(
     signalId: String,

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -519,11 +520,11 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
     }
 
     fun toggleTake() {
-        if (token == null || id.isEmpty() || taken == null) return
-        val prevTaken = taken
+        val prevTaken = taken ?: return
+        if (token == null || id.isEmpty()) return
         val prevCount = takerCount
         taken = !prevTaken
-        takerCount = if (taken == true) prevCount + 1 else (prevCount - 1).coerceAtLeast(0)
+        takerCount = if (taken) prevCount + 1 else (prevCount - 1).coerceAtLeast(0)
         scope.launch {
             try {
                 val resp = ApiClient.toggleSignalTake(token, id)
@@ -705,7 +706,7 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(5.dp))
                     Text("Share your win", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp)
                 }
