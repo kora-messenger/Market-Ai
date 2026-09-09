@@ -775,7 +775,7 @@ object ApiClient {
     suspend fun fetchWinsWall(sessionToken: String, offset: Int = 0, limit: Int = 12): org.json.JSONObject =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
-                .url("$BASE_URL/api/wins/wall?limit=$limit&offset=$offset")
+                .url("${ApiConfig.BASE_URL}/api/wins/wall?limit=$limit&offset=$offset")
                 .addHeader("Authorization", "Bearer $sessionToken")
                 .get()
                 .build()
