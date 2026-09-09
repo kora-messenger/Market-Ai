@@ -87,7 +87,12 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || "";
 const JWT_SECRET = process.env.SESSION_JWT_SECRET || "";
 const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL || "google/gemini-3.8-flash";
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "").toLowerCase();
+// Comma-separated admin emails (e.g. "a@gmail.com,b@gmail.com"); the
+// first account ever created also stays admin as a fallback.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
 // --- Database (Render Postgres) ---
@@ -1416,7 +1421,7 @@ async function getAdminSub() {
 
 async function isAdminRequest(req) {
   if (!pool) return false;
-  if (ADMIN_EMAIL && String(req.session.email || "").toLowerCase() === ADMIN_EMAIL) return true;
+  if (ADMIN_EMAILS.includes(String(req.session.email || "").toLowerCase())) return true;
   const adminSub = await getAdminSub();
   return !!adminSub && String(req.session.sub) === adminSub;
 }
@@ -2414,7 +2419,7 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
   try {
     const me = await currentUser(req);
     if (!me) return res.status(404).json({ error: "User not found" });
-    const isTeam = ADMIN_EMAIL && (me.email || "").toLowerCase() === ADMIN_EMAIL;
+    const isTeam = ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase());
     const { rows } = await pool.query(
       `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments, outcome_tag)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9) RETURNING *`,
@@ -2503,7 +2508,7 @@ app.post("/api/community/posts/:id/pin", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const me = await currentUser(req);
-    const isAdmin = ADMIN_EMAIL && me && (me.email || "").toLowerCase() === ADMIN_EMAIL;
+    const isAdmin = (await isAdminRequest(req)) || ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase());
     if (!isAdmin) return res.status(403).json({ error: "Only the MarketScope AI team can pin posts." });
     const { rows } = await pool.query(
       `UPDATE community_posts
@@ -2814,11 +2819,8 @@ async function requireCronOrAdmin(req, res) {
   try {
     const session = jwt.verify(authHeader.slice(7), JWT_SECRET);
     req.session = session;
-    const adminEmail = String(process.env.ADMIN_EMAIL || "").toLowerCase();
-    let isAdmin = false;
-    if (adminEmail && String(session.email || "").toLowerCase() === adminEmail) {
-      isAdmin = true;
-    } else {
+    let isAdmin = ADMIN_EMAILS.includes(String(session.email || "").toLowerCase());
+    if (!isAdmin) {
       const { rows } = await pool.query(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`);
       isAdmin = rows.length > 0 && rows[0].id === session.userId;
     }
