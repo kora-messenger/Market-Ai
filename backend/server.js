@@ -709,12 +709,17 @@ app.get("/api/markets/candles", async (req, res) => {
     return res.status(400).json({ error: "Missing ?id= instrument" });
   }
   const meta = WATCHLIST.find((w) => w.id === id) || null;
-  if (!meta) {
-    return res.status(404).json({ error: "Unknown market-view instrument" });
-  }
   try {
     const data = await fetchCandles(id, interval);
-    res.json({ ...data, display: meta.display, subtitle: meta.subtitle, fetchedAt: new Date().toISOString() });
+    // Watchlist instruments keep their curated name/subtitle; any other
+    // market (e.g. a Trending coin) uses the honest class labels the
+    // candle engine itself resolved (crypto / forex).
+    res.json({
+      ...data,
+      display: meta ? meta.display : data.display,
+      subtitle: meta ? meta.subtitle : data.subtitle,
+      fetchedAt: new Date().toISOString()
+    });
   } catch (err) {
     res.status(502).json({ error: "Could not load live candles right now.", detail: String(err.message || err) });
   }

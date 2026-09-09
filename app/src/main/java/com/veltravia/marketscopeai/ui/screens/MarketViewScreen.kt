@@ -96,7 +96,13 @@ private fun tradingViewSymbol(id: String): String = when (id) {
     "btcusd" -> "BINANCE:BTCUSDT"
     "ethusd" -> "BINANCE:ETHUSDT"
     "solusd" -> "BINANCE:SOLUSDT"
-    else -> "OANDA:" + id.uppercase()
+    else -> {
+        // Any other "<base>usd" id is a crypto ticker (Trending coins etc.)
+        // — Binance has the widest symbol coverage on TradingView.
+        val base = id.removeSuffix("usd")
+        if (id.endsWith("usd") && base.isNotEmpty()) "BINANCE:" + base.uppercase() + "USDT"
+        else "OANDA:" + id.uppercase()
+    }
 }
 
 /** Maps our timeframe chips to TradingView interval parameter. */
@@ -121,9 +127,10 @@ private fun candleDecimals(id: String, v: Double): Int = when {
     id.endsWith("jpy") -> 3
     id.length == 6 && id.all { it.isLetter() } -> 5 // forex pairs
     id == "xauusd" || id == "xagusd" -> 2
-    v >= 1000 -> 2
     v >= 1 -> 2
-    else -> 4
+    v >= 0.01 -> 4
+    v >= 0.0001 -> 6
+    else -> 8
 }
 
 private fun formatPrice(id: String, v: Double): String {

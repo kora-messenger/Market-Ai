@@ -125,7 +125,7 @@ private fun formatPrice(v: Double): String {
  * refreshes every 3 minutes, matching the backend's cache window.
  */
 @Composable
-fun TrendingSection() {
+fun TrendingSection(onOpenMarket: (String) -> Unit) {
     var tokens by remember { mutableStateOf<List<TrendingToken>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val liveTails = remember { mutableStateMapOf<String, List<Float>>() }
@@ -200,7 +200,11 @@ fun TrendingSection() {
                     .background(SurfaceLight)
             ) {
                 tokens!!.forEachIndexed { index, token ->
-                    TrendingRow(token, liveTails[token.symbol] ?: emptyList())
+                    TrendingRow(
+                        token = token,
+                        liveTail = liveTails[token.symbol] ?: emptyList(),
+                        onClick = { onOpenMarket(token.symbol.lowercase() + "usd") }
+                    )
                     if (index != tokens!!.lastIndex) {
                         androidx.compose.material3.HorizontalDivider(color = TextMuted.copy(alpha = 0.12f), thickness = 1.dp)
                     }
@@ -241,12 +245,12 @@ private fun LiveIndicator() {
 }
 
 @Composable
-private fun TrendingRow(token: TrendingToken, liveTail: List<Float>) {
+private fun TrendingRow(token: TrendingToken, liveTail: List<Float>, onClick: () -> Unit) {
     val up = (token.change24h ?: 0.0) >= 0
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { /* real-time detail view is a future upgrade; row is informational for now */ }
+            .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

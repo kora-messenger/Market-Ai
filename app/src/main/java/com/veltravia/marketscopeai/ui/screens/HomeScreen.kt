@@ -358,7 +358,7 @@ fun HomeScreen(
         Spacer(Modifier.height(28.dp))
 
         // --- Trending tokens (live) ---
-        TrendingSection()
+        TrendingSection(onOpenMarket = onOpenMarket)
 
         Spacer(Modifier.height(28.dp))
 

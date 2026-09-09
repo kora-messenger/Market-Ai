@@ -18,10 +18,28 @@ const TIMEOUT_MS = 8000;
 const INTERVALS = { "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
 
 const COINBASE_PRODUCTS = {
-  btcusd: "BTC-USD",
-  ethusd: "ETH-USD",
-  solusd: "SOL-USD"
+  btcusd: "BTC-USD", ethusd: "ETH-USD", solusd: "SOL-USD",
+  xrpusd: "XRP-USD", adausd: "ADA-USD", dogeusd: "DOGE-USD",
+  dotusd: "DOT-USD", linkusd: "LINK-USD", ltcusd: "LTC-USD",
+  avaxusd: "AVAX-USD", bnbusd: "BNB-USD"
 };
+
+// Any "<base>usd" id that looks like a crypto ticker gets the generic
+// treatment: try Coinbase's "<BASE>-USD" product, then Binance klines for
+// "<BASE>USDT" (Binance lists almost every trending coin).
+const GENERIC_CRYPTO = /^([a-z0-9]{2,10})usd$/;
+
+function cryptoSourcesFor(id) {
+  if (COINBASE_PRODUCTS[id]) {
+    return { cb: COINBASE_PRODUCTS[id], bn: COINBASE_PRODUCTS[id].replace("-USD", "") + "USDT" };
+  }
+  const m = GENERIC_CRYPTO.exec(id);
+  if (m) {
+    const b = m[1].toUpperCase();
+    return { cb: `${b}-USD`, bn: `${b}USDT` };
+  }
+  return null;
+}
 
 // Yahoo symbol mapping — forex pairs become "EURUSD=X", metals use the
 // same futures contracts the price feed already trusts.
@@ -51,9 +69,7 @@ async function fetchJson(url) {
 }
 
 /** Coinbase candles: [time, low, high, open, close, volume], NEWEST first. */
-async function coinbaseCandles(instrumentId, seconds) {
-  const product = COINBASE_PRODUCTS[instrumentId];
-  if (!product) throw new Error("Not a Coinbase-supported instrument");
+async function coinbaseCandles(product, seconds) {
   const data = await fetchJson(
     `https://api.exchange.coinbase.com/products/${product}/candles?granularity=${seconds}`
   );
@@ -124,40 +140,105 @@ async function fetchCandles(instrumentId, interval) {
   const ttl = interval === "1d" ? TTL_MS.daily : TTL_MS.intraday;
   if (hit && Date.now() - hit.at < ttl) return hit.data;
 
-  const isCrypto = COINBASE_PRODUCTS[id] != null;
+  const cs = cryptoSourcesFor(id);
+  let candles = null;
+  let source = null;
 
-  let candles;
-  let source;
-  if (isCrypto) {
-    if (interval === "4h") {
-      const hourly = await coinbaseCandles(id, 3600);
-      candles = aggregateHourlyTo4h(hourly);
-    } else {
-      candles = await coinbaseCandles(id, seconds);
-    }
-    source = "coinbase";
-  } else {
-    // Forex & metals via Yahoo. 4H aggregated from real 60m bars.
-    if (interval === "4h") {
-      const hourly = await yahooCandles(id, "60m", "10d");
-      candles = aggregateHourlyTo4h(hourly);
-    } else {
-      const yahooInterval = interval === "5m" ? "5m" : interval === "15m" ? "15m" : interval === "1h" ? "60m" : "1d";
-      const range = interval === "5m" ? "2d" : interval === "15m" ? "5d" : interval === "1h" ? "10d" : "3mo";
-      candles = await yahooCandles(id, yahooInterval, range);
-    }
-    source = "yahoo";
+  // 1) Yahoo — metals + forex (any 6-letter pair). Failures fall through.
+  const yahoo = yahooCandleSymbol(id);
+  if (yahoo) {
+    try {
+      if (interval === "4h") {
+        candles = aggregateHourlyTo4h(await yahooCandles(id, "60m", "10d"));
+      } else {
+        const yahooInterval = interval === "5m" ? "5m" : interval === "15m" ? "15m" : interval === "1h" ? "60m" : "1d";
+        const range = interval === "5m" ? "2d" : interval === "15m" ? "5d" : interval === "1h" ? "10d" : "3mo";
+        candles = await yahooCandles(id, yahooInterval, range);
+      }
+      source = "yahoo";
+    } catch (_e) { candles = null; }
   }
 
-  // Cap the series the app draws (~150 bars keeps the chart readable).
+  // 2) Coinbase — known products plus generic "<BASE>-USD".
+  if (candles == null && cs) {
+    try {
+      if (interval === "4h") {
+        candles = aggregateHourlyTo4h(await coinbaseCandles(cs.cb, 3600));
+      } else {
+        candles = await coinbaseCandles(cs.cb, seconds);
+      }
+      source = "coinbase";
+    } catch (_e) { candles = null; }
+  }
+
+  // 3) Binance klines — widest coverage (e.g. BNB, SHIB, TON), native 4h/1d.
+  //    (Geo-blocked from some datacenters; kept for wherever it is reachable.)
+  if (candles == null && cs) {
+    try {
+      candles = await binanceKlines(cs.bn, seconds);
+      source = "binance";
+    } catch (_e) { candles = null; }
+  }
+
+  // 4) Kraken OHLC — public, no key, no geo-blocks; covers coins Coinbase
+  //    does not list (e.g. TRX) and gives up to 720 real bars.
+  if (candles == null && cs) {
+    try {
+      candles = await krakenCandles(`${cs.bn.replace(/USDT$/, "")}USD`, seconds);
+      source = "kraken";
+    } catch (_e) { candles = null; }
+  }
+
+  if (candles == null || !candles.length) {
+    throw new Error("No live candle source reachable for this market right now.");
+  }
+
+  // Honest class labels for the Market View header.
+  const cryptoLike = cs != null && GENERIC_CRYPTO.test(id);
+  const display = cryptoLike ? `${id.slice(0, -3).toUpperCase()}USD` : id.toUpperCase();
+  const subtitle = cryptoLike
+    ? "Cryptocurrency / U.S. Dollar"
+    : yahooCandleSymbol(id)
+      ? "Foreign exchange pair"
+      : "Live market";
+
   const data = {
     id,
     interval,
     source,
+    display,
+    subtitle,
     candles: candles.slice(-150)
   };
   candleCache.set(key, { data, at: Date.now() });
   return data;
+}
+
+/** Kraken OHLC: [time(s), open, high, low, close, vwap, volume, count]. */
+async function krakenCandles(pair, seconds) {
+  const interval = seconds === 300 ? 5 : seconds === 900 ? 15 : seconds === 3600 ? 60 : seconds === 14400 ? 240 : 1440;
+  const data = await fetchJson(
+    `https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=${interval}`
+  );
+  if (!Array.isArray(data?.error) || data.error.length) throw new Error("Kraken returned an error");
+  const key = Object.keys(data.result || {}).find((k) => k !== "last");
+  const rows = key ? data.result[key] : null;
+  if (!Array.isArray(rows) || !rows.length) throw new Error("Kraken returned no candles");
+  return rows
+    .map((r) => ({ t: r[0], o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]), v: Number(r[6]) }))
+    .filter((c) => Number.isFinite(c.c) && Number.isFinite(c.o));
+}
+
+/** Binance klines: [openTime, open, high, low, close, volume, ...]. */
+async function binanceKlines(pair, seconds) {
+  const interval = seconds === 300 ? "5m" : seconds === 900 ? "15m" : seconds === 3600 ? "1h" : seconds === 14400 ? "4h" : "1d";
+  const data = await fetchJson(
+    `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=200`
+  );
+  if (!Array.isArray(data) || !data.length) throw new Error("Binance returned no klines");
+  return data
+    .map((k) => ({ t: k[0] / 1000, o: Number(k[1]), h: Number(k[2]), l: Number(k[3]), c: Number(k[4]), v: Number(k[5]) }))
+    .filter((c) => Number.isFinite(c.c) && Number.isFinite(c.o));
 }
 
 module.exports = { fetchCandles, INTERVALS };

@@ -167,6 +167,30 @@ function priceSources(id) {
       return data?.rates?.[quote] ?? null;
     });
   }
+  // Generic crypto fallback — any "<base>usd" id not covered by the maps
+  // above still resolves to a real price: Coinbase product, then Binance.
+  const cryptoMatch = /^([a-z0-9]{2,10})usd$/.exec(id);
+  if (cryptoMatch) {
+    const cbProduct = `${cryptoMatch[1].toUpperCase()}-USD`;
+    const bnPair = `${cryptoMatch[1].toUpperCase()}USDT`;
+    sources.push(async () => {
+      const data = await fetchJson(`https://api.exchange.coinbase.com/products/${cbProduct}/ticker`);
+      return Number(data?.price) || null;
+    });
+    sources.push(async () => {
+      const data = await fetchJson(`https://api.binance.com/api/v3/ticker/price?symbol=${bnPair}`);
+      return Number(data?.price) || null;
+    });
+    // Kraken — public, keyless, no geo-blocks (covers Coinbase-absent coins
+    // like TRX and survives datacenter blocks that hit Binance).
+    sources.push(async () => {
+      const pair = `${cryptoMatch[1].toUpperCase()}USD`;
+      const data = await fetchJson(`https://api.kraken.com/0/public/Ticker?pair=${pair}`);
+      const key = Object.keys(data?.result || {})[0];
+      const c = key ? data.result[key]?.c : null;
+      return Array.isArray(c) ? Number(c[0]) || null : null;
+    });
+  }
   return sources;
 }
 
