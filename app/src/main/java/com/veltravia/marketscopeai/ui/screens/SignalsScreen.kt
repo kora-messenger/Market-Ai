@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material.icons.filled.PauseCircle
@@ -98,6 +100,10 @@ fun SignalsScreen(
     var premiumSignalCount by remember { mutableStateOf(0) }
     var feedError by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
+    // Featured win proofs (latest approved testimonials) + the signal whose
+    // discussion sheet a featured card opened.
+    var featuredWins by remember { mutableStateOf<JSONArray?>(null) }
+    var openWinSignal by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     LaunchedEffect(range, reloadKey) {
         try {
@@ -115,6 +121,9 @@ fun SignalsScreen(
         }
         try {
             access = ApiClient.fetchSignalAccess(token)
+            try {
+                featuredWins = ApiClient.fetchFeaturedTestimonials(token)
+            } catch (_: Exception) { /* strip is optional decoration */ }
             val feed = ApiClient.fetchDailySignalsFeed(token, 50)
             feedError = null
             feedLocked = feed.optBoolean("locked", false)
@@ -185,6 +194,29 @@ fun SignalsScreen(
             GlanceCard(stats, range) { range = it }
             Spacer(Modifier.height(20.dp))
 
+            // --- Recent wins: latest approved shared proofs ---
+            val featured = featuredWins
+            if (featured != null && featured.length() > 0) {
+                Text("Recent wins", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(Modifier.height(10.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(featured.length()) { i ->
+                        val f = featured.optJSONObject(i) ?: return@items
+                        FeaturedWinCard(
+                            author = f.optString("authorName", "Trader"),
+                            instrument = f.optString("instrument", ""),
+                            direction = f.optString("direction", "long"),
+                            comment = f.optString("comment", ""),
+                            onClick = {
+                                val sid = f.optString("signalId", "")
+                                if (sid.isNotEmpty()) openWinSignal = sid to f.optString("instrument", "")
+                            }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+
             // --- Feed or locked card ---
             when {
                 entitled || feedLocked -> {
@@ -230,6 +262,56 @@ fun SignalsScreen(
             }
         }
         Spacer(Modifier.height(32.dp))
+    }
+
+    openWinSignal?.let { (sid, inst) ->
+        SignalCommentsSheet(
+            signalId = sid,
+            isAdmin = isAdmin,
+            instrument = inst,
+            isWin = true,
+            onDismiss = { openWinSignal = null },
+            onCountChange = { }
+        )
+    }
+}
+
+/** Compact card in the "Recent wins" strip — one shared win proof. */
+@Composable
+private fun FeaturedWinCard(author: String, instrument: String, direction: String, comment: String, onClick: () -> Unit) {
+    val isLong = direction.equals("long", ignoreCase = true)
+    Column(
+        modifier = Modifier
+            .width(210.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceLight)
+            .border(1.dp, BullGreen.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = BullGreen,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(instrument, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.width(6.dp))
+            Text(if (isLong) "LONG" else "SHORT", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = if (isLong) BullGreen else BearRed)
+        }
+        Spacer(Modifier.height(6.dp))
+        if (comment.isNotBlank()) {
+            Text(
+                if (comment.length > 90) comment.take(90) + "…" else comment,
+                fontSize = 11.sp,
+                color = TextSecondary,
+                maxLines = 3
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+        Text("by $author", fontSize = 10.sp, color = TextMuted)
     }
 }
 
@@ -384,6 +466,24 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
     var showComments by remember(id) { mutableStateOf(false) }
     var detailsExpanded by remember(id) { mutableStateOf(false) }
 
+    // "Share your win" + "I took this signal" — only exist on closed, won signals.
+    val isWon = status == "closed" && outcome == "successful"
+    var taken by remember(id) { mutableStateOf<Boolean?>(null) }
+    var takerCount by remember(id) { mutableStateOf(0) }
+    var showShareWin by remember(id) { mutableStateOf(false) }
+
+    if (isWon && id.isNotEmpty()) {
+        LaunchedEffect(id) {
+            if (token != null) {
+                try {
+                    val resp = ApiClient.fetchSignalTake(token, id)
+                    taken = resp.optBoolean("taken", false)
+                    takerCount = resp.optInt("takerCount", 0)
+                } catch (_: Exception) { /* non-fatal; button still works */ }
+            }
+        }
+    }
+
     fun toggleReaction(emoji: String) {
         if (token == null || id.isEmpty()) return
         val (count, mine) = reactions[emoji] ?: (0 to false)
@@ -414,6 +514,25 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
                 android.widget.Toast.makeText(context, "Could not update saved state", android.widget.Toast.LENGTH_SHORT).show()
             } finally {
                 saving = false
+            }
+        }
+    }
+
+    fun toggleTake() {
+        if (token == null || id.isEmpty() || taken == null) return
+        val prevTaken = taken
+        val prevCount = takerCount
+        taken = !prevTaken
+        takerCount = if (taken == true) prevCount + 1 else (prevCount - 1).coerceAtLeast(0)
+        scope.launch {
+            try {
+                val resp = ApiClient.toggleSignalTake(token, id)
+                taken = resp.optBoolean("taken", taken)
+                takerCount = resp.optInt("takerCount", takerCount)
+            } catch (_: Exception) {
+                taken = prevTaken
+                takerCount = prevCount
+                android.widget.Toast.makeText(context, "Could not update", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -547,6 +666,52 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
             )
         }
 
+        if (isWon) {
+            Spacer(Modifier.height(12.dp))
+            // --- Win actions: I took this signal + Share your win ---
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (taken == true) BullGreen.copy(alpha = 0.14f) else Color.White)
+                        .border(1.dp, if (taken == true) BullGreen.copy(alpha = 0.4f) else BorderSubtleColor(), RoundedCornerShape(20.dp))
+                        .clickable(enabled = taken != null) { toggleTake() }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = if (taken == true) BullGreen else TextSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        if (taken == true) "Took this signal · $takerCount" else if (takerCount > 0) "I took this signal · $takerCount" else "I took this signal",
+                        color = if (taken == true) BullGreen else TextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.5.sp
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(BullGreen)
+                        .clickable { showShareWin = true }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Share your win", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp)
+                }
+            }
+        }
+
         if (detailsExpanded) {
             Spacer(Modifier.height(12.dp))
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderSubtleColor()))
@@ -591,8 +756,21 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
             signalId = id,
             isAdmin = isAdmin,
             instrument = instrument,
+            isWin = isWon,
             onDismiss = { showComments = false },
             onCountChange = { commentCount = it }
+        )
+    }
+
+    if (showShareWin && id.isNotEmpty()) {
+        ShareWinSheet(
+            signalId = id,
+            instrument = instrument,
+            direction = direction,
+            entry = entry,
+            exitPrice = exitPrice,
+            onDismiss = { showShareWin = false },
+            onSubmitted = { }
         )
     }
 }

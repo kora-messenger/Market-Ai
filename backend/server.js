@@ -275,6 +275,29 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     ALTER TABLE signal_updates ADD COLUMN IF NOT EXISTS author_email TEXT NOT NULL DEFAULT '';
+    CREATE TABLE IF NOT EXISTS signal_takers (
+      signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (signal_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS signal_testimonials (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      author_name TEXT NOT NULL,
+      author_email TEXT NOT NULL DEFAULT '',
+      comment TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS signal_testimonial_images (
+      testimonial_id UUID PRIMARY KEY REFERENCES signal_testimonials(id) ON DELETE CASCADE,
+      content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      data_base64 TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS trade_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id),
@@ -2395,6 +2418,271 @@ app.get("/api/daily-signals/comments/:commentId/image", requireAuth, async (req,
     res.send(buf);
   } catch (err) {
     res.status(500).json({ error: "Could not load image", detail: String(err.message || err) });
+  }
+});
+
+/** ---------- "I took this signal" (taker tracking) ---------- */
+
+/** Returns the signed-in user's taken state for a signal + public taker count. */
+app.get("/api/daily-signals/:id/take", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  try {
+    const me = await currentUser(req);
+    const { rows } = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM signal_takers WHERE signal_id = $1::uuid) AS taker_count,
+         EXISTS(SELECT 1 FROM signal_takers WHERE signal_id = $1::uuid AND user_id = $2::uuid) AS taken`,
+      [req.params.id, me.id]
+    );
+    res.json({ taken: !!rows[0]?.taken, takerCount: rows[0]?.taker_count ?? 0 });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load take state", detail: String(err.message || err) });
+  }
+});
+
+/** Toggles "I took this signal" for the signed-in user. */
+app.post("/api/daily-signals/:id/take", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  try {
+    const me = await currentUser(req);
+    const { rows: signalRows } = await pool.query(`SELECT id FROM daily_signals WHERE id = $1::uuid`, [req.params.id]);
+    if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
+    const existing = await pool.query(
+      `SELECT 1 FROM signal_takers WHERE signal_id = $1::uuid AND user_id = $2::uuid`,
+      [req.params.id, me.id]
+    );
+    let taken;
+    if (existing.rows.length) {
+      await pool.query(`DELETE FROM signal_takers WHERE signal_id = $1::uuid AND user_id = $2::uuid`, [req.params.id, me.id]);
+      taken = false;
+    } else {
+      await pool.query(`INSERT INTO signal_takers (signal_id, user_id) VALUES ($1::uuid, $2::uuid)`, [req.params.id, me.id]);
+      taken = true;
+    }
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS taker_count FROM signal_takers WHERE signal_id = $1::uuid`, [req.params.id]
+    );
+    res.json({ taken, takerCount: rows[0]?.taker_count ?? 0 });
+  } catch (err) {
+    res.status(500).json({ error: "Could not update take state", detail: String(err.message || err) });
+  }
+});
+
+/** ---------- Share your win (testimonials) ---------- */
+
+/** Approved win testimonials for one signal (plus the caller's own pending/rejected ones). */
+app.get("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  try {
+    const me = await currentUser(req);
+    const admin = await isAdminRequest(req);
+    const { rows } = await pool.query(
+      `SELECT t.id, t.author_name, t.author_email, t.comment, t.status, t.created_at,
+              (t.user_id = $2::uuid) AS is_mine,
+              EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              u.avatar_url, u.role
+       FROM signal_testimonials t
+       LEFT JOIN users u ON u.id = t.user_id
+       WHERE t.signal_id = $1::uuid AND (t.status = 'approved' OR t.user_id = $2::uuid OR $3)
+       ORDER BY t.created_at DESC
+       LIMIT 100`,
+      [req.params.id, me.id, admin]
+    );
+    res.json({
+      testimonials: rows.map((r) => ({
+        id: r.id,
+        authorName: r.author_name,
+        authorEmail: r.author_email,
+        comment: r.comment,
+        status: r.status,
+        createdAt: r.created_at,
+        isMine: !!r.is_mine,
+        hasImage: r.has_image,
+        avatarUrl: r.avatar_url || null,
+        authorRole: r.role || "member"
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load testimonials", detail: String(err.message || err) });
+  }
+});
+
+/** Submit a win testimonial for a signal — text + optional proof screenshot. Goes to review. */
+app.post("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  const body = String((req.body || {}).comment || "").trim();
+  const imageDataUrl = (req.body || {}).image ? String((req.body || {}).image) : null;
+  if (!body && !imageDataUrl) {
+    return res.status(400).json({ error: "Add a comment or attach your proof screenshot to share your win." });
+  }
+  if (body.length > 800) return res.status(400).json({ error: "Comments are limited to 800 characters." });
+  if (imageDataUrl) {
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(imageDataUrl)) {
+      return res.status(400).json({ error: "Images must be png/jpeg/webp data URLs." });
+    }
+    const b64 = imageDataUrl.split(",")[1] || "";
+    if (b64.length > 4_000_000) {
+      return res.status(400).json({ error: "The image must be under 3MB." });
+    }
+  }
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    if (body) {
+      const linkVerdict = await guardLinks(me, body);
+      if (!linkVerdict.allowed) {
+        return res.status(422).json({ error: linkVerdict.error, linkBlocked: true });
+      }
+    }
+    const { rows: signalRows } = await pool.query(
+      `SELECT id, status, outcome FROM daily_signals WHERE id = $1::uuid`,
+      [req.params.id]
+    );
+    if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
+    const s = signalRows[0];
+    if (s.status !== "closed" || s.outcome !== "successful") {
+      return res.status(422).json({ error: "You can only share wins on signals that closed at a profit." });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO signal_testimonials (signal_id, user_id, author_name, author_email, comment, status)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'pending')
+       RETURNING id, author_name, comment, status, created_at`,
+      [req.params.id, me.id, me.name, me.email, body.slice(0, 800)]
+    );
+    const t = rows[0];
+    if (imageDataUrl) {
+      const m = imageDataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,/);
+      await pool.query(
+        `INSERT INTO signal_testimonial_images (testimonial_id, content_type, data_base64) VALUES ($1::uuid, $2, $3)`,
+        [t.id, m ? m[1] : "image/jpeg", imageDataUrl.split(",")[1] || ""]
+      );
+    }
+    res.status(201).json({
+      testimonial: {
+        id: t.id, authorName: t.author_name, comment: t.comment, status: t.status,
+        createdAt: t.created_at, isMine: true, hasImage: !!imageDataUrl, pendingReview: true
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not share your win", detail: String(err.message || err) });
+  }
+});
+
+/** Streams a testimonial's proof image. Pending images are only visible to their author or the admin. */
+app.get("/api/daily-signals/testimonials/:testimonialId/image", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    const admin = await isAdminRequest(req);
+    const { rows } = await pool.query(
+      `SELECT t.user_id, t.status, i.content_type, i.data_base64
+       FROM signal_testimonials t JOIN signal_testimonial_images i ON i.testimonial_id = t.id
+       WHERE t.id = $1::uuid`,
+      [req.params.testimonialId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Image not found" });
+    const row = rows[0];
+    if (row.status !== "approved" && !admin && !(me && row.user_id === me.id)) {
+      return res.status(403).json({ error: "This image is awaiting review." });
+    }
+    const buf = Buffer.from(row.data_base64, "base64");
+    res.setHeader("Content-Type", row.content_type);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(buf);
+  } catch (err) {
+    res.status(500).json({ error: "Could not load image", detail: String(err.message || err) });
+  }
+});
+
+/** Featured (latest approved) win testimonials across all signals — for the Signals screen strip. */
+app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT t.id, t.comment, t.created_at, t.author_name, t.author_email,
+              t.signal_id, s.instrument_id, s.instrument_display, s.direction, s.take_profits, s.exit_price,
+              EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              u.avatar_url
+       FROM signal_testimonials t
+       JOIN daily_signals s ON s.id = t.signal_id
+       LEFT JOIN users u ON u.id = t.user_id
+       WHERE t.status = 'approved'
+       ORDER BY t.created_at DESC
+       LIMIT 10`
+    );
+    res.json({
+      featured: rows.map((r) => ({
+        id: r.id,
+        signalId: r.signal_id,
+        comment: r.comment,
+        createdAt: r.created_at,
+        authorName: r.author_name,
+        avatarUrl: r.avatar_url || null,
+        hasImage: r.has_image,
+        instrument: r.instrument_display,
+        instrumentId: r.instrument_id,
+        direction: r.direction,
+        exitPrice: r.exit_price
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load featured wins", detail: String(err.message || err) });
+  }
+});
+
+/** ---------- Admin: win review queue ---------- */
+
+/** Admin: list testimonials (default: pending) for the Team Console review queue. */
+app.get("/api/admin/testimonials", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) return res.status(401).json({ error: "Admins only." });
+  try {
+    const status = ["pending", "approved", "rejected"].includes(String(req.query.status)) ? String(req.query.status) : "pending";
+    const { rows } = await pool.query(
+      `SELECT t.id, t.comment, t.status, t.created_at, t.author_name, t.author_email,
+              s.instrument_display, s.outcome,
+              EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image
+       FROM signal_testimonials t
+       LEFT JOIN daily_signals s ON s.id = t.signal_id
+       ORDER BY t.created_at DESC
+       LIMIT 200`
+    );
+    res.json({
+      testimonials: rows.map((r) => ({
+        id: r.id, comment: r.comment, status: r.status, createdAt: r.created_at,
+        authorName: r.author_name, authorEmail: r.author_email,
+        instrument: r.instrument_display, outcome: r.outcome, hasImage: r.has_image
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load review queue", detail: String(err.message || err) });
+  }
+});
+
+/** Admin: approve or reject a testimonial. body: {decision: "approve"|"reject"} */
+app.post("/api/admin/testimonials/:id/review", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) return res.status(401).json({ error: "Admins only." });
+  const decision = String((req.body || {}).decision || "");
+  if (!["approve", "reject"].includes(decision)) {
+    return res.status(400).json({ error: "decision must be approve or reject" });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE signal_testimonials
+       SET status = $1, reviewed_at = now()
+       WHERE id = $2::uuid AND status = 'pending'
+       RETURNING id, status`,
+      [decision === "approve" ? "approved" : "rejected", req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Pending testimonial not found" });
+    res.json({ id: rows[0].id, status: rows[0].status });
+  } catch (err) {
+    res.status(500).json({ error: "Could not review testimonial", detail: String(err.message || err) });
   }
 });
 

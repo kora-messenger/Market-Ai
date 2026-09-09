@@ -708,6 +708,93 @@ object ApiClient {
             request(request)
         }
 
+    /** "I took this signal" — current user's taken state for a signal. */
+    suspend fun fetchSignalTake(sessionToken: String, signalId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/take")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            request(request)
+        }
+
+    /** "I took this signal" — toggle for the signed-in user (returns { taken, takerCount }). */
+    suspend fun toggleSignalTake(sessionToken: String, signalId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/take")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post("{}".toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Approved win testimonials for a signal (+ the caller's own pending ones). */
+    suspend fun fetchSignalTestimonials(sessionToken: String, signalId: String): JSONArray =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/testimonials")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            val json = request(request)
+            json.optJSONArray("testimonials") ?: JSONArray()
+        }
+
+    /** Share your win on a signal — text comment + optional proof screenshot; goes to review. */
+    suspend fun shareSignalWin(sessionToken: String, signalId: String, comment: String, imageDataUrl: String? = null): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("comment", comment)
+            if (imageDataUrl != null) payload.put("image", imageDataUrl)
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/$signalId/testimonials")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Full URL of a testimonial's proof screenshot — auth'd by the app-wide Coil loader. */
+    fun signalTestimonialImageUrl(testimonialId: String): String =
+        "${ApiConfig.BASE_URL}/api/daily-signals/testimonials/$testimonialId/image"
+
+    /** Featured (latest approved) win testimonials across all signals. */
+    suspend fun fetchFeaturedTestimonials(sessionToken: String): JSONArray =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/daily-signals/testimonials/featured")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            val json = request(request)
+            json.optJSONArray("featured") ?: JSONArray()
+        }
+
+    /** Admin: win testimonial review queue. */
+    suspend fun fetchAdminTestimonials(sessionToken: String, status: String = "pending"): JSONArray =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/admin/testimonials?status=$status")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .get()
+                .build()
+            val json = request(request)
+            json.optJSONArray("testimonials") ?: JSONArray()
+        }
+
+    /** Admin: approve or reject a win testimonial. */
+    suspend fun reviewTestimonial(sessionToken: String, testimonialId: String, decision: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("decision", decision)
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/admin/testimonials/$testimonialId/review")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
     /** Admin: pending signal-comment screenshots awaiting review. */
     suspend fun fetchPendingSignalComments(sessionToken: String): JSONArray =
         withContext(Dispatchers.IO) {

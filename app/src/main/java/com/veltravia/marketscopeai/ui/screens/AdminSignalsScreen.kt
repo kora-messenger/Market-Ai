@@ -106,6 +106,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
     var formError by remember { mutableStateOf<String?>(null) }
     var members by remember { mutableStateOf<org.json.JSONArray?>(null) }
     var overview by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    var pendingWinProofs by remember { mutableStateOf<org.json.JSONArray?>(null) }
     var memberQuery by remember { mutableStateOf("") }
     var busyMemberId by remember { mutableStateOf<String?>(null) }
 
@@ -131,6 +132,11 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             overview = ApiClient.fetchAdminOverview(token)
         } catch (_: Exception) {
             overview = null
+        }
+        try {
+            pendingWinProofs = ApiClient.fetchAdminTestimonials(token, "pending")
+        } catch (_: Exception) {
+            pendingWinProofs = null
         }
     }
 
@@ -281,6 +287,72 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
                         scope.launch {
                             try {
                                 ApiClient.approveSignalComment(token, pc.optString("id"))
+                                reloadKey++
+                            } catch (ex: Exception) {
+                                Toast.makeText(context, ex.message ?: "Could not approve", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }, modifier = Modifier.height(32.dp)) {
+                        Text("Approve", fontSize = 11.sp, color = BullGreen, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+        }
+
+        // ---------- pending win-proof reviews ----------
+        if (pendingWinProofs != null && pendingWinProofs!!.length() > 0) {
+            Text("Win reviews (${pendingWinProofs!!.length()})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = GoldAmber)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Shared win proofs stay hidden from the Signals feed until you approve them.",
+                style = MaterialTheme.typography.bodySmall, color = TextSecondary
+            )
+            Spacer(Modifier.height(8.dp))
+            for (i in 0 until pendingWinProofs!!.length()) {
+                val wp = pendingWinProofs!!.optJSONObject(i) ?: continue
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SurfaceLight)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(wp.optString("authorName"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Spacer(Modifier.width(6.dp))
+                            Text(wp.optString("instrument"), fontSize = 11.sp, color = TextMuted)
+                            if (wp.optBoolean("hasImage")) {
+                                Spacer(Modifier.width(6.dp))
+                                Text("· screenshot", fontSize = 11.sp, color = TextMuted)
+                            }
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Text(wp.optString("comment").ifBlank { "(no comment)" }, fontSize = 12.sp, color = TextSecondary)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = {
+                        val token = SessionManager.sessionToken(context) ?: return@OutlinedButton
+                        scope.launch {
+                            try {
+                                ApiClient.reviewTestimonial(token, wp.optString("id"), "reject")
+                                reloadKey++
+                            } catch (ex: Exception) {
+                                Toast.makeText(context, ex.message ?: "Could not reject", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }, modifier = Modifier.height(32.dp)) {
+                        Text("Reject", fontSize = 11.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = {
+                        val token = SessionManager.sessionToken(context) ?: return@OutlinedButton
+                        scope.launch {
+                            try {
+                                ApiClient.reviewTestimonial(token, wp.optString("id"), "approve")
                                 reloadKey++
                             } catch (ex: Exception) {
                                 Toast.makeText(context, ex.message ?: "Could not approve", Toast.LENGTH_SHORT).show()

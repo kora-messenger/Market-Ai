@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Send
@@ -88,6 +89,28 @@ private data class SignalUpdate(
     val replies: List<SignalUpdate> = emptyList()
 )
 
+private data class SignalTestimonial(
+    val id: String,
+    val authorName: String,
+    val avatarUrl: String = "",
+    val comment: String,
+    val status: String,
+    val createdAt: String,
+    val isMine: Boolean = false,
+    val hasImage: Boolean = false
+)
+
+private fun signalTestimonialFromJson(t: JSONObject): SignalTestimonial = SignalTestimonial(
+    id = t.optString("id"),
+    authorName = t.optString("authorName", "Trader"),
+    avatarUrl = t.optString("avatarUrl", ""),
+    comment = t.optString("comment", ""),
+    status = t.optString("status", "approved"),
+    createdAt = t.optString("createdAt", ""),
+    isMine = t.optBoolean("isMine", false),
+    hasImage = t.optBoolean("hasImage", false)
+)
+
 private data class SignalComment(
     val id: String,
     val authorName: String,
@@ -131,6 +154,7 @@ fun SignalCommentsSheet(
     signalId: String,
     instrument: String,
     isAdmin: Boolean = false,
+    isWin: Boolean = false,
     onDismiss: () -> Unit,
     onCountChange: (Int) -> Unit
 ) {
@@ -146,6 +170,7 @@ fun SignalCommentsSheet(
     var attachedImage by remember { mutableStateOf<String?>(null) } // data URL pending send
     var sending by remember { mutableStateOf(false) }
     var viewerImage by remember { mutableStateOf<String?>(null) } // full-screen comment screenshot
+    var testimonials by remember { mutableStateOf<List<SignalTestimonial>>(emptyList()) }
 
     // Admin-only inline composer for mentor-desk live updates.
     var showUpdateComposer by remember { mutableStateOf(false) }
@@ -165,6 +190,15 @@ fun SignalCommentsSheet(
                 signalUpdateFromJson(u)
             }
         } catch (_: Exception) { /* updates are optional; a failure shouldn't block comments */ }
+        if (isWin) {
+            try {
+                val tList: JSONArray = ApiClient.fetchSignalTestimonials(token, signalId)
+                testimonials = (0 until tList.length()).mapNotNull { i ->
+                    val t = tList.optJSONObject(i) ?: return@mapNotNull null
+                    signalTestimonialFromJson(t)
+                }
+            } catch (_: Exception) { /* proofs are optional; a failure shouldn't block comments */ }
+        }
         try {
             val list: JSONArray = ApiClient.fetchSignalComments(token, signalId)
             comments = (0 until list.length()).mapNotNull { i ->
@@ -436,6 +470,70 @@ fun SignalCommentsSheet(
                             Text("The mentor desk posts trade management notes here.", fontSize = 11.sp, color = TextMuted)
                         }
                         Spacer(Modifier.height(16.dp))
+
+                        // ============ WIN PROOFS ============
+                        if (isWin) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = BullGreen, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(7.dp))
+                                Text("Win proofs", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Spacer(Modifier.width(6.dp))
+                                Text("${testimonials.count { it.status == "approved" }}", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            if (testimonials.isEmpty()) {
+                                Text(
+                                    "No win proofs shared yet - tap Share your win on the signal card to be the first.",
+                                    fontSize = 11.5.sp, color = TextMuted
+                                )
+                            } else {
+                                testimonials.forEach { t ->
+                                    Column(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(SurfaceLight)
+                                            .border(1.dp, if (t.status == "approved") BullGreen.copy(alpha = 0.25f) else BorderSubtle, RoundedCornerShape(12.dp))
+                                            .padding(12.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            UserAvatar(photoUrl = t.avatarUrl.takeIf { it.isNotBlank() }, size = 24.dp)
+                                            Spacer(Modifier.width(8.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(t.authorName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                                Text(timeAgo(t.createdAt), fontSize = 10.sp, color = TextMuted)
+                                            }
+                                            if (t.status == "pending") {
+                                                Text("In review", fontSize = 10.sp, color = GoldAmber, fontWeight = FontWeight.SemiBold)
+                                            } else if (t.status == "rejected") {
+                                                Text("Not approved", fontSize = 10.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
+                                            } else {
+                                                Text("Trader proof", fontSize = 10.sp, color = BullGreen, fontWeight = FontWeight.SemiBold)
+                                            }
+                                        }
+                                        if (t.comment.isNotBlank()) {
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(t.comment, fontSize = 12.sp, color = TextSecondary)
+                                        }
+                                        if (t.hasImage) {
+                                            Spacer(Modifier.height(8.dp))
+                                            AsyncImage(
+                                                model = ApiClient.signalTestimonialImageUrl(t.id),
+                                                contentDescription = "Trader proof",
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(150.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .clickable { viewerImage = ApiClient.signalTestimonialImageUrl(t.id) }
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                        }
 
                         // ============ COMMENTS ============
                         Row(verticalAlignment = Alignment.CenterVertically) {
