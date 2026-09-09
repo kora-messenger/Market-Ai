@@ -83,6 +83,7 @@ object SessionManager {
     private const val KEY_IS_PREMIUM = "is_premium"
     private const val KEY_QUESTIONNAIRE = "questionnaire_json"
     private const val KEY_QUESTIONNAIRE_DONE = "questionnaire_done"
+    private const val KEY_QUESTIONNAIRE_PROGRESS = "questionnaire_progress"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -217,6 +218,37 @@ object SessionManager {
 
     fun questionnaireDone(context: Context): Boolean =
         prefs(context).getBoolean(KEY_QUESTIONNAIRE_DONE, false)
+
+    /**
+     * In-progress questionnaire resume: saves the current page + every
+     * answer typed so far, so if the app is closed or killed mid-way, the
+     * user lands back exactly where they stopped with nothing lost.
+     */
+    fun saveQuestionnaireProgress(context: Context, page: Int, answers: JSONObject) {
+        val payload = JSONObject()
+            .put("page", page)
+            .put("answers", answers)
+        prefs(context).edit()
+            .putString(KEY_QUESTIONNAIRE_PROGRESS, payload.toString())
+            .apply()
+    }
+
+    /** Returns the page + answers a user stopped at, or null if none. */
+    fun questionnaireProgress(context: Context): Pair<Int, JSONObject>? {
+        val raw = prefs(context).getString(KEY_QUESTIONNAIRE_PROGRESS, null) ?: return null
+        return runCatching {
+            val obj = JSONObject(raw)
+            val answers = obj.optJSONObject("answers") ?: JSONObject()
+            Pair(obj.optInt("page", 0), answers)
+        }.getOrNull()
+    }
+
+    /** Clears saved progress — called when the questionnaire is completed. */
+    fun clearQuestionnaireProgress(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_QUESTIONNAIRE_PROGRESS)
+            .apply()
+    }
 
     /** Personalized coaching line derived from the real questionnaire answers. */
     fun coachingLine(answers: QuestionnaireAnswers): String {

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animate
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -40,9 +41,11 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,16 +53,25 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -77,6 +89,7 @@ import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 private data class QuickAction(
     val label: String,
@@ -117,7 +130,13 @@ fun HomeScreen(
     var analysesLeftToday by remember { mutableStateOf<Int?>(null) }
     val communityJoined = remember { SessionManager.communityJoined(context) }
 
-    LaunchedEffect(Unit) {
+    val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+
+    /** Re-fetches every live number Home shows — shared by the initial
+     *  load and the pull-to-refresh gesture so both are identical. */
+    suspend fun refreshData() {
         // Real member count — a literal COUNT() from the backend, refreshed
         // every time Home loads.
         runCatching { ApiClient.fetchCommunityStats() }.getOrNull()?.let {
@@ -139,6 +158,60 @@ fun HomeScreen(
                 if (usage != null && !usage.optBoolean("unlimited", true)) {
                     analysesLeftToday = usage.optInt("remaining", 3)
                 }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { refreshData() }
+
+    // --- Pull-to-refresh: drag the Home feed down to re-fetch everything ---
+    val pullThresholdPx = with(density) { 110.dp.toPx() }
+    val pullMaxPx = pullThresholdPx * 1.5f
+    var pullDistance by remember { mutableFloatStateOf(0f) }
+    var refreshing by remember { mutableStateOf(false) }
+
+    val pullConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (refreshing) return Offset.Zero
+                val delta = available.y
+                if (delta > 0f && scrollState.value == 0) {
+                    // Finger pulled down while at the very top — grow the
+                    // indicator instead of (impossibly) scrolling further up.
+                    val newPull = (pullDistance + delta).coerceAtMost(pullMaxPx)
+                    val consumed = newPull - pullDistance
+                    pullDistance = newPull
+                    return Offset(0f, consumed)
+                }
+                if (delta < 0f && pullDistance > 0f) {
+                    // Push back up — the indicator shrinks first.
+                    val newPull = (pullDistance + delta).coerceAtLeast(0f)
+                    val consumed = newPull - pullDistance
+                    pullDistance = newPull
+                    return Offset(0f, consumed)
+                }
+                return Offset.Zero
+            }
+
+            override fun onPreFling(available: Velocity): Velocity {
+                if (refreshing) return Velocity.Zero
+                if (pullDistance >= pullThresholdPx) {
+                    // Released past the threshold — run the real refresh.
+                    refreshing = true
+                    pullDistance = pullThresholdPx * 0.55f
+                    scope.launch {
+                        refreshData()
+                        refreshing = false
+                        val start = pullDistance
+                        animate(start, 0f) { v, _ -> pullDistance = v }
+                    }
+                    return available
+                }
+                val start = pullDistance
+                scope.launch {
+                    animate(start, 0f) { v, _ -> pullDistance = v }
+                }
+                return Velocity.Zero
             }
         }
     }
@@ -172,9 +245,42 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .nestedScroll(pullConnection)
+            .verticalScroll(scrollState)
             .padding(horizontal = 20.dp)
     ) {
+        // --- Pull-to-refresh indicator ---
+        // Grows with the drag (arrow rotates as it approaches the
+        // threshold), becomes a spinner while the real re-fetch runs.
+        val indicatorHeight = when {
+            refreshing -> 56.dp
+            pullDistance > 0f -> with(density) { pullDistance.toDp() }
+            else -> 0.dp
+        }
+        if (indicatorHeight > 0.dp) {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(indicatorHeight),
+                contentAlignment = Alignment.Center
+            ) {
+                if (refreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.5.dp,
+                        color = AccentViolet
+                    )
+                } else {
+                    val progress = (pullDistance / pullThresholdPx).coerceIn(0.2f, 1f)
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Pull to refresh",
+                        tint = AccentViolet.copy(alpha = progress),
+                        modifier = Modifier
+                            .size(18.dp)
+                            .graphicsLayer { rotationZ = progress * 240f }
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(20.dp))
 
         // --- Header ---

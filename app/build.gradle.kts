@@ -13,8 +13,8 @@ android {
         applicationId = "com.veltravia.marketscopeai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 24
-        versionName = "1.3.11"
+        versionCode = 25
+        versionName = "1.3.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

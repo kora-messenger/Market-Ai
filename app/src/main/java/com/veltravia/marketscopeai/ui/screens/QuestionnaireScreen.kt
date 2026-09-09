@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.QuestionnaireAnswers
 import com.veltravia.marketscopeai.data.SessionManager
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.launch
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
@@ -82,22 +85,59 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
         (user?.name ?: "trader").trim().split(" ").first().ifBlank { "trader" }
     }
 
-    var page by remember { mutableStateOf(0) }
+    // --- Resume-where-you-stopped: if this user previously left the
+    // questionnaire part-way (closed the app, got a call, anything), their
+    // last page and every typed answer were persisted — restore them all
+    // here so they continue exactly where they stopped, never from page 1.
+    val savedProgress = remember { SessionManager.questionnaireProgress(context) }
+    val savedPage = savedProgress?.first ?: 0
+    val savedAnswers = savedProgress?.second
+
+    var page by remember { mutableStateOf(savedPage) }
 
     // Screen 1 answers
-    var experience by remember { mutableStateOf("") }
-    var goal by remember { mutableStateOf("") }
-    var capital by remember { mutableStateOf("") }
+    var experience by remember { mutableStateOf(savedAnswers?.optString("experience") ?: "") }
+    var goal by remember { mutableStateOf(savedAnswers?.optString("goal") ?: "") }
+    var capital by remember { mutableStateOf(savedAnswers?.optString("capital") ?: "") }
 
     // Screen 2 answers
     val assets = remember { mutableStateListOf<String>() }
-    var style by remember { mutableStateOf("") }
+    var style by remember { mutableStateOf(savedAnswers?.optString("style") ?: "") }
     val timeframes = remember { mutableStateListOf<String>() }
-    var entryCriteria by remember { mutableStateOf("") }
+    var entryCriteria by remember { mutableStateOf(savedAnswers?.optString("entryCriteria") ?: "") }
 
     // Screen 3 answers
-    var emotionalStruggles by remember { mutableStateOf("") }
-    var dailyRoutine by remember { mutableStateOf("") }
+    var emotionalStruggles by remember { mutableStateOf(savedAnswers?.optString("emotionalStruggles") ?: "") }
+    var dailyRoutine by remember { mutableStateOf(savedAnswers?.optString("dailyRoutine") ?: "") }
+
+    // Restore the multi-select answers into the lists
+    savedAnswers?.optJSONArray("assets")?.let { arr ->
+        repeat(arr.length()) { assets.add(arr.optString(it)) }
+    }
+    savedAnswers?.optJSONArray("timeframes")?.let { arr ->
+        repeat(arr.length()) { timeframes.add(arr.optString(it)) }
+    }
+
+    // --- Persist progress on every change: the instant the user types,
+    // selects, or moves to the next page, the resume point updates. */
+    LaunchedEffect(
+        page, experience, goal, capital,
+        assets.joinToString(","), style,
+        timeframes.joinToString(","), entryCriteria,
+        emotionalStruggles, dailyRoutine
+    ) {
+        val progress = JSONObject()
+            .put("experience", experience)
+            .put("goal", goal)
+            .put("capital", capital)
+            .put("assets", JSONArray(assets.toList()))
+            .put("style", style)
+            .put("timeframes", JSONArray(timeframes.toList()))
+            .put("entryCriteria", entryCriteria)
+            .put("emotionalStruggles", emotionalStruggles)
+            .put("dailyRoutine", dailyRoutine)
+        SessionManager.saveQuestionnaireProgress(context, page, progress)
+    }
 
     val page1Valid = experience.isNotBlank() && goal.isNotBlank() && capital.isNotBlank()
     val page2Valid = assets.isNotEmpty() && style.isNotBlank() && timeframes.isNotEmpty()
@@ -360,6 +400,9 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                         // questionnaireCompleted server-side to skip the onboarding
                         // questionnaire for returning users.
                         SessionManager.saveQuestionnaire(context, answers)
+                        // Completed for real — the resume point is no longer
+                        // needed and must never override the completed state.
+                        SessionManager.clearQuestionnaireProgress(context)
                         val token = SessionManager.sessionToken(context)
                         if (token.isNullOrBlank()) {
                             onDone()
