@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -62,6 +63,7 @@ import kotlinx.coroutines.launch
  * The only per-flow difference is the CTA label: onboarding's first analysis
  * says "Analyze Now!", the main flow says "Run AI Analysis".
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AnalyzeFlow(
     ctaLabel: String,
