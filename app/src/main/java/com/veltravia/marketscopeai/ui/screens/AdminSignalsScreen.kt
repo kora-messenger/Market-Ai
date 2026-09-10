@@ -562,7 +562,7 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFF3F4F7))
+                    .background(SurfaceLight)
                     .clickable { onOpenPremium() }
                     .padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically

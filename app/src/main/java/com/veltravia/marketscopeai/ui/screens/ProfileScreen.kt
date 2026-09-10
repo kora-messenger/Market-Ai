@@ -162,6 +162,7 @@ fun ProfileScreen(
             trialActive = trialActive,
             trialDaysRemaining = trialDaysRemaining,
             savedPlanCount = savedPlanCount,
+            plan = plan,
             onUpgrade = onOpenSubscribe
         )
 
@@ -478,6 +479,7 @@ private fun AccountSummaryCard(
     trialActive: Boolean,
     trialDaysRemaining: Int,
     savedPlanCount: Int?,
+    plan: String,
     onUpgrade: () -> Unit
 ) {
     Column(
