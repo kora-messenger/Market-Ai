@@ -1,9 +1,22 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,20 +25,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,25 +46,33 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.QuestionnaireAnswers
 import com.veltravia.marketscopeai.data.SessionManager
-import org.json.JSONArray
-import org.json.JSONObject
-import kotlinx.coroutines.launch
-import com.veltravia.marketscopeai.ui.theme.AccentCyan
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumChoicePill
+import com.veltravia.marketscopeai.ui.components.PremiumSegmentedProgress
+import com.veltravia.marketscopeai.ui.components.StaggeredBlock
+import com.veltravia.marketscopeai.ui.components.pressScale
+import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
-import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlinx.coroutines.launch
 
 // Reference app's real questionnaire — exactly 3 screens.
 private val experienceOptions = listOf("Beginner", "Intermediate", "Advanced")
@@ -66,7 +86,11 @@ private val timeframeOptions = listOf("1M", "5M", "15M", "1H", "4H", "1D")
 private const val MAX_TIMEFRAMES = 3
 
 /**
- * The real 3-screen questionnaire shown right after sign-in.
+ * The real 3-screen questionnaire shown right after sign-in — now with the
+ * app's premium motion language: one violet→cyan gradient across every
+ * control, springy press physics, selection pops with spring-in check marks,
+ * a slow light sweep on the CTA, direction-aware page transitions and
+ * staggered question entrances.
  *
  * Screen 1 — "Welcome {NAME}": experience level, primary trading goal,
  * current capital (USD).
@@ -78,12 +102,14 @@ private const val MAX_TIMEFRAMES = 3
 @Composable
 fun QuestionnaireScreen(onDone: () -> Unit) {
     val context = LocalContext.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
     val user = SessionManager.currentUser(context)
     val firstName = remember(user) {
         (user?.name ?: "trader").trim().split(" ").first().ifBlank { "trader" }
     }
+    val scrollState = rememberScrollState()
 
     // --- Resume-where-you-stopped: if this user previously left the
     // questionnaire part-way (closed the app, got a call, anything), their
@@ -139,243 +165,286 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
         SessionManager.saveQuestionnaireProgress(context, page, progress)
     }
 
+    // Every page starts from the top; the entrance animation covers the jump.
+    LaunchedEffect(page) { scrollState.scrollTo(0) }
+
     val page1Valid = experience.isNotBlank() && goal.isNotBlank() && capital.isNotBlank()
     val page2Valid = assets.isNotEmpty() && style.isNotBlank() && timeframes.isNotEmpty()
     val page3Valid = emotionalStruggles.isNotBlank() && dailyRoutine.isNotBlank()
 
+    // Shake used when the user tries to select a 4th timeframe — the pill
+    // row physically refuses, with a heavier haptic than a normal selection.
+    val shake = remember { Animatable(0f) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .imePadding()
             .padding(horizontal = 20.dp)
     ) {
         Spacer(Modifier.height(20.dp))
 
         if (page > 0) {
-            Icon(
-                Icons.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = TextPrimary,
+            val backInteraction = remember { MutableInteractionSource() }
+            Box(
                 modifier = Modifier
-                    .size(24.dp)
-                    .clickable { page -= 1 }
-            )
-            Spacer(Modifier.height(16.dp))
+                    .pressScale(backInteraction, downScale = 0.85f)
+                    .clip(RoundedCornerShape(50))
+                    .clickable(
+                        interactionSource = backInteraction,
+                        indication = rememberRipple(bounded = false)
+                    ) { page -= 1 }
+                    .size(40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(Modifier.height(14.dp))
         } else {
             Spacer(Modifier.height(20.dp))
         }
 
-        if (page == 0) {
-            Text(
-                "Welcome $firstName,",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Let us get to understand your trading preferences and perform our first analysis!",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-            Spacer(Modifier.height(32.dp))
+        PremiumSegmentedProgress(current = page, total = 3)
 
-            QuestionLabel("What is your Experience Level?")
-            Spacer(Modifier.height(12.dp))
-            PillRow(
-                options = experienceOptions,
-                selected = listOf(experience),
-                singleSelect = true,
-                onSelect = { experience = it }
-            )
+        Spacer(Modifier.height(24.dp))
 
-            Spacer(Modifier.height(28.dp))
-            QuestionLabel("What is your Primary Trading Goal?")
-            Spacer(Modifier.height(12.dp))
-            PillRow(
-                options = goalOptions,
-                selected = listOf(goal),
-                singleSelect = true,
-                onSelect = { goal = it }
-            )
+        // Direction-aware page transition: forward slides in from the right,
+        // back from the left — with a spring, so the whole page settles
+        // instead of snapping.
+        AnimatedContent(
+            targetState = page,
+            transitionSpec = {
+                val forward = targetState > initialState
+                val enter = slideInHorizontally(
+                    animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                    initialOffsetX = { if (forward) it / 5 else -it / 5 }
+                ) + fadeIn(tween(280))
+                val exit = slideOutHorizontally(
+                    animationSpec = tween(240),
+                    targetOffsetX = { if (forward) -it / 6 else it / 6 }
+                ) + fadeOut(tween(160))
+                enter togetherWith exit
+            },
+            label = "questionnairePage"
+        ) { pageIdx ->
+            Column(Modifier.fillMaxWidth()) {
+                if (pageIdx == 0) {
+                    StaggeredBlock(key = pageIdx, index = 0) {
+                        Text(
+                            "Welcome $firstName,",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Let us get to understand your trading preferences and perform our first analysis!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
 
-            Spacer(Modifier.height(28.dp))
-            QuestionLabel("How much capital do you currently have? (USD)")
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = capital,
-                onValueChange = { value ->
-                    capital = value.filter { it.isDigit() }.take(12)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("e.g. 500", color = TextMuted) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentCyan,
-                    unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan,
-                    // Explicit text colors — don't rely on the M3 default,
-                    // which was rendering typed digits invisible against the
-                    // dark background on Ijezie's device.
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    disabledTextColor = TextMuted
-                )
-            )
-        } else if (page == 1) {
-            Text(
-                "Nice! $firstName,",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Now tell us about your current approach to trading so that we can tailor your experience.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-            Spacer(Modifier.height(32.dp))
+                    StaggeredBlock(key = pageIdx, index = 1) {
+                        QuestionLabel("What is your Experience Level?")
+                        Spacer(Modifier.height(12.dp))
+                        PremiumPillRow(
+                            options = experienceOptions,
+                            selected = listOf(experience),
+                            onSelect = { experience = it }
+                        )
+                    }
 
-            QuestionLabel("Assets Traded")
-            Spacer(Modifier.height(12.dp))
-            PillRow(
-                options = assetOptions,
-                selected = assets,
-                singleSelect = false,
-                onSelect = { option ->
-                    if (assets.contains(option)) assets.remove(option) else assets.add(option)
-                }
-            )
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 2) {
+                        QuestionLabel("What is your Primary Trading Goal?")
+                        Spacer(Modifier.height(12.dp))
+                        PremiumPillRow(
+                            options = goalOptions,
+                            selected = listOf(goal),
+                            onSelect = { goal = it }
+                        )
+                    }
 
-            Spacer(Modifier.height(28.dp))
-            QuestionLabel("Trading Style")
-            Spacer(Modifier.height(12.dp))
-            PillRow(
-                options = styleOptions,
-                selected = listOf(style),
-                singleSelect = true,
-                onSelect = { style = it }
-            )
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 3) {
+                        QuestionLabel("How much capital do you currently have? (USD)")
+                        Spacer(Modifier.height(12.dp))
+                        PremiumCapitalField(
+                            capital = capital,
+                            onCapitalChange = { capital = it }
+                        )
+                    }
+                } else if (pageIdx == 1) {
+                    StaggeredBlock(key = pageIdx, index = 0) {
+                        Text(
+                            "Nice! $firstName,",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Now tell us about your current approach to trading so that we can tailor your experience.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
 
-            Spacer(Modifier.height(28.dp))
-            QuestionLabel("Preferred Timeframe(s)")
-            Spacer(Modifier.height(6.dp))
-            if (timeframes.isNotEmpty()) {
-                Text(
-                    timeframes.joinToString(", "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AccentCyan,
-                    fontWeight = FontWeight.SemiBold
-                )
-            } else {
-                Text(
-                    "Select timeframes (max $MAX_TIMEFRAMES)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            PillRow(
-                options = timeframeOptions,
-                selected = timeframes,
-                singleSelect = false,
-                onSelect = { option ->
-                    if (timeframes.contains(option)) {
-                        timeframes.remove(option)
-                    } else if (timeframes.size < MAX_TIMEFRAMES) {
-                        timeframes.add(option)
+                    StaggeredBlock(key = pageIdx, index = 1) {
+                        QuestionLabel("Assets Traded")
+                        Spacer(Modifier.height(12.dp))
+                        PremiumPillRow(
+                            options = assetOptions,
+                            selected = assets,
+                            onSelect = { option ->
+                                if (assets.contains(option)) assets.remove(option) else assets.add(option)
+                            }
+                        )
+                    }
+
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 2) {
+                        QuestionLabel("Trading Style")
+                        Spacer(Modifier.height(12.dp))
+                        PremiumPillRow(
+                            options = styleOptions,
+                            selected = listOf(style),
+                            onSelect = { style = it }
+                        )
+                    }
+
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 3) {
+                        QuestionLabel("Preferred Timeframe(s)")
+                        Spacer(Modifier.height(6.dp))
+                        if (timeframes.isNotEmpty()) {
+                            Text(
+                                timeframes.joinToString(", "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AccentViolet,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        } else {
+                            Text(
+                                "Select timeframes (max $MAX_TIMEFRAMES)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        // The pill row shakes when a 4th timeframe is refused.
+                        Box(
+                            modifier = Modifier.graphicsLayer {
+                                translationX = shake.value
+                            }
+                        ) {
+                            PremiumPillRow(
+                                options = timeframeOptions,
+                                selected = timeframes,
+                                onSelect = { option ->
+                                    if (timeframes.contains(option)) {
+                                        timeframes.remove(option)
+                                    } else if (timeframes.size < MAX_TIMEFRAMES) {
+                                        timeframes.add(option)
+                                    } else {
+                                        scope.launch {
+                                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                            shake.snapTo(0f)
+                                            shake.animateTo(
+                                                0f,
+                                                keyframes {
+                                                    durationMillis = 340
+                                                    -12f at 70
+                                                    9f at 150
+                                                    -5f at 230
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 4) {
+                        QuestionLabel("What are your trading Entry Criteria")
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = entryCriteria,
+                            onValueChange = { entryCriteria = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            placeholder = { Text("Describe how you enter trades", color = TextMuted) },
+                            colors = PremiumFieldColors()
+                        )
+                    }
+                } else {
+                    StaggeredBlock(key = pageIdx, index = 0) {
+                        Text(
+                            "Now lastly $firstName,",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Before our first analysis, let's understand your psychology and routine so we can help you better.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                    Spacer(Modifier.height(32.dp))
+
+                    StaggeredBlock(key = pageIdx, index = 1) {
+                        QuestionLabel("What are some of your emotional struggles?")
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = emotionalStruggles,
+                            onValueChange = { emotionalStruggles = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("e.g. Impatience, Fear, Revenge", color = TextMuted) },
+                            singleLine = true,
+                            colors = PremiumFieldColors()
+                        )
+                    }
+
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 2) {
+                        QuestionLabel("What is your ideal daily routine?")
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = dailyRoutine,
+                            onValueChange = { dailyRoutine = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            placeholder = { Text("Honestly describe what your usual days are like right now..", color = TextMuted) },
+                            colors = PremiumFieldColors()
+                        )
                     }
                 }
-            )
-
-            Spacer(Modifier.height(28.dp))
-            QuestionLabel("What are your trading Entry Criteria")
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = entryCriteria,
-                onValueChange = { entryCriteria = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp),
-                placeholder = { Text("Describe how you enter trades", color = TextMuted) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentCyan,
-                    unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan,
-                    // Explicit text colors — don't rely on the M3 default,
-                    // which was rendering typed digits invisible against the
-                    // dark background on Ijezie's device.
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    disabledTextColor = TextMuted
-                )
-            )
-        } else {
-            Text(
-                "Now lastly $firstName,",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Before our first analysis, let's understand your psychology and routine so we can help you better.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-            Spacer(Modifier.height(32.dp))
-
-            QuestionLabel("What are some of your emotional struggles?")
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = emotionalStruggles,
-                onValueChange = { emotionalStruggles = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("e.g. Impatience, Fear, Revenge", color = TextMuted) },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentCyan,
-                    unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan,
-                    // Explicit text colors — don't rely on the M3 default,
-                    // which was rendering typed digits invisible against the
-                    // dark background on Ijezie's device.
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    disabledTextColor = TextMuted
-                )
-            )
-
-            Spacer(Modifier.height(28.dp))
-            QuestionLabel("What is your ideal daily routine?")
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = dailyRoutine,
-                onValueChange = { dailyRoutine = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp),
-                placeholder = { Text("Honestly describe what your usual days are like right now..", color = TextMuted) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentCyan,
-                    unfocusedBorderColor = BorderSubtle,
-                    cursorColor = AccentCyan,
-                    // Explicit text colors — don't rely on the M3 default,
-                    // which was rendering typed digits invisible against the
-                    // dark background on Ijezie's device.
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    disabledTextColor = TextMuted
-                )
-            )
+            }
         }
 
         Spacer(Modifier.height(36.dp))
 
-        Button(
+        GradientPrimaryButton(
+            text = if (page == 2) "Save and Test Analysis Now" else "Next",
+            enabled = when (page) {
+                0 -> page1Valid
+                1 -> page2Valid
+                else -> page3Valid && !saving
+            },
             onClick = {
                 when (page) {
                     0 -> page = 1
@@ -421,29 +490,8 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                         }
                     }
                 }
-            },
-            enabled = when (page) {
-                0 -> page1Valid
-                1 -> page2Valid
-                else -> page3Valid && !saving
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = AccentCyan,
-                contentColor = Color(0xFF06202A),
-                disabledContainerColor = SurfaceDark,
-                disabledContentColor = TextMuted
-            )
-        ) {
-            Text(
-                if (page == 2) "Save and Test Analysis Now" else "Next",
-                fontWeight = FontWeight.Bold
-            )
-        }
-
+            }
+        )
 
         Spacer(Modifier.height(30.dp))
     }
@@ -460,14 +508,46 @@ private fun QuestionLabel(text: String) {
 }
 
 /**
- * Rounded option pills like the reference app. Handles wrapping rows,
- * single- vs multi-select, and ignores empty option labels.
+ * Unified text field styling: the same violet accent the gradient starts
+ * with, so typing feels part of the same control family as the pills.
  */
 @Composable
-private fun PillRow(
+private fun PremiumFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = AccentViolet,
+    unfocusedBorderColor = BorderSubtle,
+    cursorColor = AccentViolet,
+    // Explicit text colors — don't rely on the M3 default,
+    // which was rendering typed digits invisible against the
+    // background on Ijezie's device.
+    focusedTextColor = TextPrimary,
+    unfocusedTextColor = TextPrimary,
+    disabledTextColor = TextMuted
+)
+
+/** Capital input with digit-only filtering, kept from the original flow. */
+@Composable
+private fun PremiumCapitalField(capital: String, onCapitalChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = capital,
+        onValueChange = { value ->
+            onCapitalChange(value.filter { it.isDigit() }.take(12))
+        },
+        modifier = Modifier.fillMaxWidth(),
+        placeholder = { Text("e.g. 500", color = TextMuted) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        colors = PremiumFieldColors()
+    )
+}
+
+/**
+ * Wrapping rows of premium choice pills: 3 per row for short labels,
+ * 2 for long ones — same layout rule as before, new motion.
+ */
+@Composable
+private fun PremiumPillRow(
     options: List<String>,
     selected: List<String>,
-    singleSelect: Boolean,
     onSelect: (String) -> Unit
 ) {
     val visible = options.filter { it.isNotBlank() }
@@ -478,22 +558,10 @@ private fun PillRow(
         val row = visible.subList(index, minOf(index + rowSize, visible.size))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             row.forEach { option ->
-                val isSelected = selected.contains(option)
-                Text(
-                    option,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (isSelected) Color(0xFF06202A) else TextSecondary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (isSelected) AccentCyan else SurfaceDark)
-                        .border(
-                            1.dp,
-                            if (isSelected) AccentCyan else BorderSubtle,
-                            RoundedCornerShape(50)
-                        )
-                        .clickable { onSelect(option) }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                PremiumChoicePill(
+                    option = option,
+                    isSelected = selected.contains(option),
+                    onSelect = { onSelect(option) }
                 )
             }
         }
