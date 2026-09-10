@@ -103,7 +103,11 @@ internal fun AnalyzeInstrumentRow(
 @Composable
 internal fun AnalyzeInstrumentPickerSheet(
     onDismiss: () -> Unit,
-    onSelect: (Instrument) -> Unit
+    onSelect: (Instrument) -> Unit,
+    // Optional category filter ("Forex" / "Crypto" / null = full catalog) — the
+    // 3-in-1 analyze screen passes the active tab's category so a forex tab
+    // only ever offers forex instruments.
+    categories: List<String>? = null
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -113,8 +117,15 @@ internal fun AnalyzeInstrumentPickerSheet(
         var categoryFilter by rememberSaveable { mutableStateOf("All") }
         var categoryMenuOpen by remember { mutableStateOf(false) }
 
-        val filtered = remember(query, categoryFilter) {
-            InstrumentCatalog.all.filter {
+        val catalog = remember(categories) {
+            if (categories == null) InstrumentCatalog.all
+            else InstrumentCatalog.all.filter { it.category in categories }
+        }
+        val availableCategories = remember(catalog) {
+            InstrumentCatalog.categories.filter { c -> catalog.any { it.category == c } }
+        }
+        val filtered = remember(query, categoryFilter, catalog) {
+            catalog.filter {
                 (categoryFilter == "All" || it.category == categoryFilter) &&
                     it.display.contains(query.trim(), ignoreCase = true)
             }
@@ -159,7 +170,7 @@ internal fun AnalyzeInstrumentPickerSheet(
                         expanded = categoryMenuOpen,
                         onDismissRequest = { categoryMenuOpen = false }
                     ) {
-                        (listOf("All") + InstrumentCatalog.categories).forEach { option ->
+                        (listOf("All") + availableCategories).forEach { option ->
                             DropdownMenuItem(
                                 text = { Text(option) },
                                 onClick = {
@@ -305,6 +316,25 @@ private fun AnalyzeChartTile(
             }
         }
     }
+}
+
+/** Single optional screenshot tile (stock flow: the "take a screenshot" part). */
+@Composable
+internal fun AnalyzeSingleChartTile(
+    imageUri: android.net.Uri?,
+    emptyLabel: String,
+    filledLabel: String,
+    onPick: () -> Unit,
+    onClear: () -> Unit
+) {
+    AnalyzeChartTile(
+        imageUri = imageUri,
+        emptyLabel = emptyLabel,
+        filledLabel = filledLabel,
+        modifier = Modifier.fillMaxWidth(),
+        onPick = onPick,
+        onClear = onClear
+    )
 }
 
 /** "What's Your Trade Focus?" — Scalp / Swing. */

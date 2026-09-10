@@ -92,6 +92,45 @@ object ApiClient {
     }
 
     /**
+     * Stock analysis (3rd analyze flow): the user types a company name or
+     * attaches a stock screenshot; the backend resolves the real listed
+     * stock, fetches its live performance and returns a BUY/SELL/HOLD
+     * verdict with a confidence percentage. Same trial/limit semantics.
+     */
+    suspend fun analyzeStock(
+        sessionToken: String,
+        name: String,
+        imageDataUrl: String?
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("name", name)
+        if (imageDataUrl != null) payload.put("image", imageDataUrl)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/analyze/stock")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (response.code == 402 && json.optBoolean("trialExpired", false)) {
+                throw TrialExpiredException(
+                    json.optString("error", "Your free trial has ended.")
+                )
+            }
+            if (response.code == 429 && json.optBoolean("dailyLimitReached", false)) {
+                throw DailyLimitException(
+                    json.optString("error", "You've used all free analyses for today.")
+                )
+            }
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Request failed (" + response.code + ")"))
+            }
+            json
+        }
+    }
+
+    /**
      * Verifies the Google ID token on the backend, upserts the user row, and returns
      * the server-issued session JWT plus the current community-membership state.
      */

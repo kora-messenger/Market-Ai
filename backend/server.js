@@ -17,6 +17,7 @@ const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
 const { fetchWatchlist, WATCHLIST } = require("./src/markets");
 const { fetchCandles, INTERVALS } = require("./src/candles");
 const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
+const { searchStock, bestMatch, fetchStockStats } = require("./src/stocks");
 
 const app = express();
 
@@ -1547,12 +1548,19 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
 
   // --- Stage 2: validate the uploaded images are real trading charts that
   // plausibly match this instrument. A random photo must never be analyzed. ---
+  const CATEGORY_LABELS = {
+    forex: "forex", crypto: "crypto", metal: "metals",
+    index: "indices", synthetic: "synthetics"
+  };
+  const categoryLabel = CATEGORY_LABELS[instrument.kind] || instrument.kind;
   const CHART_VALIDATION_PROMPT = `You are a strict input validator for a trading analysis engine.
 You receive two images that MUST be genuine trading chart screenshots (candlestick, bar, or line chart with a visible price axis and time axis) of the SAME instrument, on the 4-hour and 15-minute timeframes.
+The stated instrument belongs to the ${categoryLabel.toUpperCase()} market category.
 Respond ONLY with JSON:
 {
   "isChart": <true only if BOTH images are genuine trading charts (candlestick, bar or line) with a visible price scale. Do NOT require timeframe labels or that the two screenshots look different \u2014 judge only that each image is a real price chart>,
   "instrumentPlausible": <true only if the visible price scale plausibly belongs to the stated instrument, given its current live price. Charts may be from days or weeks ago, so judge order-of-magnitude plausibility (e.g. a EUR/USD chart shows values around 0.8-1.6, a USD/JPY chart around 130-160, an XAU/USD chart around 1800-4000, a BTC chart around tens of thousands)>,
+  "categoryMatches": <true only if the charts genuinely look like ${categoryLabel} charts of the stated instrument and NOT like charts from a different market category (e.g. a forex pair chart uploaded for a crypto instrument, or a stock chart uploaded for a forex pair, must be false)>,
   "reason": "<one short sentence explaining the verdict>"
 }`;
 
@@ -1605,9 +1613,12 @@ Respond ONLY with JSON:
       reason: validation.reason || ""
     });
   }
-  if (validation.instrumentPlausible === false) {
+  if (validation.instrumentPlausible === false || validation.categoryMatches === false) {
+    const wrongCategory = validation.categoryMatches === false && validation.instrumentPlausible !== false;
     return res.status(422).json({
-      error: "These charts don't appear to match " + instrument.display + ". Please make sure both screenshots are the 4H and 15M charts of " + instrument.display + ".",
+      error: wrongCategory
+        ? "These charts don't look like real " + categoryLabel + " charts of " + instrument.display + ". Please upload the correct " + categoryLabel + " chart \u2014 a screenshot from a different market won't work here."
+        : "These charts don't appear to match " + instrument.display + ". Please make sure both screenshots are the 4H and 15M " + categoryLabel + " charts of " + instrument.display + ".",
       instrumentMismatch: true,
       reason: validation.reason || ""
     });
@@ -1678,6 +1689,231 @@ Respond ONLY with JSON:
     return res.json({ ...result, ...trial });
   } catch (err) {
     console.error("[analyze] analysis stage threw:", err && err.message, err && err.stack);
+    return res.status(500).json({ error: "Analysis failed. Please tap Analyze again.", detail: String(err.message || err) });
+  }
+});
+
+// --- Stock analysis (the 3rd analyze flow: stocks have no 4H/15M upload —
+// the user types a company name or uploads a stock screenshot, we fetch the
+// stock's REAL live performance from its exchange and let the AI judge it) ---
+const STOCK_SYSTEM_PROMPT = `You are a senior equity research analyst. You receive a real, live market-performance snapshot of a publicly traded stock, fetched moments ago from its exchange. Decide whether a trader should buy this stock now or not.
+Respond with STRICT JSON only (no markdown fences), shape:
+{
+  "direction": "LONG" | "SHORT" | "NO_TRADE",
+  "recommendation": "BUY" | "SELL" | "HOLD",
+  "confidence": 0-100,
+  "entryZone": {"low": number, "high": number},
+  "stopLoss": number,
+  "takeProfits": [number, number, number],
+  "riskReward": number,
+  "estimatedDuration": "your best estimate of the holding period this setup needs, as a short human string like '2-6 months'",
+  "thesis": "4-6 sentences grounded in the REAL performance numbers provided — cite the actual percentages, the 52-week range and trend you were given",
+  "invalidation": "what would invalidate this view",
+  "keyLevels": [number]
+}
+Hard rules: LONG pairs with recommendation BUY; SHORT with SELL; NO_TRADE with HOLD. All prices must be in the stock's own currency and near its real current price. Ground every claim in the provided data — never invent numbers.`;
+
+app.post("/api/analyze/stock", requireAuth, async (req, res) => {
+  if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
+    return res.status(503).json({ error: "Analysis engine is not configured yet." });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  const { name, image } = req.body || {};
+  const isDataUrl = (s) => typeof s === "string" && /^data:image\/(png|jpe?g|webp);base64,/.test(s);
+  const hasImage = isDataUrl(image);
+  const stockQuery = typeof name === "string" ? name.trim() : "";
+  if (!stockQuery && !hasImage) {
+    return res.status(400).json({ error: "Type a stock name or attach a stock screenshot to analyze." });
+  }
+
+  let userRow;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    userRow = rows[0];
+  } catch (err) {
+    return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
+  }
+
+  const trial = trialInfo(userRow);
+  const premium = Boolean(userRow.is_premium);
+  if (!trial.trialActive && !premium) {
+    const usage = await analysisUsage(userRow.id);
+    if (usage.used >= usage.limit) {
+      return res.status(429).json({
+        error: `You've used all ${usage.limit} free analyses for today. Premium gives you unlimited analyses.`,
+        dailyLimitReached: true,
+        ...usage
+      });
+    }
+  }
+
+  // --- If a screenshot is attached, it must be a genuine stock screenshot.
+  // With no typed name, the ticker/company is extracted from the image. ---
+  let resolvedQuery = stockQuery;
+  if (hasImage) {
+    const visionPrompt = `You are a strict input validator for a stock analysis engine. The image should be a screenshot related to a publicly traded stock (a stock chart, a trading app screen, or a quote page). Respond ONLY with JSON: { "isStockRelated": <true only if the image genuinely relates to a stock>, "companyOrTicker": "<the company name or ticker symbol visible, or empty string>", "reason": "<one short sentence>" }`;
+    try {
+      const vResult = await callAI({
+        model: ANALYSIS_MODEL,
+        max_tokens: 1500,
+        reasoning: { effort: "low" },
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: visionPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Validate this screenshot for stock analysis." },
+              { type: "image_url", image_url: { url: image } }
+            ]
+          }
+        ]
+      }, "stock-vision");
+      if (!vResult.ok) {
+        return res.status(502).json({
+          error: "Our AI analysis service had a temporary hiccup. Please tap Analyze again.",
+          status: vResult.status,
+          detail: vResult.detail.slice(0, 400)
+        });
+      }
+      const vData = await vResult.response.json();
+      const vision = extractJson(vData.choices?.[0]?.message?.content || "");
+      if (vision.isStockRelated === false) {
+        return res.status(422).json({
+          error: "This screenshot doesn't look like a valid stock screenshot. Please attach the correct stock chart or type the stock name instead.",
+          invalidChart: true,
+          reason: vision.reason || ""
+        });
+      }
+      if (!resolvedQuery && typeof vision.companyOrTicker === "string" && vision.companyOrTicker.trim()) {
+        resolvedQuery = vision.companyOrTicker.trim();
+      }
+    } catch (err) {
+      console.error("[analyze/stock] vision stage threw:", err && err.message, err && err.stack);
+      return res.status(502).json({ error: "Could not verify the screenshot. Please try again.", detail: String(err.message || err) });
+    }
+  }
+
+  if (!resolvedQuery) {
+    return res.status(422).json({ error: "We couldn't identify a stock from that screenshot. Please type the stock name instead." });
+  }
+
+  // --- Resolve the query to a REAL listed stock with live performance data ---
+  let stats;
+  let match;
+  try {
+    const matches = await searchStock(resolvedQuery);
+    if (!matches.length) {
+      return res.status(422).json({
+        error: `We couldn't find a stock called "${resolvedQuery}". Check the spelling or try its ticker symbol.`,
+        stockNotFound: true
+      });
+    }
+    match = bestMatch(matches, resolvedQuery);
+    stats = await fetchStockStats(match.symbol);
+  } catch (err) {
+    console.error("[analyze/stock] market data fetch failed:", err && err.message, err && err.stack);
+    return res.status(502).json({ error: "We couldn't reach the stock market data right now. Please try again in a moment." });
+  }
+  if (!stats) {
+    return res.status(422).json({
+      error: `We couldn't load live market data for "${match.description}". Please try the ticker symbol instead.`,
+      stockNotFound: true
+    });
+  }
+
+  // --- The real analysis, grounded in the live performance snapshot ---
+  try {
+    const userContent = [
+      {
+        type: "text",
+        text:
+          `Stock: ${stats.company} (${stats.ticker}), listed on ${match.exchange}. Currency: ${stats.currency || "local"}.` +
+          ` REAL live market data fetched moments ago: current price ${stats.price}${stats.changePctToday != null ? ` (today ${stats.changePctToday > 0 ? "+" : ""}${stats.changePctToday}%)` : ""}` +
+          (stats.perf1W != null ? `, 1-week ${stats.perf1W}%` : "") +
+          (stats.perf1M != null ? `, 1-month ${stats.perf1M}%` : "") +
+          (stats.perf3M != null ? `, 3-month ${stats.perf3M}%` : "") +
+          (stats.perf6M != null ? `, 6-month ${stats.perf6M}%` : "") +
+          (stats.perf1Y != null ? `, 1-year ${stats.perf1Y}%` : "") +
+          (stats.perfYTD != null ? `, YTD ${stats.perfYTD}%` : "") +
+          (stats.high52w != null && stats.low52w != null ? `, 52-week range ${stats.low52w} - ${stats.high52w}` : "") +
+          (stats.volume != null ? `, volume today ${stats.volume}` : "") +
+          (stats.avgVolume10d != null ? `, 10-day average volume ${stats.avgVolume10d}` : "") +
+          (stats.dailyVolatilityPct != null ? `, daily volatility ${stats.dailyVolatilityPct}%` : "") +
+          (stats.rsi != null ? `, RSI ${stats.rsi}` : "") +
+          (stats.marketCap != null ? `, market cap ${stats.marketCap}` : "") +
+          (stats.peRatio != null ? `, P/E ${stats.peRatio}` : "") +
+          (stats.eps != null ? `, EPS ${stats.eps}` : "") +
+          (stats.sector ? `, sector: ${stats.sector}` : "") +
+          (stats.tvRecommendation != null ? `. Aggregated technical rating of this stock on its exchange: ${stats.tvRecommendation} (-1 strong sell to +1 strong buy)` : "") +
+          `. User query: "${resolvedQuery}". Decide: should a trader BUY this stock now or not, and with what confidence percentage?`
+      }
+    ];
+    if (hasImage) {
+      userContent.push({ type: "image_url", image_url: { url: image } });
+    }
+
+    const orResult = await callAI({
+      model: ANALYSIS_MODEL,
+      max_tokens: 2500,
+      reasoning: { effort: "low" },
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: STOCK_SYSTEM_PROMPT },
+        { role: "user", content: userContent }
+      ]
+    }, "stock-analysis");
+
+    if (!orResult.ok) {
+      const billingIssue = orResult.status === 402;
+      if (billingIssue) {
+        console.error("[analyze/stock] OPENROUTER ACCOUNT OUT OF CREDIT — top up at https://openrouter.ai/settings/credits (or set OPENAI_API_KEY as the primary provider)");
+      }
+      return res.status(502).json({
+        error: billingIssue
+          ? "Our AI analysis service is briefly unavailable. We're on it — please try again shortly."
+          : "Our AI analysis service had a temporary hiccup. Please tap Analyze again.",
+        status: orResult.status,
+        detail: orResult.detail.slice(0, 400)
+      });
+    }
+
+    const data = await orResult.response.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    const analysis = extractJson(text);
+
+    const result = {
+      instrument: `${stats.company} (${stats.ticker})`,
+      instrumentId: match.symbol,
+      mode: "stock",
+      model: ANALYSIS_MODEL,
+      livePrice: stats.price,
+      marketVerified: true,
+      chartValidated: true,
+      analysis,
+      marketData: {
+        perf1M: stats.perf1M, perf3M: stats.perf3M, perf6M: stats.perf6M, perf1Y: stats.perf1Y,
+        high52w: stats.high52w, low52w: stats.low52w, currency: stats.currency,
+        exchange: match.exchange
+      },
+      analyzedAt: new Date().toISOString()
+    };
+
+    const { rows } = await pool.query(
+      `INSERT INTO analyses (user_id, instrument_id, mode, result) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [userRow.id, match.symbol, "stock", JSON.stringify(result)]
+    );
+    if (rows.length) result.id = rows[0].id;
+
+    return res.json({ ...result, ...trial });
+  } catch (err) {
+    console.error("[analyze/stock] analysis stage threw:", err && err.message, err && err.stack);
     return res.status(500).json({ error: "Analysis failed. Please tap Analyze again.", detail: String(err.message || err) });
   }
 });

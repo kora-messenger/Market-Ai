@@ -104,6 +104,90 @@ fun Modifier.pressScale(interaction: MutableInteractionSource, downScale: Float 
 }
 
 /**
+ * Premium segmented tab row (3-in-1 analyze screen): one shared motion
+ * identity with the tab bar — gradient pill fades in behind the selected
+ * tab, selection pops with spring physics, every tap gets a light tick.
+ */
+@Composable
+fun PremiumSegmentedTabs(
+    tabs: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val gradient = PremiumGradientBrush
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(SurfaceDark)
+            .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp))
+            .padding(5.dp)
+    ) {
+        tabs.forEachIndexed { index, label ->
+            val selected = index == selectedIndex
+            val interaction = remember { MutableInteractionSource() }
+            val view = LocalView.current
+
+            val gradientAlpha by animateFloatAsState(
+                targetValue = if (selected) 1f else 0f,
+                animationSpec = tween(240),
+                label = "segGradient"
+            )
+            val textColor by animateColorAsState(
+                targetValue = if (selected) Color.White else TextSecondary,
+                animationSpec = tween(180),
+                label = "segText"
+            )
+            val pop = remember { Animatable(1f) }
+            LaunchedEffect(selected) {
+                if (selected) {
+                    pop.snapTo(0.9f)
+                    pop.animateTo(
+                        1f,
+                        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                    )
+                }
+            }
+
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .pressScale(interaction, downScale = 0.96f)
+                    .graphicsLayer {
+                        scaleX = pop.value
+                        scaleY = pop.value
+                    }
+                    .clip(RoundedCornerShape(12.dp))
+                    .drawBehind {
+                        if (gradientAlpha > 0f) {
+                            drawRect(brush = gradient, alpha = gradientAlpha)
+                        }
+                    }
+                    .clickable(
+                        interactionSource = interaction,
+                        indication = rememberRipple(),
+                        enabled = !selected
+                    ) {
+                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        onSelect(index)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 11.dp)
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = textColor,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/**
  * Premium choice pill: white card at rest, signature gradient when selected.
  * Animated selection (color fade + 0.9→1 pop + spring-in check mark),
  * press squash, and a light tactile tick on tap.
