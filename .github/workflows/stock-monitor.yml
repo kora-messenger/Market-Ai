@@ -1,0 +1,32 @@
+name: Stock monitor
+
+# The AI keeps watching every stock it recommended BUY and pushes traders an
+# update when the stock improves or weakens (keep vs sell). Pings the
+# backend's monitor endpoint every 30 minutes — closed markets move nowhere,
+# so they naturally stay silent.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  stock-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run stock monitor pass
+        run: |
+          set -x
+          STATUS=$(curl -s -o /tmp/monitor.json -w "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "https://market-ai-api-jwfb.onrender.com/api/cron/stock-monitor" || echo "000")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          cat /tmp/monitor.json || true
+          if [ "$STATUS" != "200" ]; then
+            echo "Stock monitor failed with status $STATUS"
+            cat /tmp/monitor.json 2>/dev/null | head -c 300 || true
+            exit 1
+          fi

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -169,6 +170,7 @@ fun SignalCardScreen(
                     mode = stored.optString("mode", rec.optString("mode", "")),
                     analyzedAt = stored.optString("analyzedAt", rec.optString("analyzedAt", "")),
                     analysis = ai,
+                    monitoring = stored.optBoolean("monitoring", false) && stored.optString("mode", rec.optString("mode", "")) == "stock",
                     onOpenBrokerInfo = onOpenBrokerInfo
                 )
             }
@@ -203,6 +205,7 @@ private fun TradeAnalysisBody(
     mode: String,
     analyzedAt: String,
     analysis: JSONObject,
+    monitoring: Boolean = false,
     onOpenBrokerInfo: (() -> Unit)?
 ) {
     val clipboard = LocalClipboardManager.current
@@ -262,6 +265,35 @@ private fun TradeAnalysisBody(
     }
 
     Spacer(Modifier.height(10.dp))
+
+    // --- Stock monitoring banner: the AI keeps watching BUY verdicts and
+    // pushes keep-or-sell updates as the stock moves. ---
+    if (monitoring) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(AccentCyan.copy(alpha = 0.12f))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Radar, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    "AI is monitoring this stock for you",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "We're watching its market live and will notify you as it improves or weakens — with clear keep-or-sell advice on each update.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+    }
 
     // --- Recommended broker card (dismissible) ---
     if (showBrokerCard && onOpenBrokerInfo != null) {

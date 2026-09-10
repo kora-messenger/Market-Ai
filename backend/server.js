@@ -482,6 +482,29 @@ async function initDb() {
       parent_id UUID REFERENCES post_comments(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS stock_monitors (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      symbol TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      company TEXT NOT NULL,
+      currency TEXT,
+      recommendation TEXT NOT NULL,
+      entry_price DOUBLE PRECISION,
+      stop_loss DOUBLE PRECISION,
+      take_profits JSONB,
+      last_price DOUBLE PRECISION,
+      last_notified_price DOUBLE PRECISION,
+      last_notified_at TIMESTAMPTZ,
+      last_checked_at TIMESTAMPTZ,
+      status TEXT NOT NULL DEFAULT 'active',
+      close_reason TEXT,
+      tp1_notified BOOLEAN NOT NULL DEFAULT false,
+      tp2_notified BOOLEAN NOT NULL DEFAULT false,
+      tp3_notified BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (user_id, symbol)
+    );
     CREATE TABLE IF NOT EXISTS push_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1386,6 +1409,198 @@ app.get("/api/subscription/status", requireAuth, async (req, res) => {
 
 // --- Trial expiry emails: find users whose 7-day free trial just ended and
 // email them once. Called hourly by the GitHub Actions cron. ---
+// --- Stock monitor: the AI keeps watching every BUY verdict and pushes the
+// trader an update when the stock improves or weakens — keep or sell.
+// Called every 30 minutes by the GitHub Actions cron. Real rules, no filler:
+//   * price fell to the AI's stop level  -> SELL alert, monitor closes
+//   * price reached a take-profit target -> milestone alert (once per level)
+//   * all targets hit                    -> profit alert, monitor closes
+//   * price moved >= 2% since the last alert -> the AI itself judges whether
+//     the position is improving or weakening and advises keep vs sell.
+// Cooldown: at most one AI-judgment alert per monitor every 4 hours; closed
+// markets move nowhere, so they naturally stay silent. ---
+app.post("/api/cron/stock-monitor", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+
+  const MOVEMENT_THRESHOLD_PCT = 2.0; // alert-worthy move since last alert
+  const JUDGMENT_COOLDOWN_MS = 4 * 60 * 60 * 1000; // per monitor
+
+  const { rows: monitors } = await pool.query(
+    `SELECT m.id, m.user_id, m.symbol, m.ticker, m.company, m.currency,
+            m.entry_price, m.stop_loss, m.take_profits, m.last_price,
+            m.last_notified_price, m.last_notified_at,
+            m.tp1_notified, m.tp2_notified, m.tp3_notified
+     FROM stock_monitors m
+     WHERE m.status = 'active'`
+  );
+  if (!monitors.length) {
+    return res.json({ ok: true, checked: 0, alerts: 0, skipped: 0 });
+  }
+
+  // One live fetch per distinct stock, not per monitor.
+  const statsBySymbol = new Map();
+  let skipped = 0;
+  for (const m of monitors) {
+    if (!statsBySymbol.has(m.symbol)) {
+      try {
+        statsBySymbol.set(m.symbol, await fetchStockStats(m.symbol));
+      } catch (err) {
+        console.error(`[stock-monitor] fetch failed for ${m.symbol}:`, String(err.message || err));
+        statsBySymbol.set(m.symbol, null);
+      }
+    }
+  }
+
+  let alerts = 0;
+  const pct = (from, to) => ((to - from) / from) * 100;
+  const fmt = (n, cur) => {
+    const decimals = n != null && Math.abs(n) < 10 ? 2 : (n != null && Math.abs(n) < 1000 ? 2 : 0);
+    return (cur === "NGN" ? "\u20A6" : cur === "USD" ? "$" : "") + (n == null ? "—" : Number(n).toFixed(decimals));
+  };
+
+  for (const m of monitors) {
+    try {
+      const stats = statsBySymbol.get(m.symbol);
+      const price = stats ? stats.price : null;
+      if (price == null || !isFinite(price)) {
+        skipped++;
+        continue;
+      }
+
+      const prevPrice = m.last_price;
+      await pool.query(
+        `UPDATE stock_monitors SET last_price = $1, last_checked_at = now() WHERE id = $2`,
+        [price, m.id]
+      );
+
+      // Market is not moving (closed session / no ticks) -> nothing to say.
+      if (prevPrice != null && Math.abs(price - prevPrice) < 1e-9) {
+        skipped++;
+        continue;
+      }
+
+      const tps = Array.isArray(m.take_profits) ? m.take_profits.filter((t) => typeof t === "number") : [];
+      const tpFlags = [m.tp1_notified, m.tp2_notified, m.tp3_notified];
+      const cooldownActive =
+        m.last_notified_at != null &&
+        Date.now() - new Date(m.last_notified_at).getTime() < JUDGMENT_COOLDOWN_MS;
+
+      const markNotified = async (extraSet = "", extraArgs = []) => {
+        await pool.query(
+          `UPDATE stock_monitors
+             SET last_notified_price = $1, last_notified_at = now()${extraSet}
+           WHERE id = $2`,
+          [price, m.id, ...extraArgs]
+        );
+      };
+
+      // 1) Stop level hit — the AI advises selling, monitor closes.
+      if (m.stop_loss != null && price <= m.stop_loss) {
+        const moveFromEntry = m.entry_price != null ? pct(m.entry_price, price) : null;
+        await notifyUser(m.user_id, {
+          title: `${m.ticker}: AI advises SELL — stop level reached`,
+          body: `${m.company} fell to ${fmt(price, m.currency)}${m.stop_loss != null ? ` (stop ${fmt(m.stop_loss, m.currency)})` : ""}${moveFromEntry != null ? `, ${moveFromEntry.toFixed(1)}% from your entry ${fmt(m.entry_price, m.currency)}` : ""}. The original plan is invalidated — AI recommends selling your shares now.`,
+          type: "signal",
+          data: { type: "signal", screen: "signals", symbol: m.symbol }
+        });
+        await pool.query(
+          `UPDATE stock_monitors SET last_notified_price=$1, last_notified_at=now(), status='closed', close_reason='stop_loss' WHERE id=$2`,
+          [price, m.id]
+        );
+        alerts++;
+        continue;
+      }
+
+      // 2) Take-profit milestones (each fires once per level).
+      const tpLevel = tps.findIndex((tp, i) => tp != null && price >= tp && !tpFlags[i]);
+      if (tpLevel >= 0) {
+        const isFinal = tpLevel === tps.length - 1;
+        const moveFromEntry = m.entry_price != null ? pct(m.entry_price, price) : null;
+        await notifyUser(m.user_id, {
+          title: isFinal
+            ? `${m.ticker}: final target hit — take your profit`
+            : `${m.ticker}: target ${tpLevel + 1} hit — still improving`,
+          body: isFinal
+            ? `${m.company} reached ${fmt(price, m.currency)} — your final AI target${moveFromEntry != null ? ` (${moveFromEntry.toFixed(1)}% above entry)` : ""}. AI recommends taking your profit now.`
+            : `${m.company} is at ${fmt(price, m.currency)}${moveFromEntry != null ? `, up ${moveFromEntry.toFixed(1)}% from entry` : ""}. AI advises KEEPING your shares — target ${tpLevel + 1} of ${tps.length} reached.`,
+          type: "signal",
+          data: { type: "signal", screen: "signals", symbol: m.symbol }
+        });
+        const flagCol = `tp${tpLevel + 1}_notified`;
+        await markNotified(`, ${flagCol} = true`);
+        if (isFinal) {
+          await pool.query(`UPDATE stock_monitors SET status='closed', close_reason='target_hit' WHERE id = $1`, [m.id]);
+        }
+        alerts++;
+        continue;
+      }
+
+      // 3) Meaningful move -> the AI itself judges keep vs sell.
+      const base = m.last_notified_price != null ? m.last_notified_price : m.entry_price;
+      if (base == null || cooldownActive) {
+        skipped++;
+        continue;
+      }
+      const movePct = pct(base, price);
+      if (Math.abs(movePct) < MOVEMENT_THRESHOLD_PCT) {
+        skipped++;
+        continue;
+      }
+
+      const verdictResult = await callAI({
+        model: ANALYSIS_MODEL,
+        max_tokens: 900,
+        reasoning: { effort: "low" },
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `You are monitoring a stock position for a trader. The original AI analysis recommended BUY. Decide whether the position is IMPROVING or WEAKENING and whether the trader should KEEP the shares or SELL now. Respond with STRICT JSON only: { "verdict": "improving" | "weakening", "advice": "keep" | "sell", "summary": "<1-2 sentences citing the real numbers provided, telling the trader clearly to keep or sell>" }`
+          },
+          {
+            role: "user",
+            content:
+              `Position: ${m.company} (${m.ticker}). Entry was ${fmt(m.entry_price, m.currency)}${m.stop_loss != null ? `, stop level ${fmt(m.stop_loss, m.currency)}` : ""}${tps.length ? `, targets ${tps.map((t) => fmt(t, m.currency)).join(" / ")}` : ""}. ` +
+              `Live now: price ${fmt(price, m.currency)} (${movePct.toFixed(2)}% since the last update), today ${stats.changePctToday != null ? stats.changePctToday + "%" : "—"}, RSI ${stats.rsi ?? "—"}, ` +
+              `1-month ${stats.perf1M ?? "—"}%, 3-month ${stats.perf3M ?? "—"}%, 52-week range ${stats.low52w ?? "—"} - ${stats.high52w ?? "—"}. ` +
+              `Should the trader keep or sell?`
+          }
+        ]
+      }, "stock-monitor-verdict");
+
+      if (!verdictResult.ok) {
+        console.error(`[stock-monitor] AI verdict failed for ${m.symbol}: HTTP ${verdictResult.status}`);
+        skipped++;
+        continue;
+      }
+      const vData = await verdictResult.response.json();
+      const verdict = extractJson(vData.choices?.[0]?.message?.content || "");
+      const advice = verdict.advice === "sell" ? "sell" : "keep";
+      const improving = verdict.verdict === "weakening" ? false : true;
+      await notifyUser(m.user_id, {
+        title: `${m.ticker}: ${improving ? "improving" : "weakening"} — AI says ${advice === "keep" ? "KEEP your shares" : "SELL now"}`,
+        body: (typeof verdict.summary === "string" && verdict.summary.trim() ? verdict.summary.trim() :
+          `${m.company} is now ${fmt(price, m.currency)}, ${movePct >= 0 ? "+" : ""}${movePct.toFixed(1)}% since the last update. AI advises ${advice === "keep" ? "keeping your shares" : "selling"}.`) +
+          ` (via MarketScope AI)`,
+        type: "signal",
+        data: { type: "signal", screen: "signals", symbol: m.symbol }
+      });
+      await markNotified();
+      alerts++;
+    } catch (err) {
+      console.error(`[stock-monitor] monitor ${m.symbol} (user ${m.user_id}) threw:`, String(err.message || err));
+      skipped++;
+    }
+  }
+
+  return res.json({ ok: true, checked: monitors.length, alerts, skipped });
+});
+
 app.post("/api/trial/check-expiry", async (req, res) => {
   if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -1904,6 +2119,39 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       },
       analyzedAt: new Date().toISOString()
     };
+
+    // --- Auto-enroll monitoring: when the AI says BUY, it keeps watching the
+    // stock for this trader and pushes updates (keep vs sell) as it moves. ---
+    if (analysis && analysis.recommendation === "BUY" &&
+        typeof analysis.stopLoss === "number" && Array.isArray(analysis.takeProfits)) {
+      try {
+        const tps = analysis.takeProfits.filter((t) => typeof t === "number");
+        await pool.query(
+          `INSERT INTO stock_monitors
+             (user_id, symbol, ticker, company, currency, recommendation,
+              entry_price, stop_loss, take_profits, last_price, last_notified_price, status)
+           VALUES ($1,$2,$3,$4,$5,'BUY',$6,$7,$8::jsonb,$9,$9,'active')
+           ON CONFLICT (user_id, symbol) DO UPDATE SET
+             recommendation = 'BUY',
+             entry_price = EXCLUDED.entry_price,
+             stop_loss = EXCLUDED.stop_loss,
+             take_profits = EXCLUDED.take_profits,
+             last_price = EXCLUDED.last_price,
+             last_notified_price = EXCLUDED.last_notified_price,
+             status = 'active',
+             close_reason = NULL,
+             tp1_notified = false,
+             tp2_notified = false,
+             tp3_notified = false`,
+          [userRow.id, match.symbol, stats.ticker, stats.company, stats.currency,
+           stats.price, analysis.stopLoss, JSON.stringify(tps), stats.price]
+        );
+        result.monitoring = true;
+        console.log(`[stock-monitor] enrolled ${userRow.id} on ${match.symbol} @ ${stats.price}`);
+      } catch (monErr) {
+        console.error("[stock-monitor] enrollment failed (non-fatal):", String(monErr.message || monErr));
+      }
+    }
 
     const { rows } = await pool.query(
       `INSERT INTO analyses (user_id, instrument_id, mode, result) VALUES ($1, $2, $3, $4) RETURNING id`,
