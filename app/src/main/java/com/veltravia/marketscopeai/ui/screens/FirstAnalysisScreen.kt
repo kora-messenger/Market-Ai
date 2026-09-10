@@ -167,84 +167,26 @@ fun FirstAnalysisScreen(
         Spacer(Modifier.height(26.dp))
 
         // --- Choose instrument ---
-        SectionLabel("Choose instrument")
+        AnalyzeSectionLabel("Choose instrument")
         Spacer(Modifier.height(10.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(SurfaceDark)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp))
-                .clickable { pickerOpen = true }
-                .padding(horizontal = 16.dp, vertical = 15.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    instrument?.display ?: "Select Instrument",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (instrument != null) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (instrument != null) AccentCyan else TextSecondary
-                )
-                Spacer(Modifier.weight(1f))
-                Icon(Icons.Filled.ExpandMore, contentDescription = "Select instrument", tint = TextSecondary)
-            }
-        }
+        AnalyzeInstrumentRow(instrument, onClick = { pickerOpen = true })
 
         Spacer(Modifier.height(24.dp))
 
-        // --- Upload your charts ---
-        SectionLabel("Upload Your Charts")
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Use clear images with clear price number digits for the best results.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted
+        // --- Upload your charts (shared with the main analyze flow) ---
+        AnalyzeChartsSection(
+            imageH4 = imageH4,
+            imageM15 = imageM15,
+            onPickH4 = { pickH4.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onPickM15 = { pickM15.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onClearH4 = { imageH4 = null },
+            onClearM15 = { imageM15 = null }
         )
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ChartTile(
-                imageUri = imageH4,
-                emptyLabel = "Upload 4H Chart",
-                filledLabel = "4H Chart",
-                modifier = Modifier.weight(1f),
-                onPick = {
-                    pickH4.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-                onClear = { imageH4 = null }
-            )
-            ChartTile(
-                imageUri = imageM15,
-                emptyLabel = "Upload 15M Chart",
-                filledLabel = "15M Chart",
-                modifier = Modifier.weight(1f),
-                onPick = {
-                    pickM15.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
-                onClear = { imageM15 = null }
-            )
-        }
 
         Spacer(Modifier.height(24.dp))
 
-        // --- Trade focus ---
-        SectionLabel("What's Your Trade Focus?")
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            FocusOption(
-                title = "Scalp",
-                subtitle = "Quick moves, 15M",
-                selected = mode == "scalp",
-                onClick = { mode = "scalp" },
-                modifier = Modifier.weight(1f)
-            )
-            FocusOption(
-                title = "Swing",
-                subtitle = "Wider targets, 4H",
-                selected = mode == "swing",
-                onClick = { mode = "swing" },
-                modifier = Modifier.weight(1f)
-            )
-        }
+        // --- Trade focus (shared with the main analyze flow) ---
+        AnalyzeModeSection(mode = mode, onModeChange = { mode = it })
 
         Spacer(Modifier.height(28.dp))
 
@@ -254,7 +196,7 @@ fun FirstAnalysisScreen(
         }
 
         GradientPrimaryButton(
-            text = "Analyze",
+            text = "Analyze Now!",
             enabled = !loading && instrument != null && imageH4 != null && imageM15 != null,
             loading = loading,
             height = 54.dp,
@@ -299,249 +241,14 @@ fun FirstAnalysisScreen(
             }
         )
 
-        Spacer(Modifier.height(18.dp))
-
-        // Honest disclaimer footer (same wording style as the broker screen).
-        Text(
-            "This is not financial advice and should not be considered as such. Always do your own research and consult with a financial advisor before making any trading decisions.",
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-            color = TextMuted,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(30.dp))
+        AnalyzeDisclaimerFooter()
     }
 
-    // --- Instrument picker bottom sheet (same real catalog as the picker screen) ---
+    // --- Instrument picker (shared with the main analyze flow) ---
     if (pickerOpen) {
-        ModalBottomSheet(
-            onDismissRequest = { pickerOpen = false },
-            containerColor = SurfaceDark
-        ) {
-            var query by rememberSaveable { mutableStateOf("") }
-            var categoryFilter by rememberSaveable { mutableStateOf("All") }
-            var categoryMenuOpen by remember { mutableStateOf(false) }
-
-            val filtered = remember(query, categoryFilter) {
-                InstrumentCatalog.all.filter {
-                    (categoryFilter == "All" || it.category == categoryFilter) &&
-                        it.display.contains(query.trim(), ignoreCase = true)
-                }
-            }
-
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Text(
-                    "Select Instrument",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(14.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Search instruments…") },
-                        singleLine = true
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Box {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, BorderSubtle, RoundedCornerShape(10.dp))
-                                .clickable { categoryMenuOpen = true }
-                                .padding(horizontal = 12.dp, vertical = 14.dp)
-                        ) {
-                            Text(categoryFilter, style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.width(4.dp))
-                            Icon(
-                                Icons.Filled.ExpandMore,
-                                contentDescription = "Filter category",
-                                modifier = Modifier.size(18.dp),
-                                tint = TextSecondary
-                            )
-                        }
-                        androidx.compose.material3.DropdownMenu(
-                            expanded = categoryMenuOpen,
-                            onDismissRequest = { categoryMenuOpen = false }
-                        ) {
-                            (listOf("All") + InstrumentCatalog.categories).forEach { option ->
-                                androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text(option) },
-                                    onClick = {
-                                        categoryFilter = option
-                                        categoryMenuOpen = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                LazyColumn {
-                    items(filtered) { inst ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp))
-                                .clickable {
-                                    instrument = inst
-                                    pickerOpen = false
-                                }
-                                .padding(horizontal = 16.dp, vertical = 16.dp)
-                        ) {
-                            Text(
-                                inst.display,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                InstrumentCatalog.fullNameFor(inst),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary,
-                                textAlign = TextAlign.End,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                        }
-                        Spacer(Modifier.height(10.dp))
-                    }
-                    item { Spacer(Modifier.height(28.dp)) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold
-    )
-}
-
-@Composable
-private fun ChartTile(
-    imageUri: android.net.Uri?,
-    emptyLabel: String,
-    filledLabel: String,
-    modifier: Modifier = Modifier,
-    onPick: () -> Unit,
-    onClear: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceDark)
-            .border(1.dp, BorderSubtle, RoundedCornerShape(14.dp))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clickable(enabled = imageUri == null) { onPick() },
-            contentAlignment = Alignment.Center
-        ) {
-            if (imageUri == null) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Filled.AddAPhoto,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        emptyLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                AsyncImage(
-                    model = imageUri,
-                    contentDescription = filledLabel,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                IconButton(
-                    onClick = onClear,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.Black.copy(alpha = 0.6f))
-                ) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = "Remove image",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-        }
-
-        // Caption strip under the image, same idea as the FxLens reference
-        // ("4H Chart" / "15M Chart") so the user can see which slot is which
-        // at a glance once a screenshot is in place.
-        if (imageUri != null) {
-            Text(
-                filledLabel,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 10.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun FocusOption(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) AccentCyan.copy(alpha = 0.14f) else SurfaceDark)
-            .border(
-                1.dp,
-                if (selected) AccentCyan else BorderSubtle,
-                RoundedCornerShape(14.dp)
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 13.dp)
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = if (selected) AccentCyan else Color.Unspecified
-        )
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted
+        AnalyzeInstrumentPickerSheet(
+            onDismiss = { pickerOpen = false },
+            onSelect = { instrument = it; pickerOpen = false }
         )
     }
 }

@@ -4,66 +4,45 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
-import com.veltravia.marketscopeai.data.SessionManager
-import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
+import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
-import com.veltravia.marketscopeai.ui.theme.AccentCyan
-import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 
 /**
- * Real chart-upload flow: user picks a 4H and a 15M screenshot of the SAME instrument,
- * chooses scalp/swing, and the backend runs the AI analysis over both images.
+ * Main analyze flow — renders the exact same shared form sections as the
+ * onboarding first-analysis screen (AnalyzeShared.kt), so every chart-analysis
+ * experience in the app is identical. The instrument arrives pre-selected from
+ * the Home watchlist but can be changed via the shared picker.
  */
 @Composable
 fun ChartUploadScreen(
@@ -73,13 +52,14 @@ fun ChartUploadScreen(
     // Free tier exhausted its daily analyses (429) — offer the real upgrade path.
     onUpgradeRequired: () -> Unit = {}
 ) {
-    val instrument = remember(instrumentId) { InstrumentCatalog.byId(instrumentId) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    var instrument by remember { mutableStateOf(InstrumentCatalog.byId(instrumentId)) }
+    var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var imageH4 by remember { mutableStateOf<Uri?>(null) }
     var imageM15 by remember { mutableStateOf<Uri?>(null) }
-    var mode by remember { mutableStateOf("swing") }
+    var mode by rememberSaveable { mutableStateOf("scalp") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -118,67 +98,45 @@ fun ChartUploadScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        Text("4H CHART", style = MaterialTheme.typography.labelMedium, color = TextMuted)
-        Spacer(Modifier.height(8.dp))
-        ChartSlot(
-            imageUri = imageH4,
-            label = "Higher timeframe (4H)",
-            onPick = {
-                pickH4.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            },
-            onClear = { imageH4 = null }
-        )
+        // --- Choose instrument (same section as onboarding) ---
+        AnalyzeSectionLabel("Choose instrument")
+        Spacer(Modifier.height(10.dp))
+        AnalyzeInstrumentRow(instrument, onClick = { pickerOpen = true })
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(24.dp))
 
-        Text("15M CHART", style = MaterialTheme.typography.labelMedium, color = TextMuted)
-        Spacer(Modifier.height(8.dp))
-        ChartSlot(
-            imageUri = imageM15,
-            label = "Lower timeframe (15M)",
-            onPick = {
-                pickM15.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            },
-            onClear = { imageM15 = null }
+        // --- Upload your charts (same section as onboarding) ---
+        AnalyzeChartsSection(
+            imageH4 = imageH4,
+            imageM15 = imageM15,
+            onPickH4 = { pickH4.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onPickM15 = { pickM15.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onClearH4 = { imageH4 = null },
+            onClearM15 = { imageM15 = null }
         )
 
         Spacer(Modifier.height(24.dp))
 
-        Text("ANALYSIS STYLE", style = MaterialTheme.typography.labelMedium, color = TextMuted)
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ModeOption(
-                title = "Swing",
-                subtitle = "4H-biased, wider targets",
-                selected = mode == "swing",
-                onClick = { mode = "swing" },
-                modifier = Modifier.weight(1f)
-            )
-            ModeOption(
-                title = "Scalp",
-                subtitle = "15M-biased, quick moves",
-                selected = mode == "scalp",
-                onClick = { mode = "scalp" },
-                modifier = Modifier.weight(1f)
-            )
-        }
+        // --- Trade focus (same section as onboarding) ---
+        AnalyzeModeSection(mode = mode, onModeChange = { mode = it })
 
         Spacer(Modifier.height(24.dp))
 
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
         }
 
         GradientPrimaryButton(
-            text = "Run AI Analysis",
-            enabled = !loading && imageH4 != null && imageM15 != null,
+            text = "Analyze Now!",
+            enabled = !loading && instrument != null && imageH4 != null && imageM15 != null,
             loading = loading,
-            height = 52.dp,
+            height = 54.dp,
             onClick = {
+                val inst = instrument
                 val h4 = imageH4
                 val m15 = imageM15
-                if (h4 == null || m15 == null) return@GradientPrimaryButton
+                if (inst == null || h4 == null || m15 == null) return@GradientPrimaryButton
                 loading = true
                 error = null
                 scope.launch {
@@ -191,7 +149,7 @@ fun ChartUploadScreen(
                         }
                         val dataH4 = ApiClient.prepareChartImage(context, h4)
                         val dataM15 = ApiClient.prepareChartImage(context, m15)
-                        val result = ApiClient.analyze(token, instrumentId, mode, dataH4, dataM15)
+                        val result = ApiClient.analyze(token, inst.id, mode, dataH4, dataM15)
                         val id = result.optString("id", "")
                         loading = false
                         if (id.isNotEmpty()) onAnalysisComplete(id)
@@ -211,93 +169,14 @@ fun ChartUploadScreen(
             }
         )
 
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "AI reads structure, sweeps and key levels from your screenshots. Make sure both charts show the same instrument.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
-            fontSize = 11.sp
+        AnalyzeDisclaimerFooter()
+    }
+
+    // --- Instrument picker (shared with the onboarding flow) ---
+    if (pickerOpen) {
+        AnalyzeInstrumentPickerSheet(
+            onDismiss = { pickerOpen = false },
+            onSelect = { instrument = it; pickerOpen = false }
         )
-        Spacer(Modifier.height(28.dp))
-    }
-}
-
-@Composable
-private fun ChartSlot(
-    imageUri: Uri?,
-    label: String,
-    onPick: () -> Unit,
-    onClear: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(16f / 9f)
-            .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceDark)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
-            .clickable(enabled = imageUri == null) { onPick() },
-        contentAlignment = Alignment.Center
-    ) {
-        if (imageUri == null) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    Icons.Filled.AddAPhoto,
-                    contentDescription = null,
-                    tint = TextMuted,
-                    modifier = Modifier.size(32.dp)
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Tap to add $label screenshot",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
-                )
-            }
-        } else {
-            AsyncImage(
-                model = imageUri,
-                contentDescription = label,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            IconButton(
-                onClick = onClear,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .size(32.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(16.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModeOption(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) AccentCyan.copy(alpha = 0.14f) else SurfaceDark)
-            .border(
-                1.dp,
-                if (selected) AccentCyan else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                RoundedCornerShape(14.dp)
-            )
-            .clickable { onClick() }
-            .padding(16.dp)
-    ) {
-        Column {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextMuted)
-        }
     }
 }
