@@ -92,9 +92,10 @@ const OPENAI_MODEL = process.env.OPENAI_ANALYSIS_MODEL || "gpt-4o";
 // account (strict upstream rate limits, lower quality than paid GPT-4o —
 // a $0 floor so analysis never hard-fails while accounts are untopped).
 // AI_FREE_MODEL="" disables the floor. Vision+JSON verified live.
-const AI_FREE_MODEL = process.env.AI_FREE_MODEL !== undefined
-  ? process.env.AI_FREE_MODEL
-  : "nex-agi/nex-n2.5-pro:free";
+const AI_FREE_MODELS = (process.env.AI_FREE_MODELS !== undefined
+  ? process.env.AI_FREE_MODELS
+  : "nex-agi/nex-n2.5-pro:free,dots-studio/dots-3-note-preview:free,google/gemma-4-26b-a4b-it:free"
+).split(",").map((s) => s.trim()).filter(Boolean);
 
 /** Calls OpenRouter with one automatic retry for transient upstream failures
  *  (429 rate-limited, or a 5xx from the model provider) — these are common
@@ -208,11 +209,35 @@ async function callAI(payload, label) {
     );
     // Last resort: OpenRouter free models. Drop the paid-only knobs
     // (response_format/reasoning) — extractJson() handles raw text anyway.
-    if (AI_FREE_MODEL) {
-      const { reasoning: _r, response_format: _f, ...freeBody } = payload;
-      const fr = await callOpenRouter({ ...freeBody, model: AI_FREE_MODEL }, `${label}:free`);
-      if (fr.ok) return fr;
-      console.error(`[ai:${label}] free tier also failed (HTTP ${fr.status})`);
+    // Failover across models (they rate-limit independently upstream),
+    // give reasoning models token headroom, and skip any 200 response
+    // whose body has no JSON in it (reasoning models sometimes exhaust
+    // the budget before writing content).
+    if (AI_FREE_MODELS.length) {
+      const wantsJson = !!payload.response_format;
+      const { reasoning: _r, response_format: _f, ...freeBase } = payload;
+      for (const freeModel of AI_FREE_MODELS) {
+        const freeBody = { ...freeBase, model: freeModel };
+        if (freeBody.max_tokens != null) {
+          freeBody.max_tokens = freeBody.max_tokens >= 1500
+            ? Math.min(6000, freeBody.max_tokens + 2000)
+            : freeBody.max_tokens * 2;
+        }
+        const fr = await callOpenRouter(freeBody, `${label}:free(${freeModel})`);
+        if (!fr.ok) {
+          console.error(`[ai:${label}] free model ${freeModel} failed (HTTP ${fr.status}) — trying next`);
+          continue;
+        }
+        if (wantsJson) {
+          const preview = await fr.response.clone().text();
+          if (!preview.includes("{")) {
+            console.error(`[ai:${label}] free model ${freeModel} returned no JSON — trying next`);
+            continue;
+          }
+        }
+        return fr;
+      }
+      console.error(`[ai:${label}] all free models exhausted`);
     }
   }
   return { ok: false, status: 0, detail: "No AI provider configured (set OPENAI_API_KEY and/or OPENROUTER_API_KEY)" };
