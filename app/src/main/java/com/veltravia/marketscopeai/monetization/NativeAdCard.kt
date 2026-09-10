@@ -110,7 +110,7 @@ private fun buildNativeAdView(context: android.content.Context): NativeAdView {
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     }
-    val adOptions = com.google.android.gms.ads.nativead.AdOptionsView(context)
+    val adOptions = AdOptionsView(context)
     header.addView(label)
     header.addView(adOptions)
     root.addView(header)

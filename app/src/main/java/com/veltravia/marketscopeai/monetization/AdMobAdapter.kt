@@ -47,9 +47,9 @@ class AdMobAdapter : AdNetworkAdapter {
 
     // ---------- Native (feed) ads ----------
 
-    override fun hasNativeAd(context: Context): Boolean = nativeAdPool.isNotEmpty()
+    override fun hasNativeAd(): Boolean = nativeAdPool.isNotEmpty()
 
-    override fun takeNativeAd(context: Context): Any? =
+    override fun takeNativeAd(): Any? =
         if (nativeAdPool.isEmpty()) null else nativeAdPool.removeAt(0)
 
     override fun prefetchNativeAds(context: Context, count: Int) {

@@ -68,8 +68,8 @@ object AdManager {
             (itemIndex + 1) % cfg.nativeNewsEveryNthItem == 0
     }
 
-    fun hasNativeAd(): Boolean = adapter.hasNativeAd(null)
-    fun takeNativeAd(): Any? = adapter.takeNativeAd(null)
+    fun hasNativeAd(): Boolean = adapter.hasNativeAd()
+    fun takeNativeAd(): Any? = adapter.takeNativeAd()
 
     /** Request one native ad (cached pool first). */
     fun loadOneNative(context: Context, onLoaded: (Any) -> Unit) {

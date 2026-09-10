@@ -20,10 +20,10 @@ interface AdNetworkAdapter {
     fun initialize(context: Context)
 
     /** True when a native ad is cached and ready to render. */
-    fun hasNativeAd(context: Context): Boolean
+    fun hasNativeAd(): Boolean
 
     /** Pop the next cached native ad, or null. */
-    fun takeNativeAd(context: Context): Any?
+    fun takeNativeAd(): Any?
 
     /** Prefetch up to [count] native ads for feed placements. */
     fun prefetchNativeAds(context: Context, count: Int)

@@ -52,8 +52,8 @@ import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
-import androidx.compose.material.icons.filled.PlayCircleRounded
-import androidx.compose.material.icons.filled.AutoRenew
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
@@ -71,7 +71,7 @@ import kotlinx.coroutines.launch
  * The only per-flow difference is the CTA label: onboarding's first analysis
  * says "Analyze Now!", the main flow says "Run AI Analysis".
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AnalyzeFlow(
     ctaLabel: String,
@@ -125,6 +125,31 @@ fun AnalyzeFlow(
     }
 
     /** Chart analysis (forex / crypto pages) - one shared path. */
+    /** Retry helpers re-run the exact analysis the limit interrupted. */
+    fun retryChart(inst: Instrument?, h4: Uri?, m15: Uri?, onError: (String?) -> Unit) =
+        doChartAnalysis(inst, h4, m15, onError)
+    fun retryStock(name: String, image: Uri?, onError: (String?) -> Unit) =
+        doStockAnalysis(name, image, onError)
+
+    /**
+     * Daily-limit path: free users get an honest choice — watch a short
+     * rewarded video for one extra analysis (server-validated bonus), or
+     * jump to Premium (unlimited, no ads). If rewarded ads are unavailable
+     * (premium user, disabled config, cap reached) the classic upgrade
+     * screen is shown directly.
+     */
+    fun maybeOfferRewarded(retry: () -> Unit) {
+        val eligible = com.veltravia.marketscopeai.monetization.PremiumAccessManager.rewardedEligible(context) &&
+            com.veltravia.marketscopeai.monetization.MonetizationSettings.current.rewardedEnabled
+        if (eligible) {
+            pendingRetry = retry
+            limitSheetError = null
+            limitSheetOpen = true
+        } else {
+            onUpgradeRequired()
+        }
+    }
+
     fun doChartAnalysis(inst: Instrument?, h4: Uri?, m15: Uri?, onError: (String?) -> Unit) {
         if (inst == null || h4 == null || m15 == null) return
         loading = true
@@ -186,31 +211,6 @@ fun AnalyzeFlow(
                 loading = false
                 onError(e.message ?: "Analysis failed")
             }
-        }
-    }
-
-    /** Retry helpers re-run the exact analysis the limit interrupted. */
-    fun retryChart(inst: Instrument?, h4: Uri?, m15: Uri?, onError: (String?) -> Unit) =
-        doChartAnalysis(inst, h4, m15, onError)
-    fun retryStock(name: String, image: Uri?, onError: (String?) -> Unit) =
-        doStockAnalysis(name, image, onError)
-
-    /**
-     * Daily-limit path: free users get an honest choice — watch a short
-     * rewarded video for one extra analysis (server-validated bonus), or
-     * jump to Premium (unlimited, no ads). If rewarded ads are unavailable
-     * (premium user, disabled config, cap reached) the classic upgrade
-     * screen is shown directly.
-     */
-    fun maybeOfferRewarded(retry: () -> Unit) {
-        val eligible = com.veltravia.marketscopeai.monetization.PremiumAccessManager.rewardedEligible(context) &&
-            com.veltravia.marketscopeai.monetization.MonetizationSettings.current.rewardedEnabled
-        if (eligible) {
-            pendingRetry = retry
-            limitSheetError = null
-            limitSheetOpen = true
-        } else {
-            onUpgradeRequired()
         }
     }
 
@@ -388,7 +388,7 @@ fun AnalyzeFlow(
         ) {
             Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.PlayCircleRounded, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(24.dp))
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(10.dp))
                     Text("Daily free limit reached", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 }
@@ -435,7 +435,7 @@ fun AnalyzeFlow(
                 Spacer(Modifier.height(6.dp))
                 TextButton(onClick = { limitSheetOpen = false; onUpgradeRequired() }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.AutoRenew, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("Go Premium - unlimited analyses, no ads", color = AccentViolet)
                     }
