@@ -1950,7 +1950,19 @@ app.post("/api/daily-signals", requireAuth, async (req, res) => {
   }
   const modeLc = ["scalp", "swing"].includes(String(mode).toLowerCase()) ? String(mode).toLowerCase() : null;
   try {
-    const rr = tps.length ? Number((Math.abs(tps[tps.length - 1] - entryNum) / Math.abs(entryNum - slNum)).toFixed(2)) : null;
+    // Furthest target = highest TP for a long, LOWEST TP for a short. Sorting
+    // ascending and grabbing the last element (the old formula) picks the
+    // WORST target for shorts, not the best — the same directional bug that
+    // was already fixed in outcome resolution, now fixed here too.
+    const stopDistance = Math.abs(entryNum - slNum);
+    const finalTp = dirLc === "long" ? Math.max(...tps) : Math.min(...tps);
+    const rr = stopDistance > 0 ? Number((Math.abs(finalTp - entryNum) / stopDistance).toFixed(2)) : null;
+    // A manually-entered "strong" with a weak real reward:risk is misleading —
+    // downgrade it rather than publish overconfident labeling, same rule the
+    // AI signal path now enforces.
+    let strengthFinal = ["strong", "moderate", "weak"].includes(String(strength).toLowerCase())
+      ? String(strength).toLowerCase() : "moderate";
+    if (strengthFinal === "strong" && (rr == null || rr < 2.0)) strengthFinal = "moderate";
     const { rows } = await pool.query(
       `INSERT INTO daily_signals
          (author, instrument_id, instrument_display, direction, entry, stop_loss, take_profits, risk_reward, thesis, strength, status, mode)
@@ -1960,7 +1972,7 @@ app.post("/api/daily-signals", requireAuth, async (req, res) => {
         instrument.id, instrument.display, String(direction).toLowerCase(),
         entryNum, slNum, JSON.stringify(tps), rr,
         thesis ? String(thesis).slice(0, 2000) : null,
-        ["strong", "moderate", "weak"].includes(String(strength).toLowerCase()) ? String(strength).toLowerCase() : "moderate",
+        strengthFinal,
         modeLc
       ]
     );
@@ -1971,7 +1983,27 @@ app.post("/api/daily-signals", requireAuth, async (req, res) => {
   }
 });
 
-const DAILY_SIGNAL_SYSTEM_PROMPT = `You are the senior market analyst behind MarketScope AI's Daily Signals. You receive recent OHLC candles for a set of instruments from live public market data. Pick the single best trade setup among them — one with a clearly-defined invalidation (tight, logical stop) and realistic targets. Respond ONLY with JSON:
+/** Average True Range over the last `period` candles — a volatility yardstick
+ *  used to stop the AI daily-signal model from placing stops so tight that
+ *  ordinary noise clips them before the thesis ever gets to play out. */
+function computeAtr(candles, period = 14) {
+  if (!Array.isArray(candles) || candles.length < period + 1) return null;
+  const recent = candles.slice(-(period + 1));
+  const trs = [];
+  for (let i = 1; i < recent.length; i++) {
+    const cur = recent[i], prev = recent[i - 1];
+    const tr = Math.max(
+      cur.h - cur.l,
+      Math.abs(cur.h - prev.c),
+      Math.abs(cur.l - prev.c)
+    );
+    if (Number.isFinite(tr)) trs.push(tr);
+  }
+  if (!trs.length) return null;
+  return trs.reduce((a, b) => a + b, 0) / trs.length;
+}
+
+const DAILY_SIGNAL_SYSTEM_PROMPT = `You are the senior market analyst behind MarketScope AI's Daily Signals. You receive recent OHLC candles for a set of instruments from live public market data, each annotated with its recent ATR (average true range) — a measure of how much that instrument normally moves per hour. Pick the single best trade setup among them. Respond ONLY with JSON:
 {
   "instrumentId": "one of the provided ids",
   "direction": "long" | "short",
@@ -1979,10 +2011,17 @@ const DAILY_SIGNAL_SYSTEM_PROMPT = `You are the senior market analyst behind Mar
   "entry": number,
   "stopLoss": number,
   "takeProfits": [number, number, number],
-  "thesis": "2-3 sentences grounded in the price action shown (structure, momentum, key levels). No generic filler.",
+  "thesis": "2-4 sentences grounded in the price action shown: name the specific structure (recent swing high/low, range, trend), the momentum context, and why the stop level is protected by real structure — not generic filler.",
   "strength": "strong" | "moderate" | "weak"
 }
-Rules: entry must sit within a few percent of the latest close; stop loss must be on the wrong side of entry (below for long, above for short); every take profit must be on the profitable side, ordered nearest first; risk:reward to the final target should be at least 1.5. "mode" reflects the real nature of the setup: "scalp" for a tight stop targeting a quick move (intraday), "swing" for a wider stop held over multiple days. If nothing qualifies, set strength "weak" and pick the least-bad setup anyway — never invent prices outside the data range shown.`;
+Hard rules (a setup that breaks any of these will be rejected and you will be asked to redo it):
+1. Entry must sit within 0.5% of the latest close shown for that instrument.
+2. Stop loss must be on the wrong side of entry (below for long, above for short) and placed beyond a real recent swing high/low visible in the candles — not an arbitrary round number.
+3. Stop distance (|entry - stopLoss|) must be AT LEAST 0.8x that instrument's shown ATR. A stop tighter than that gets clipped by normal noise, not real invalidation — this is the single most common reason a signal fails, so never undersize it to inflate risk:reward.
+4. Every take profit must be on the profitable side of entry, ordered nearest first.
+5. Risk:reward to the FINAL (furthest) take profit must be at least 1.5, and to the FIRST (nearest) take profit must be at least 0.8.
+6. Only use "strong" when: R:R to the final target is at least 2.0, the stop sits at a genuine structural level, AND at least two independent factors in the data (e.g. trend + momentum, or range rejection + volume-implied conviction from candle bodies) agree. Default to "moderate" or "weak" otherwise — most days do not deserve "strong".
+"mode": "scalp" for a tight stop targeting a quick intraday move, "swing" for a wider stop held over multiple days. If nothing on the list is genuinely attractive, still return the least-bad setup that satisfies all the hard rules above and mark it "weak" — never invent prices outside the data range shown, and never sacrifice rule 3 just to hit a bigger R:R number.`;
 
 /** AI-generated daily call (cron or admin). Runs at most once per UTC day. */
 app.post("/api/daily-signals/auto", async (req, res) => {
@@ -2012,59 +2051,136 @@ app.post("/api/daily-signals/auto", async (req, res) => {
 
     const candidates = ["eurusd", "gbpusd", "usdjpy", "xauusd", "nas100", "btcusd", "ethusd"];
     const historyBlocks = [];
+    const instContext = {}; // id -> { lastClose, atr }
     for (const id of candidates) {
       const h = await fetchHistory(id, { interval: "1h", range: "5d" });
       if (!h || h.candles.length < 20) continue;
       const inst = byId[id];
       const last = h.candles[h.candles.length - 1];
-      // compact: last 48 hourly candles
-      const rows = h.candles.slice(-48).map((c) =>
+      const atr = computeAtr(h.candles, 14);
+      instContext[id] = { lastClose: last.c, atr };
+      // compact: last 96 hourly candles (4 days) — enough to read real structure,
+      // not just the last day of noise.
+      const rows = h.candles.slice(-96).map((c) =>
         `${new Date(c.t * 1000).toISOString().slice(5, 16)} O:${round(c.o)} H:${round(c.h)} L:${round(c.l)} C:${round(c.c)}`
       );
-      historyBlocks.push(`### ${inst.display} (id: ${id}) — hourly candles, most recent last. Latest close ${round(last.c)}\n${rows.join("\n")}`);
+      const atrLine = atr != null ? `ATR(14h): ${round(atr)}` : "ATR(14h): unavailable";
+      historyBlocks.push(`### ${inst.display} (id: ${id}) — hourly candles, most recent last. Latest close ${round(last.c)}. ${atrLine}\n${rows.join("\n")}`);
     }
     if (historyBlocks.length < 2) {
       return res.status(502).json({ error: "Not enough live market data available right now — try again later." });
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: ANALYSIS_MODEL,
-        max_tokens: 2500,
-        reasoning: { effort: "low" },
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: DAILY_SIGNAL_SYSTEM_PROMPT },
-          { role: "user", content: `Live market data:\n\n${historyBlocks.join("\n\n")}\n\nPick the best setup and return the JSON.` }
-        ]
-      })
-    });
-    if (!response.ok) {
-      const detail = await response.text();
-      return res.status(502).json({ error: "Analysis provider error", status: response.status, detail: detail.slice(0, 300) });
+    /** Checks a model's proposed signal against the hard rules the prompt itself
+     *  states, so a rule violation (e.g. R:R below 1.5, or a stop tighter than
+     *  0.8x ATR) is rejected server-side instead of silently published. This is
+     *  the gate that was missing before — the model could ignore its own rules
+     *  and nothing caught it. */
+    function validateSignal(signal) {
+      const errors = [];
+      const inst = byId[String(signal.instrumentId || "").toLowerCase()];
+      if (!inst) errors.push("instrumentId is not one of the provided instruments");
+      const entryNum = Number(signal.entry);
+      const slNum = Number(signal.stopLoss);
+      const tps = (signal.takeProfits || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      if (!Number.isFinite(entryNum)) errors.push("entry is not a valid number");
+      if (!Number.isFinite(slNum)) errors.push("stopLoss is not a valid number");
+      if (!tps.length) errors.push("takeProfits is empty");
+      if (errors.length) return { ok: false, errors };
+
+      const ctx = inst ? instContext[inst.id] : null;
+      const dir = String(signal.direction).toLowerCase() === "short" ? "short" : "long";
+      const sidesOk = dir === "long"
+        ? slNum < entryNum && tps.every((t) => t > entryNum)
+        : slNum > entryNum && tps.every((t) => t < entryNum);
+      if (!sidesOk) errors.push("stopLoss/takeProfits are on the wrong side of entry for the given direction");
+
+      if (ctx && ctx.lastClose) {
+        const pctFromClose = Math.abs(entryNum - ctx.lastClose) / ctx.lastClose;
+        if (pctFromClose > 0.005) errors.push(`entry is ${(pctFromClose * 100).toFixed(2)}% from the latest close — must be within 0.5%`);
+      }
+
+      const stopDistance = Math.abs(entryNum - slNum);
+      if (ctx && ctx.atr) {
+        if (stopDistance < ctx.atr * 0.8) {
+          errors.push(`stop distance (${round(stopDistance)}) is tighter than 0.8x ATR (${round(ctx.atr * 0.8)}) — will get clipped by normal noise`);
+        }
+      }
+
+      const finalTp = tps.length ? (dir === "long" ? Math.max(...tps) : Math.min(...tps)) : null;
+      const nearTp = tps.length ? (dir === "long" ? Math.min(...tps) : Math.max(...tps)) : null;
+      const rrFinal = finalTp != null && stopDistance > 0 ? Math.abs(finalTp - entryNum) / stopDistance : null;
+      const rrNear = nearTp != null && stopDistance > 0 ? Math.abs(nearTp - entryNum) / stopDistance : null;
+      if (rrFinal == null || rrFinal < 1.5) errors.push(`risk:reward to the final target is ${rrFinal != null ? rrFinal.toFixed(2) : "n/a"} — must be at least 1.5`);
+      if (rrNear != null && rrNear < 0.8) errors.push(`risk:reward to the first target is ${rrNear.toFixed(2)} — must be at least 0.8`);
+
+      if (errors.length) return { ok: false, errors };
+
+      // Recalibrate a mislabeled "strong" — the model sometimes over-claims
+      // conviction even when the setup itself is only just-adequate.
+      let strength = ["strong", "moderate", "weak"].includes(String(signal.strength).toLowerCase())
+        ? String(signal.strength).toLowerCase() : "moderate";
+      if (strength === "strong" && (rrFinal == null || rrFinal < 2.0 || stopDistance < (ctx?.atr || 0) * 1.0)) {
+        strength = "moderate";
+      }
+
+      return {
+        ok: true,
+        inst, entryNum, slNum, tps, dir, strength,
+        rr: rrFinal != null ? Number(rrFinal.toFixed(2)) : null
+      };
     }
-    const data = await response.json();
-    const signal = extractJson(data.choices?.[0]?.message?.content || "");
-    const inst = byId[String(signal.instrumentId || "").toLowerCase()];
-    const entryNum = Number(signal.entry);
-    const slNum = Number(signal.stopLoss);
-    const tps = (signal.takeProfits || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
-    if (!inst || !Number.isFinite(entryNum) || !Number.isFinite(slNum) || tps.length === 0) {
-      return res.status(502).json({ error: "Model returned an unusable signal", raw: signal });
+
+    const baseMessages = [
+      { role: "system", content: DAILY_SIGNAL_SYSTEM_PROMPT },
+      { role: "user", content: `Live market data:\n\n${historyBlocks.join("\n\n")}\n\nPick the best setup and return the JSON.` }
+    ];
+
+    let validated = null;
+    let lastErrors = [];
+    let lastRawSignal = null;
+    const maxAttempts = 2;
+    for (let attempt = 0; attempt < maxAttempts && !validated; attempt++) {
+      const messages = attempt === 0
+        ? baseMessages
+        : [
+            ...baseMessages,
+            { role: "assistant", content: JSON.stringify(lastRawSignal) },
+            { role: "user", content: `That setup breaks the hard rules: ${lastErrors.join("; ")}. Fix it — same instrument or a different one from the data — and return corrected JSON that satisfies every hard rule.` }
+          ];
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: ANALYSIS_MODEL,
+          max_tokens: 2500,
+          reasoning: { effort: "low" },
+          response_format: { type: "json_object" },
+          messages
+        })
+      });
+      if (!response.ok) {
+        const detail = await response.text();
+        return res.status(502).json({ error: "Analysis provider error", status: response.status, detail: detail.slice(0, 300) });
+      }
+      const data = await response.json();
+      const signal = extractJson(data.choices?.[0]?.message?.content || "");
+      lastRawSignal = signal;
+      const result = validateSignal(signal);
+      if (result.ok) {
+        validated = result;
+      } else {
+        lastErrors = result.errors;
+      }
     }
-    const dir = String(signal.direction).toLowerCase() === "short" ? "short" : "long";
-    const sidesOk = dir === "long"
-      ? slNum < entryNum && tps.every((t) => t > entryNum)
-      : slNum > entryNum && tps.every((t) => t < entryNum);
-    if (!sidesOk) {
-      return res.status(502).json({ error: "Model returned an invalid signal (SL/TP on wrong sides)", raw: signal });
+    if (!validated) {
+      return res.status(502).json({ error: "Model could not produce a setup meeting the quality rules after retry", errors: lastErrors, raw: lastRawSignal });
     }
-    const rr = tps.length ? Number((Math.abs(tps[tps.length - 1] - entryNum) / Math.abs(entryNum - slNum)).toFixed(2)) : null;
+    const { inst, entryNum, slNum, tps, dir, strength, rr } = validated;
+    const signal = lastRawSignal;
     const aiMode = ["scalp", "swing"].includes(String(signal.mode).toLowerCase()) ? String(signal.mode).toLowerCase() : null;
     const { rows } = await pool.query(
       `INSERT INTO daily_signals
@@ -2074,7 +2190,7 @@ app.post("/api/daily-signals/auto", async (req, res) => {
       [
         inst.id, inst.display, dir, entryNum, slNum, JSON.stringify(tps), rr,
         signal.thesis ? String(signal.thesis).slice(0, 2000) : null,
-        ["strong", "moderate", "weak"].includes(String(signal.strength).toLowerCase()) ? String(signal.strength).toLowerCase() : "moderate",
+        strength,
         aiMode
       ]
     );
