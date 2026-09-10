@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,6 +57,7 @@ import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import androidx.compose.ui.draw.rotate
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -79,7 +81,7 @@ import java.time.format.DateTimeFormatter
  * never see this route — the "Post" pill only appears for the admin.
  */
 @Composable
-fun AdminSignalsScreen(onBack: () -> Unit) {
+fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -546,6 +548,35 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(28.dp))
+
+        // ---------- premium management ----------
+        if (members != null) {
+            Text("Premium management", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Grant or revoke free Premium (lifetime, months or years) for any user — with email confirmation to the user and a full audit trail.",
+                style = MaterialTheme.typography.bodySmall, color = TextMuted
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFF3F4F7))
+                    .clickable { onOpenPremium() }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = GoldAmber, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Open Premium Management", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("Search users, grant or revoke free Premium", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp).rotate(180f))
+            }
+            Spacer(Modifier.height(24.dp))
+        }
 
         // ---------- members & roles (mentor manager) ----------
         if (members != null) {

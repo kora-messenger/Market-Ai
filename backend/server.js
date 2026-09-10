@@ -8,7 +8,7 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
-const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail } = require("./src/mailer");
+const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -55,7 +55,7 @@ app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" })
         const currency = data.currency || SUB_CURRENCY;
         if (pool && googleSub) {
           const { rows } = await pool.query(
-            `SELECT id FROM users WHERE google_sub = $1`,
+            `SELECT id, email, name, is_premium FROM users WHERE google_sub = $1`,
             [googleSub]
           );
           if (rows.length) {
@@ -65,11 +65,22 @@ app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" })
                ON CONFLICT (reference) DO NOTHING`,
               [rows[0].id, data.reference, amount, currency]
             );
+            const wasPremium = Boolean(rows[0].is_premium);
             await pool.query(
               `UPDATE users SET is_premium = true WHERE id = $1`,
               [rows[0].id]
             );
             console.log(`[subscription] premium activated for google_sub ${googleSub} (ref ${data.reference})`);
+            // Confirmation the moment activation is real: email + in-app.
+            if (!wasPremium) {
+              sendPremiumActivatedEmail({ email: rows[0].email, name: rows[0].name }).catch(() => {});
+              notifyUser(rows[0].id, {
+                title: "Premium activated \u2014 welcome to MarketScope AI Premium",
+                body: "Your activation for MarketScope AI Premium has been successful. Enjoy unlimited AI analysis and the full signal history. (via MarketScope AI)",
+                type: "signal",
+                data: { type: "signal", screen: "profile" }
+              }).catch(() => {});
+            }
           }
         }
       }
@@ -302,6 +313,36 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire JSONB;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire_completed_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+    CREATE TABLE IF NOT EXISTS premium_grants (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      duration_type TEXT NOT NULL CHECK (duration_type IN ('lifetime','months','years')),
+      duration_count INT NOT NULL DEFAULT 0,
+      expires_at TIMESTAMPTZ,
+      reason TEXT,
+      granted_by UUID REFERENCES users(id),
+      granted_by_email TEXT,
+      granted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      revoked_at TIMESTAMPTZ,
+      revoked_by UUID
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS premium_grants_one_active
+      ON premium_grants(user_id) WHERE revoked_at IS NULL;
+    CREATE TABLE IF NOT EXISTS premium_audit (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      target_user_id UUID NOT NULL,
+      target_email TEXT,
+      target_name TEXT,
+      admin_user_id UUID,
+      admin_email TEXT,
+      action TEXT NOT NULL,
+      grant_kind TEXT,
+      grant_expires_at TIMESTAMPTZ,
+      reason TEXT,
+      previous_status JSONB,
+      new_status JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
   if (introducingQuestionnaire) {
     await pool.query(
@@ -573,6 +614,41 @@ function trialInfo(row) {
     trialActive: active,
     trialDaysRemaining: daysRemaining
   };
+}
+
+// --- Central Premium entitlement -----------------------------------------
+// A user has EFFECTIVE Premium when at least ONE of these holds:
+//   * a paid subscription (users.is_premium, set by the Paystack webhook)
+//   * an active 7-day trial (trialInfo above)
+//   * an active administrator-granted Premium (premium_grants: lifetime =
+//     never expires; months/years = until expires_at)
+// Every protected endpoint goes through these helpers — the client is never
+// the authority on Premium state.
+async function getActivePremiumGrant(userId) {
+  if (!pool || !userId) return null;
+  const { rows } = await pool.query(
+    `SELECT id, duration_type, duration_count, expires_at, reason,
+            granted_by, granted_by_email, granted_at
+     FROM premium_grants
+     WHERE user_id = $1
+       AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > now())
+     ORDER BY granted_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+async function hasActivePremiumGrant(userId) {
+  return Boolean(await getActivePremiumGrant(userId));
+}
+
+/** Label for a grant, e.g. "Lifetime Premium", "3 months Premium". */
+function premiumGrantLabel(grant) {
+  if (!grant) return null;
+  if (grant.duration_type === "lifetime") return "Lifetime Premium";
+  return `${grant.duration_count} ${grant.duration_type === "months" ? (grant.duration_count === 1 ? "month" : "months") : (grant.duration_count === 1 ? "year" : "years")} Premium`;
 }
 
 // --- Session auth middleware: verifies the Bearer session JWT issued at /api/auth/google ---
@@ -1196,6 +1272,314 @@ app.post("/api/presence/ping", requireAuth, async (req, res) => {
 });
 
 /** Admin: list members with roles + presence (for the mentor manager). */
+// --- Admin Premium Management ----------------------------------------------
+// Only authenticated MarketScope AI administrators (isAdminRequest — env email
+// list + role system) may search, inspect, grant or revoke Premium. Grants are
+// database-backed entitlements (premium_grants), fully separate from paid
+// subscriptions (users.is_premium / Paystack) — revoking a grant never touches
+// a paid subscription; effective access is always recalculated from ALL
+// entitlement sources.
+
+/** Shared: build a user's full premium status snapshot for the admin UI. */
+async function premiumStatusSnapshot(userId) {
+  const { rows } = await pool.query(
+    `SELECT id, google_sub, email, name, picture, is_premium, trial_started_at, created_at
+     FROM users WHERE id = $1`,
+    [userId]
+  );
+  if (!rows.length) return null;
+  const u = rows[0];
+  const trial = trialInfo(u);
+  const grant = await getActivePremiumGrant(u.id);
+  const { rows: payRows } = await pool.query(
+    `SELECT count(*)::int AS c FROM subscription_payments WHERE user_id = $1 AND status = 'success'`,
+    [u.id]
+  );
+  const { rows: history } = await pool.query(
+    `SELECT id, duration_type, duration_count, expires_at, reason, granted_by_email, granted_at, revoked_at
+     FROM premium_grants WHERE user_id = $1 ORDER BY granted_at DESC LIMIT 10`,
+    [u.id]
+  );
+  const paid = Boolean(u.is_premium);
+  const sources = [];
+  if (paid) sources.push("Paid Subscription");
+  if (grant) sources.push(grant.duration_type === "lifetime" ? "Lifetime Admin Grant" : premiumGrantLabel(grant) + " (Admin Grant)");
+  if (trial.trialActive && !paid && !grant) sources.push("Free Trial");
+  return {
+    id: u.id,
+    googleSub: u.google_sub,
+    email: u.email,
+    name: u.name || u.email || "User",
+    picture: u.picture || null,
+    joinedAt: u.created_at,
+    paidSubscription: { active: paid, payments: payRows[0].c },
+    trial: { active: trial.trialActive, endsAt: trial.trialEndsAt, daysRemaining: trial.trialDaysRemaining },
+    adminGrant: grant ? {
+      id: grant.id,
+      kind: grant.duration_type,
+      label: premiumGrantLabel(grant),
+      expiresAt: grant.expires_at,
+      reason: grant.reason,
+      grantedBy: grant.granted_by_email,
+      grantedAt: grant.granted_at
+    } : null,
+    grantHistory: history.map((h) => ({
+      kind: h.duration_type,
+      label: premiumGrantLabel(h),
+      expiresAt: h.expires_at,
+      reason: h.reason,
+      grantedBy: h.granted_by_email,
+      grantedAt: h.granted_at,
+      revokedAt: h.revoked_at
+    })),
+    premium: { active: paid || !!grant || trial.trialActive, sources },
+    plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : trial.trialActive ? "trial" : "free"
+  };
+}
+
+/** Admin: search users for premium management (email, name, or user id). */
+app.get("/api/admin/premium/users", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can manage Premium." });
+  }
+  const search = String(req.query.search || "").trim();
+  try {
+    let likeRows = [];
+    if (search) {
+      const { rows } = await pool.query(
+        `SELECT id FROM users
+         WHERE lower(email) LIKE '%' || lower($1) || '%'
+            OR lower(coalesce(name, '')) LIKE '%' || lower($1) || '%'
+            OR lower(google_sub) LIKE '%' || lower($1) || '%'
+         ORDER BY created_at DESC LIMIT 25`,
+        [search]
+      );
+      likeRows = rows.map((r) => r.id);
+      // Exact UUID match beats the LIKE search when the admin pasted an id.
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search)) {
+        try {
+          const { rows } = await pool.query(`SELECT id FROM users WHERE id = $1`, [search]);
+          if (rows.length && !likeRows.includes(rows[0].id)) likeRows.unshift(rows[0].id);
+        } catch (_e) { /* not a valid uuid for pg */ }
+      }
+    }
+    const users = [];
+    for (const id of likeRows.slice(0, 25)) {
+      const snap = await premiumStatusSnapshot(id);
+      if (snap) users.push(snap);
+    }
+    res.json({ users });
+  } catch (err) {
+    console.error("[admin-premium] search failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not search users" });
+  }
+});
+
+/** Admin: one user's full premium status. */
+app.get("/api/admin/premium/status/:userId", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can manage Premium." });
+  }
+  try {
+    const snap = await premiumStatusSnapshot(req.params.userId);
+    if (!snap) return res.status(404).json({ error: "User not found" });
+    res.json(snap);
+  } catch (err) {
+    console.error("[admin-premium] status failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not load premium status" });
+  }
+});
+
+/** Admin: grant free Premium — lifetime, or N months / N years. */
+app.post("/api/admin/premium/grant", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can grant Premium." });
+  }
+  const { userId, durationType, durationCount, reason } = req.body || {};
+  if (!userId || typeof userId !== "string") {
+    return res.status(400).json({ error: "A valid userId is required." });
+  }
+  if (!["lifetime", "months", "years"].includes(durationType)) {
+    return res.status(400).json({ error: "durationType must be 'lifetime', 'months' or 'years'." });
+  }
+  let count = 0;
+  if (durationType !== "lifetime") {
+    count = parseInt(durationCount, 10);
+    if (!Number.isInteger(count) || count < 1 || count > 50) {
+      return res.status(400).json({ error: `durationCount must be a whole number between 1 and 50 for ${durationType}.` });
+    }
+  }
+  if (reason != null && (typeof reason !== "string" || reason.length > 200)) {
+    return res.status(400).json({ error: "Reason must be text, 200 characters or fewer." });
+  }
+  try {
+    const { rows: adminRows } = await pool.query(
+      `SELECT id, email FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    const adminUser = adminRows[0] || null;
+
+    const before = await premiumStatusSnapshot(userId);
+    if (!before) return res.status(404).json({ error: "User not found" });
+
+    // No duplicate active grants: one live admin entitlement per user.
+    const existing = await getActivePremiumGrant(before.id);
+    if (existing) {
+      return res.status(409).json({
+        error: `This user already has an active ${premiumGrantLabel(existing)} from an admin grant.`,
+        alreadyGranted: true,
+        grant: {
+          kind: existing.duration_type,
+          label: premiumGrantLabel(existing),
+          expiresAt: existing.expires_at
+        }
+      });
+    }
+
+    let expiresAt = null;
+    if (durationType === "months") expiresAt = new Date(Date.now() + count * 30 * 24 * 60 * 60 * 1000);
+    if (durationType === "years") expiresAt = new Date(Date.now() + count * 365 * 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `INSERT INTO premium_grants (user_id, duration_type, duration_count, expires_at, reason, granted_by, granted_by_email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [before.id, durationType, count, expiresAt, reason || null, adminUser ? adminUser.id : null, adminUser ? adminUser.email : (req.session.email || "admin")]
+    );
+
+    const after = await premiumStatusSnapshot(userId);
+
+    // Audit trail — every admin premium change is recorded.
+    await pool.query(
+      `INSERT INTO premium_audit (target_user_id, target_email, target_name, admin_user_id, admin_email,
+                                  action, grant_kind, grant_expires_at, reason, previous_status, new_status)
+       VALUES ($1,$2,$3,$4,$5,'GRANTED',$6,$7,$8,$9::jsonb,$10::jsonb)`,
+      [before.id, before.email, before.name, adminUser ? adminUser.id : null,
+       adminUser ? adminUser.email : (req.session.email || "admin"),
+       durationType, expiresAt, reason || null,
+       JSON.stringify({ premium: before.premium }), JSON.stringify({ premium: after.premium })]
+    );
+
+    // Tell the user: email + in-app notification (with the real expiry).
+    const grantLabel = premiumGrantLabel({ duration_type: durationType, duration_count: count });
+    const expiresText = durationType === "lifetime"
+      ? "Lifetime"
+      : expiresAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    sendPremiumGrantedEmail({ email: before.email, name: before.name }, { grantLabel, expiresText, reason: reason || null }).catch(() => {});
+    notifyUser(before.id, {
+      title: `Congratulations \\u2014 you've been given free ${grantLabel}`,
+      body: `The MarketScope AI team granted you ${grantLabel}. Expires: ${expiresText}.${reason ? ` Reason: ${reason}` : ""} (via MarketScope AI)`,
+      type: "signal",
+      data: { type: "signal", screen: "profile" }
+    }).catch(() => {});
+
+    console.log(`[admin-premium] ${req.session.email} granted ${grantLabel} to ${before.email}`);
+    res.json({ ok: true, user: after });
+  } catch (err) {
+    console.error("[admin-premium] grant failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not grant Premium" });
+  }
+});
+
+/** Admin: revoke the administrator-granted entitlement. Paid subscriptions
+ *  are never touched — effective access is recalculated from all sources. */
+app.post("/api/admin/premium/revoke", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can revoke Premium." });
+  }
+  const { userId } = req.body || {};
+  if (!userId || typeof userId !== "string") {
+    return res.status(400).json({ error: "A valid userId is required." });
+  }
+  try {
+    const { rows: adminRows } = await pool.query(
+      `SELECT id, email FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    const adminUser = adminRows[0] || null;
+
+    const before = await premiumStatusSnapshot(userId);
+    if (!before) return res.status(404).json({ error: "User not found" });
+
+    const grant = await getActivePremiumGrant(before.id);
+    if (!grant) {
+      return res.status(409).json({ error: "This user has no active admin-granted Premium to revoke.", noGrant: true });
+    }
+
+    await pool.query(
+      `UPDATE premium_grants SET revoked_at = now(), revoked_by = $1 WHERE id = $2`,
+      [adminUser ? adminUser.id : null, grant.id]
+    );
+
+    const after = await premiumStatusSnapshot(userId);
+
+    await pool.query(
+      `INSERT INTO premium_audit (target_user_id, target_email, target_name, admin_user_id, admin_email,
+                                  action, grant_kind, grant_expires_at, reason, previous_status, new_status)
+       VALUES ($1,$2,$3,$4,$5,'REVOKED',$6,$7,$8,$9::jsonb,$10::jsonb)`,
+      [before.id, before.email, before.name, adminUser ? adminUser.id : null,
+       adminUser ? adminUser.email : (req.session.email || "admin"),
+       grant.duration_type, grant.expires_at, grant.reason || null,
+       JSON.stringify({ premium: before.premium }), JSON.stringify({ premium: after.premium })]
+    );
+
+    // Only a real flip changes what we tell the user; paid users stay Premium.
+    const stillPremium = after.premium.active;
+    sendPremiumRevokedEmail({ email: before.email, name: before.name }, { grantLabel: premiumGrantLabel(grant), stillPremium }).catch(() => {});
+    notifyUser(before.id, {
+      title: `Your ${premiumGrantLabel(grant)} was removed`,
+      body: stillPremium
+        ? "Your admin-granted Premium was removed, but your paid subscription keeps your Premium access active. (via MarketScope AI)"
+        : "Your admin-granted Premium was removed. Subscribe anytime to regain Premium access. (via MarketScope AI)",
+      type: "signal",
+      data: { type: "signal", screen: "profile" }
+    }).catch(() => {});
+
+    console.log(`[admin-premium] ${req.session.email} revoked ${premiumGrantLabel(grant)} from ${before.email}`);
+    res.json({ ok: true, user: after });
+  } catch (err) {
+    console.error("[admin-premium] revoke failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not revoke Premium" });
+  }
+});
+
+/** Admin: recent premium activity (grant/revoke audit feed). */
+app.get("/api/admin/premium/audit", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can view premium activity." });
+  }
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.action, a.grant_kind, a.grant_expires_at, a.reason, a.created_at,
+              a.target_email, a.target_name, a.admin_email
+       FROM premium_audit a
+       ORDER BY a.created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json({
+      events: rows.map((e) => ({
+        id: e.id,
+        action: e.action,
+        kind: e.grant_kind,
+        expiresAt: e.grant_expires_at,
+        reason: e.reason,
+        at: e.created_at,
+        target: { email: e.target_email, name: e.target_name },
+        admin: e.admin_email
+      }))
+    });
+  } catch (err) {
+    console.error("[admin-premium] audit failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not load premium activity" });
+  }
+});
+
 app.get("/api/admin/members", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!(await isAdminRequest(req))) {
@@ -1656,11 +2040,32 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
     const trial = trialInfo(rows[0]);
-    if (trial.trialActive || rows[0].is_premium) {
-      return res.json({ ...trial, analysisUsage: { used: null, limit: null, remaining: null, unlimited: true } });
+    const grant = await getActivePremiumGrant(rows[0].id);
+    // Paid subscription is sticky forever once activated (existing behavior);
+    // an admin grant covers the rest. The plan label tells the app the truth.
+    const plan = Boolean(rows[0].is_premium)
+      ? "premium"
+      : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium")
+      : trial.trialActive ? "trial"
+      : "free";
+    const effectivePremium = Boolean(rows[0].is_premium) || !!grant || trial.trialActive;
+    if (effectivePremium) {
+      return res.json({
+        ...trial,
+        plan,
+        premiumSource: rows[0].is_premium ? "subscription" : grant ? "admin_grant" : "trial",
+        adminGrant: grant ? {
+          kind: grant.duration_type,
+          label: premiumGrantLabel(grant),
+          expiresAt: grant.expires_at,
+          reason: grant.reason,
+          grantedAt: grant.granted_at
+        } : null,
+        analysisUsage: { used: null, limit: null, remaining: null, unlimited: true }
+      });
     }
     const usage = await analysisUsage(rows[0].id);
-    return res.json({ ...trial, analysisUsage: { ...usage, unlimited: false } });
+    return res.json({ ...trial, plan, analysisUsage: { ...usage, unlimited: false } });
   } catch (err) {
     return res.status(500).json({ error: "Could not load trial status", detail: String(err.message || err) });
   }
@@ -1737,7 +2142,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   }
 
   const trial = trialInfo(userRow);
-  const premium = Boolean(userRow.is_premium);
+  const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
     // Trial lapsed without a subscription: the free tier keeps the core
     // feature alive at 3 analyses per rolling 24h — the upgrade pressure
@@ -1956,7 +2361,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   }
 
   const trial = trialInfo(userRow);
-  const premium = Boolean(userRow.is_premium);
+  const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
     const usage = await analysisUsage(userRow.id);
     if (usage.used >= usage.limit) {
@@ -2474,14 +2879,15 @@ app.get("/api/daily-signals/access", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const { rows } = await pool.query(
-      `SELECT trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
     const trial = trialInfo(rows[0]);
     const isAdmin = await isAdminRequest(req);
-    const entitled = trial.trialActive || rows[0].is_premium || isAdmin;
-    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: rows[0].is_premium });
+    const grant = await getActivePremiumGrant(rows[0].id);
+    const entitled = trial.trialActive || rows[0].is_premium || isAdmin || !!grant;
+    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: Boolean(rows[0].is_premium) || !!grant, plan: rows[0].is_premium ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free") });
   } catch (err) {
     res.status(500).json({ error: "Could not check access", detail: String(err.message || err) });
   }
@@ -2499,7 +2905,7 @@ app.get("/api/daily-signals", requireAuth, async (req, res) => {
     const me = userRows[0];
     const trial = trialInfo(me);
     const admin = await isAdminRequest(req);
-    const entitled = trial.trialActive || me.is_premium || admin;
+    const entitled = trial.trialActive || me.is_premium || admin || Boolean(await getActivePremiumGrant(me.id));
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const { rows } = await pool.query(
       `SELECT * FROM daily_signals ORDER BY published_at DESC LIMIT $1`,

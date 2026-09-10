@@ -82,6 +82,7 @@ import com.veltravia.marketscopeai.ui.screens.MarketViewScreen
 import com.veltravia.marketscopeai.ui.screens.SavedScreen
 import com.veltravia.marketscopeai.ui.screens.SignalsScreen
 import com.veltravia.marketscopeai.ui.screens.AdminSignalsScreen
+import com.veltravia.marketscopeai.ui.screens.AdminPremiumScreen
 import com.veltravia.marketscopeai.ui.screens.WelcomeScreen
 
 /**
@@ -320,6 +321,9 @@ fun MarketAiApp() {
         }
         composable("signals_admin") {
             AdminSignalsScreen(onBack = { navController.popBackStack() })
+        }
+        composable("premium_admin") {
+            AdminPremiumScreen(onBack = { navController.popBackStack() })
         }
         composable("create_trade_plan") {
             CreateTradePlanScreen(

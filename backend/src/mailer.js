@@ -308,6 +308,81 @@ async function sendTrialExpiredEmail(user) {
   }
 }
 
+/** Premium: paid subscription activated (Paystack webhook). */
+async function sendPremiumActivatedEmail(user) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    if (!user || !user.email) return { ok: false, reason: "no email address on account" };
+    const content = {
+      subject: "Your MarketScope AI Premium activation was successful",
+      paragraphs: [
+        `Hello ${firstName(user.name)},`,
+        "Your activation for MarketScope AI Premium has been successful.",
+        "You now have unlimited AI chart and market analysis, the full Daily Signals history, and every Premium feature — welcome aboard."
+      ],
+      signoff: ["The MarketScope AI Team", "Veltravia Technologies"]
+    };
+    const messageId = await sendViaBrevo({ to: user.email, subject: content.subject, content });
+    console.log(`[mailer] premium-activated email sent to ${user.email} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] premium-activated email failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
+/** Premium: an administrator granted the user free Premium (lifetime / N months / N years). */
+async function sendPremiumGrantedEmail(user, { grantLabel, expiresText, reason }) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    if (!user || !user.email) return { ok: false, reason: "no email address on account" };
+    const content = {
+      subject: `Congratulations \u2014 you've been granted ${grantLabel} on MarketScope AI`,
+      paragraphs: [
+        `Hello ${firstName(user.name)},`,
+        `Congratulations! You've been given free ${grantLabel} on MarketScope AI by the MarketScope AI team.`,
+        "You now have the same Premium access as a paid subscriber: unlimited AI chart and market analysis, the full Daily Signals history, and every Premium feature."
+      ],
+      fields: [
+        { label: "Premium", value: grantLabel },
+        { label: "Expires", value: expiresText }
+      ].concat(reason ? [{ label: "Reason", value: reason }] : []),
+      signoff: ["The MarketScope AI Team", "Veltravia Technologies"]
+    };
+    const messageId = await sendViaBrevo({ to: user.email, subject: content.subject, content });
+    console.log(`[mailer] premium-granted email sent to ${user.email} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] premium-granted email failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
+/** Premium: an administrator revoked the granted Premium. */
+async function sendPremiumRevokedEmail(user, { grantLabel, stillPremium }) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    if (!user || !user.email) return { ok: false, reason: "no email address on account" };
+    const content = {
+      subject: "Your admin-granted MarketScope AI Premium has been removed",
+      paragraphs: [
+        `Hello ${firstName(user.name)},`,
+        `Your administrator-granted ${grantLabel} on MarketScope AI has been removed.`,
+        stillPremium
+          ? "Your paid Premium subscription is unaffected \u2014 you still have full Premium access."
+          : "If you'd like Premium access again, you can subscribe anytime from the Subscribe screen in your MarketScope AI profile."
+      ],
+      signoff: ["The MarketScope AI Team", "Veltravia Technologies"]
+    };
+    const messageId = await sendViaBrevo({ to: user.email, subject: content.subject, content });
+    console.log(`[mailer] premium-revoked email sent to ${user.email} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] premium-revoked email failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
 /** Ops: health-check failure alert to the owner inbox. Throttled so a
  *  long outage sends at most one email per hour instead of one per cron tick. */
 let lastHealthAlertAt = 0;
@@ -377,4 +452,4 @@ async function sendStatsReportEmail(stats) {
   }
 }
 
-module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, formatLagosTime, describeDevice };
+module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail, formatLagosTime, describeDevice };

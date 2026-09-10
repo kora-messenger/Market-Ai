@@ -109,6 +109,7 @@ fun ProfileScreen(
     var trialActive by remember { mutableStateOf(true) }
     var trialDaysRemaining by remember { mutableStateOf(0) }
     var isPremium by remember { mutableStateOf(false) }
+    var plan by remember { mutableStateOf("free") } // free | trial | premium | lifetime
     var deletionRequestedAt by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleteBusy by remember { mutableStateOf(false) }
@@ -126,6 +127,7 @@ fun ProfileScreen(
             trialActive = trial.optBoolean("trialActive", false)
             trialDaysRemaining = trial.optInt("trialDaysRemaining", 0)
             isPremium = trial.optBoolean("isPremium", false)
+            plan = trial.optString("plan", "free")
         } catch (_: Exception) {
             // Leave defaults — the plan chip just won't show until this loads.
         }
@@ -248,9 +250,10 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.WorkspacePremium,
                 tint = GoldAmber,
-                label = if (isPremium) "Manage plan" else "Upgrade to Premium",
+                label = if (isPremium || plan == "premium" || plan == "lifetime") "Manage plan" else "Upgrade to Premium",
                 trailingText = when {
-                    isPremium -> "Premium"
+                    plan == "lifetime" -> "Lifetime"
+                    isPremium || plan == "premium" -> "Premium"
                     trialActive -> "Trial: ${trialDaysRemaining}d left"
                     else -> "Free"
                 },
@@ -496,7 +499,7 @@ private fun AccountSummaryCard(
                     Text(email, style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 }
             }
-            PlanChip(isPremium = isPremium, trialActive = trialActive, trialDaysRemaining = trialDaysRemaining, onClick = onUpgrade)
+            PlanChip(isPremium = isPremium, trialActive = trialActive, trialDaysRemaining = trialDaysRemaining, plan = plan, onClick = onUpgrade)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -514,7 +517,8 @@ private fun AccountSummaryCard(
                 modifier = Modifier.weight(1f),
                 label = "Plan status",
                 value = when {
-                    isPremium -> "Premium"
+                    plan == "lifetime" -> "Lifetime"
+                    isPremium || plan == "premium" -> "Premium"
                     trialActive -> "Trial"
                     else -> "Free"
                 }
@@ -524,9 +528,10 @@ private fun AccountSummaryCard(
 }
 
 @Composable
-private fun PlanChip(isPremium: Boolean, trialActive: Boolean, trialDaysRemaining: Int, onClick: () -> Unit) {
+private fun PlanChip(isPremium: Boolean, trialActive: Boolean, trialDaysRemaining: Int, plan: String, onClick: () -> Unit) {
     val (bg, fg, label) = when {
-        isPremium -> Triple(GoldAmber.copy(alpha = 0.15f), GoldAmber, "PRO")
+        plan == "lifetime" -> Triple(AccentViolet.copy(alpha = 0.14f), AccentViolet, "LIFETIME")
+        isPremium || plan == "premium" -> Triple(GoldAmber.copy(alpha = 0.15f), GoldAmber, "PRO")
         trialActive -> Triple(AccentCyan.copy(alpha = 0.12f), AccentCyan, "${trialDaysRemaining}D")
         else -> Triple(BearRed.copy(alpha = 0.1f), BearRed, "FREE")
     }

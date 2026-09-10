@@ -647,6 +647,60 @@ object ApiClient {
         request(request)
     }
 
+    /** Admin: search users for premium management (email / name / id). */
+    suspend fun adminSearchPremiumUsers(sessionToken: String, search: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/premium/users?search=${java.net.URLEncoder.encode(search, "UTF-8")}")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Admin: one user's full premium status snapshot. */
+    suspend fun adminGetPremiumStatus(sessionToken: String, userId: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/premium/status/$userId")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Admin: grant free Premium — lifetime, or N months / N years (reason optional). */
+    suspend fun adminGrantPremium(sessionToken: String, userId: String, durationType: String, durationCount: Int, reason: String?): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("userId", userId).put("durationType", durationType)
+        if (durationType != "lifetime") body.put("durationCount", durationCount)
+        if (!reason.isNullOrBlank()) body.put("reason", reason.trim())
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/premium/grant")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Admin: revoke the admin-granted entitlement (paid subscriptions untouched). */
+    suspend fun adminRevokePremium(sessionToken: String, userId: String): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("userId", userId)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/premium/revoke")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Admin: recent premium grant/revoke activity (audit feed). */
+    suspend fun adminFetchPremiumAudit(sessionToken: String, limit: Int = 30): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/premium/audit?limit=$limit")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Admin: manually close a signal with an outcome (for no-feed instruments). */
     suspend fun closeDailySignal(sessionToken: String, id: String, outcome: String): JSONObject = withContext(Dispatchers.IO) {
         val body = JSONObject().put("outcome", outcome)
