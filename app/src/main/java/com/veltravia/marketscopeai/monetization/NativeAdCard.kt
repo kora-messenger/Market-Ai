@@ -110,7 +110,7 @@ private fun buildNativeAdView(context: android.content.Context): NativeAdView {
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     }
-    val adOptions = AdOptionsView(context)
+    val adOptions = AdChoicesView(context)
     header.addView(label)
     header.addView(adOptions)
     root.addView(header)
@@ -175,7 +175,7 @@ private fun buildNativeAdView(context: android.content.Context): NativeAdView {
     root.addView(cta)
 
     // --- Register asset views (AdMob policy requires this mapping) ---
-    adView.adOptionsView = adOptions
+    adView.adChoicesView = adOptions
     adView.mediaView = media
     adView.iconView = icon
     adView.headlineView = headline

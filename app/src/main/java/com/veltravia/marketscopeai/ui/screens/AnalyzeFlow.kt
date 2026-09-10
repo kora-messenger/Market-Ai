@@ -125,12 +125,6 @@ fun AnalyzeFlow(
     }
 
     /** Chart analysis (forex / crypto pages) - one shared path. */
-    /** Retry helpers re-run the exact analysis the limit interrupted. */
-    fun retryChart(inst: Instrument?, h4: Uri?, m15: Uri?, onError: (String?) -> Unit) =
-        doChartAnalysis(inst, h4, m15, onError)
-    fun retryStock(name: String, image: Uri?, onError: (String?) -> Unit) =
-        doStockAnalysis(name, image, onError)
-
     /**
      * Daily-limit path: free users get an honest choice — watch a short
      * rewarded video for one extra analysis (server-validated bonus), or
@@ -174,7 +168,7 @@ fun AnalyzeFlow(
                 onTrialExpired()
             } catch (e: ApiClient.DailyLimitException) {
                 loading = false
-                maybeOfferRewarded { retryChart(inst, h4, m15, onError) }
+                maybeOfferRewarded { doChartAnalysis(inst, h4, m15, onError) }
             } catch (e: Exception) {
                 loading = false
                 onError(e.message ?: "Analysis failed")
@@ -206,7 +200,7 @@ fun AnalyzeFlow(
                 onTrialExpired()
             } catch (e: ApiClient.DailyLimitException) {
                 loading = false
-                maybeOfferRewarded { retryStock(name, image, onError) }
+                maybeOfferRewarded { doStockAnalysis(name, image, onError) }
             } catch (e: Exception) {
                 loading = false
                 onError(e.message ?: "Analysis failed")
