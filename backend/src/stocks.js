@@ -25,7 +25,9 @@ async function fetchWithTimeout(url, opts, ms) {
 async function searchStock(query) {
   const text = String(query || "").trim();
   if (!text) return [];
-  const url = `https://symbol-search.tradingview.com/symbol_search/?text=${encodeURIComponent(text)}&hl=1&lang=en`;
+  // No hl param: hl=1 makes the API wrap matches in <em> tags, which would
+  // corrupt the symbol. Sanitize anyway — treat the response as untrusted.
+  const url = `https://symbol-search.tradingview.com/symbol_search/?text=${encodeURIComponent(text)}&lang=en`;
   const res = await fetchWithTimeout(
     url,
     { headers: { "User-Agent": UA, Origin: ORIGIN, Accept: "application/json" } },
@@ -34,13 +36,14 @@ async function searchStock(query) {
   if (!res.ok) throw new Error(`symbol search HTTP ${res.status}`);
   const rows = await res.json();
   if (!Array.isArray(rows)) return [];
+  const clean = (s) => String(s).replace(/<[^>]*>/g, "").trim();
   return rows
     .filter((r) => r && r.type === "stock" && r.symbol && r.exchange)
     .map((r) => ({
-      symbol: `${r.exchange}:${r.symbol}`,
-      ticker: r.symbol,
-      description: r.description || r.symbol,
-      exchange: r.exchange,
+      symbol: `${clean(r.exchange)}:${clean(r.symbol)}`,
+      ticker: clean(r.symbol),
+      description: clean(r.description || r.symbol),
+      exchange: clean(r.exchange),
       currency: r.currency_code || null
     }));
 }
