@@ -51,6 +51,14 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
+import com.veltravia.marketscopeai.ui.theme.AccentViolet
+import androidx.compose.material.icons.filled.PlayCircleRounded
+import androidx.compose.material.icons.filled.AutoRenew
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 
 /**
@@ -99,6 +107,12 @@ fun AnalyzeFlow(
     var fxError by remember { mutableStateOf<String?>(null) }
     var crError by remember { mutableStateOf<String?>(null) }
     var stkError by remember { mutableStateOf<String?>(null) }
+    // Rewarded-ad unlock: shown when a FREE user hits the daily analysis
+    // limit — watch one short video for an extra analysis, or go Premium.
+    var limitSheetOpen by remember { mutableStateOf(false) }
+    var limitSheetError by remember { mutableStateOf<String?>(null) }
+    var rewardBusy by remember { mutableStateOf(false) }
+    var pendingRetry by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val pickFxH4 = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { fxImageH4 = it } }
     val pickFxM15 = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { fxImageM15 = it } }
@@ -135,7 +149,7 @@ fun AnalyzeFlow(
                 onTrialExpired()
             } catch (e: ApiClient.DailyLimitException) {
                 loading = false
-                onUpgradeRequired()
+                maybeOfferRewarded { retryChart(inst, h4, m15, onError) }
             } catch (e: Exception) {
                 loading = false
                 onError(e.message ?: "Analysis failed")
@@ -167,11 +181,36 @@ fun AnalyzeFlow(
                 onTrialExpired()
             } catch (e: ApiClient.DailyLimitException) {
                 loading = false
-                onUpgradeRequired()
+                maybeOfferRewarded { retryStock(name, image, onError) }
             } catch (e: Exception) {
                 loading = false
                 onError(e.message ?: "Analysis failed")
             }
+        }
+    }
+
+    /** Retry helpers re-run the exact analysis the limit interrupted. */
+    fun retryChart(inst: Instrument?, h4: Uri?, m15: Uri?, onError: (String?) -> Unit) =
+        doChartAnalysis(inst, h4, m15, onError)
+    fun retryStock(name: String, image: Uri?, onError: (String?) -> Unit) =
+        doStockAnalysis(name, image, onError)
+
+    /**
+     * Daily-limit path: free users get an honest choice — watch a short
+     * rewarded video for one extra analysis (server-validated bonus), or
+     * jump to Premium (unlimited, no ads). If rewarded ads are unavailable
+     * (premium user, disabled config, cap reached) the classic upgrade
+     * screen is shown directly.
+     */
+    fun maybeOfferRewarded(retry: () -> Unit) {
+        val eligible = com.veltravia.marketscopeai.monetization.PremiumAccessManager.rewardedEligible(context) &&
+            com.veltravia.marketscopeai.monetization.MonetizationSettings.current.rewardedEnabled
+        if (eligible) {
+            pendingRetry = retry
+            limitSheetError = null
+            limitSheetOpen = true
+        } else {
+            onUpgradeRequired()
         }
     }
 
@@ -337,6 +376,71 @@ fun AnalyzeFlow(
                     )
                     Spacer(Modifier.height(24.dp))
                 }
+            }
+        }
+    }
+
+    // --- Rewarded unlock sheet (free tier, daily limit reached) ---
+    if (limitSheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { limitSheetOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.PlayCircleRounded, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Daily free limit reached", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "You've used all your free AI analyses for today. Watch one short video to unlock an extra analysis - or go Premium for unlimited, ad-free analyses.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(Modifier.height(18.dp))
+                limitSheetError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(12.dp))
+                }
+                GradientPrimaryButton(
+                    text = "Watch video  ·  +1 analysis",
+                    enabled = !rewardBusy,
+                    loading = rewardBusy,
+                    height = 54.dp,
+                    onClick = {
+                        rewardBusy = true
+                        limitSheetError = null
+                        com.veltravia.marketscopeai.monetization.RewardedAdManager.watchForExtraAnalysis(
+                            context = context,
+                            scope = scope,
+                            onSuccess = { _ ->
+                                rewardBusy = false
+                                limitSheetOpen = false
+                                pendingRetry?.invoke()
+                                pendingRetry = null
+                            },
+                            onFail = { message ->
+                                rewardBusy = false
+                                limitSheetError = message
+                            },
+                            onClosed = { watched ->
+                                if (!watched) rewardBusy = false
+                                // Preload the next rewarded ad for the next time.
+                                com.veltravia.marketscopeai.monetization.AdManager.prefetchRewardedIfAvailable(context)
+                            }
+                        )
+                    }
+                )
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = { limitSheetOpen = false; onUpgradeRequired() }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.AutoRenew, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Go Premium - unlimited analyses, no ads", color = AccentViolet)
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
             }
         }
     }

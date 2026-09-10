@@ -128,6 +128,7 @@ fun ProfileScreen(
             trialDaysRemaining = trial.optInt("trialDaysRemaining", 0)
             isPremium = trial.optBoolean("isPremium", false)
             plan = trial.optString("plan", "free")
+            com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(trial)
         } catch (_: Exception) {
             // Leave defaults — the plan chip just won't show until this loads.
         }

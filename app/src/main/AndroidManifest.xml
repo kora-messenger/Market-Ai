@@ -12,6 +12,13 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.MarketAi">
+        <!-- AdMob app ID: Google's official TEST app id in debug; the real
+             production ID is injected at release build time (see build.gradle.kts).
+             Required by the Mobile Ads SDK. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${ADMOB_APP_ID}" />
+        <!-- Ad services config not required for this app's audience (adults only). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

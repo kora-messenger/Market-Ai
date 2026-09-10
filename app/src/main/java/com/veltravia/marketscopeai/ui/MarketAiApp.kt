@@ -366,9 +366,18 @@ fun MarketAiApp() {
             )
         }
         composable("signal/{analysisId}") { entry ->
+            val adContext = androidx.compose.ui.platform.LocalContext.current
             SignalCardScreen(
                 analysisId = entry.arguments?.getString("analysisId") ?: "",
-                onBack = { navController.popBackStack() },
+                onBack = {
+                    // Post-result interstitial (free users only, server-config
+                    // frequency-capped; never onboarding). Navigation ALWAYS
+                    // continues, with or without an ad.
+                    com.veltravia.marketscopeai.monetization.AdManager
+                        .maybeShowInterstitialAfterAnalysis(adContext) {
+                            navController.popBackStack()
+                        }
+                },
                 onOpenBrokerInfo = { navController.navigate("broker_info") }
             )
         }

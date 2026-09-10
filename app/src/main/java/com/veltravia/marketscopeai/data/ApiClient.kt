@@ -488,6 +488,29 @@ object ApiClient {
         request(request)
     }
 
+    /** Public monetization config: ad placements, free/premium limits, rewarded
+     *  availability, enabled ad networks. No auth needed — nothing sensitive. */
+    suspend fun fetchMonetizationConfig(): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/monetization/config")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Server-validated rewarded-ad unlock. Called ONLY after the ad SDK
+     *  confirmed the reward was earned — the backend re-checks eligibility
+     *  and the daily cap. Returns { granted, bonus, usage }. */
+    suspend fun postRewardedUnlock(sessionToken: String, network: String = "admob"): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("network", network)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/monetization/rewarded-unlock")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Real, user-authored trade plans for the signed-in user, newest first. */
     suspend fun fetchTradePlans(sessionToken: String): JSONArray = withContext(Dispatchers.IO) {
         val request = Request.Builder()

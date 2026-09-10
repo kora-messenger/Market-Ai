@@ -86,6 +86,22 @@ class MainActivity : ComponentActivity() {
                     )
                 }
         }
+
+        // --- Monetization boot (Free + Premium + Advertising) ---
+        // 1) Privacy-first: gather any consent the region requires (UMP),
+        //    then initialize the Mobile Ads SDK — ads are only requested once
+        //    they may legally be shown. Premium users never reach ad code.
+        com.veltravia.marketscopeai.monetization.AdManager.initialize(this)
+        // 2) Pull the live server-driven monetization config (placements,
+        //    limits, rewarded availability) so nothing is hard-coded.
+        com.veltravia.marketscopeai.monetization.MonetizationSettings.refresh(
+            kotlinx.coroutines.MainScope()
+        )
+        // 3) Mirror the server's entitlement state (ad eligibility) for the
+        //    signed-in user — the backend stays the single authority.
+        com.veltravia.marketscopeai.monetization.PremiumAccessManager.refresh(
+            applicationContext, kotlinx.coroutines.MainScope()
+        )
         if (BuildConfig.DEBUG) {
             CrashReporter.install(applicationContext)
             val lastCrash = CrashReporter.consumeLastCrash(applicationContext)

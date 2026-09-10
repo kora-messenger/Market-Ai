@@ -150,6 +150,8 @@ fun HomeScreen(
                 val days = status.optInt("trialDaysRemaining", trialDaysRemaining)
                 val premium = status.optBoolean("isPremium", isPremium)
                 SessionManager.updateTrialState(context, active, days, premium)
+                // Feed the ad/monetization system the server's ad-eligibility verdict.
+                com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(status)
                 trialDaysRemaining = days
                 isPremium = premium
                 // Real remaining allowance from the server (only for lapsed

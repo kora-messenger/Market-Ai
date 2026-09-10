@@ -286,6 +286,16 @@ fun SubscribeScreen(
                     }
                 }
 
+                // Honest positioning: MarketScope AI is market research and
+                // education — never financial advice, never guarantees.
+                Text(
+                    "MarketScope AI is a market-research and education tool. AI analysis is for informational purposes only and is not financial advice.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextMuted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(top = 14.dp)
+                )
+
                 Spacer(Modifier.height(24.dp))
 
                 statusMessage?.let { msg ->

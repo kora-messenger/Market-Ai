@@ -8,6 +8,7 @@ const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
+const monetization = require("./src/monetization");
 const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
@@ -67,7 +68,11 @@ app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" })
             );
             const wasPremium = Boolean(rows[0].is_premium);
             await pool.query(
-              `UPDATE users SET is_premium = true WHERE id = $1`,
+              `UPDATE users
+                 SET is_premium = true,
+                     premium_started_at = COALESCE(premium_started_at, now()),
+                     premium_platform = 'paystack'
+               WHERE id = $1`,
               [rows[0].id]
             );
             console.log(`[subscription] premium activated for google_sub ${googleSub} (ref ${data.reference})`);
@@ -344,6 +349,7 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  await monetization.ensureMonetizationTables(pool);
   if (introducingQuestionnaire) {
     await pool.query(
       `UPDATE users SET questionnaire_completed_at = created_at WHERE questionnaire_completed_at IS NULL`
@@ -592,13 +598,10 @@ const TRIAL_DAYS = 7;
 const FREE_ANALYSES_PER_DAY = 3;
 
 async function analysisUsage(userId) {
-  const { rows } = await pool.query(
-    `SELECT count(*)::int AS used FROM analyses
-     WHERE user_id = $1 AND created_at > now() - interval '24 hours'`,
-    [userId]
-  );
-  const used = rows[0].used;
-  return { used, limit: FREE_ANALYSES_PER_DAY, remaining: Math.max(0, FREE_ANALYSES_PER_DAY - used) };
+  // Config-driven allowance: base free limit + rewarded-ad bonuses earned in
+  // the same rolling 24h window. Premium users never hit this path.
+  const cfg = await monetization.getMonetizationConfig(pool);
+  return monetization.analysisAllowance(pool, userId, cfg);
 }
 
 function trialInfo(row) {
@@ -1580,6 +1583,87 @@ app.get("/api/admin/premium/audit", requireAuth, async (req, res) => {
   }
 });
 
+// --- Monetization: public config + rewarded-ad unlock -----------------------
+// The whole monetization system is server-driven so limits, placements and
+// ad networks can change without an app release.
+app.get("/api/monetization/config", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const cfg = await monetization.getMonetizationConfig(pool);
+    const { rows } = await pool.query(`SELECT updated_at FROM monetization_config WHERE id = 1`);
+    res.json({ config: cfg, updatedAt: rows[0] ? rows[0].updated_at : null });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load monetization settings" });
+  }
+});
+
+// Rewarded-ad unlock: called ONLY after the ad SDK confirmed the reward was
+// earned. The server re-validates eligibility and the daily cap — the client
+// can never mint bonuses by itself.
+app.post("/api/monetization/rewarded-unlock", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    const trial = trialInfo(rows[0]);
+    const grant = await getActivePremiumGrant(rows[0].id);
+    const effectivePremium = Boolean(rows[0].is_premium) || !!grant || trial.trialActive;
+    try {
+      const result = await monetization.grantRewardedUnlock(pool, rows[0].id, {
+        isPremium: effectivePremium,
+        network: String((req.body && req.body.network) || "admob")
+      });
+      const cfg = await monetization.getMonetizationConfig(pool);
+      const usage = await monetization.analysisAllowance(pool, rows[0].id, cfg);
+      return res.json({ ...result, usage: { ...usage, unlimited: false } });
+    } catch (err) {
+      if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+      throw err;
+    }
+  } catch (err) {
+    console.error("[monetization] rewarded-unlock failed:", String(err.message || err));
+    return res.status(500).json({ error: "Could not apply the rewarded-ad bonus" });
+  }
+});
+
+// Admin: read + update the monetization configuration (no app release needed).
+app.get("/api/admin/monetization/config", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can manage monetization." });
+  }
+  try {
+    const { rows } = await pool.query(`SELECT config, updated_at, updated_by FROM monetization_config WHERE id = 1`);
+    const cfg = monetization.getMonetizationConfig
+      ? await monetization.getMonetizationConfig(pool)
+      : null;
+    res.json({ config: cfg, updatedAt: rows[0] ? rows[0].updated_at : null, updatedBy: rows[0] ? rows[0].updated_by : null });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load monetization settings" });
+  }
+});
+
+app.put("/api/admin/monetization/config", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can manage monetization." });
+  }
+  const partial = req.body && req.body.config;
+  if (!partial || typeof partial !== "object" || Array.isArray(partial)) {
+    return res.status(400).json({ error: "Body must be { config: { ... } }" });
+  }
+  try {
+    const result = await monetization.updateMonetizationConfig(pool, partial, req.session.email || "admin");
+    res.json(result);
+  } catch (err) {
+    console.error("[admin-monetization] update failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not update monetization settings" });
+  }
+});
+
 app.get("/api/admin/members", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!(await isAdminRequest(req))) {
@@ -2049,6 +2133,8 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
       : trial.trialActive ? "trial"
       : "free";
     const effectivePremium = Boolean(rows[0].is_premium) || !!grant || trial.trialActive;
+    const mcfg = await monetization.getMonetizationConfig(pool);
+    const adState = monetization.adEligibility(mcfg, effectivePremium);
     if (effectivePremium) {
       return res.json({
         ...trial,
@@ -2061,11 +2147,13 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
           reason: grant.reason,
           grantedAt: grant.granted_at
         } : null,
-        analysisUsage: { used: null, limit: null, remaining: null, unlimited: true }
+        analysisUsage: { used: null, limit: null, remaining: null, unlimited: true },
+        adsEnabled: adState.adsEnabled,
+        rewardedAvailable: adState.rewardedAvailable
       });
     }
     const usage = await analysisUsage(rows[0].id);
-    return res.json({ ...trial, plan, analysisUsage: { ...usage, unlimited: false } });
+    return res.json({ ...trial, plan, ...adState, analysisUsage: { ...usage, unlimited: false } });
   } catch (err) {
     return res.status(500).json({ error: "Could not load trial status", detail: String(err.message || err) });
   }

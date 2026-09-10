@@ -260,6 +260,11 @@ fun SavedScreen(
             }
         }
 
+        // Adaptive banner slot (OFF by default server-side; only renders for
+        // free users when placements.banner.enabled is switched on in config).
+        item {
+            com.veltravia.marketscopeai.monetization.BannerAdSlot(surface = "saved")
+        }
         item { Spacer(Modifier.height(24.dp)) }
     }
 }

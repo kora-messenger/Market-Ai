@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -229,11 +230,17 @@ fun CalendarScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(news.orEmpty()) { item ->
+                    itemsIndexed(news.orEmpty()) { index, item ->
                         NewsCard(item = item, onOpen = {
                             // Open the publisher's article in the real browser.
                             context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(item.link)))
                         })
+                        // Feed-native advertisement for free users, clearly
+                        // labeled, server-configured frequency. Premium users
+                        // and ad-disabled configs render nothing at all.
+                        if (com.veltravia.marketscopeai.monetization.AdManager.shouldShowNativeAt(index)) {
+                            com.veltravia.marketscopeai.monetization.NativeAdCard()
+                        }
                     }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
