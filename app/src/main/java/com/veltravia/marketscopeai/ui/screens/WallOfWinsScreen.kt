@@ -57,6 +57,7 @@ import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.UserAvatar
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -147,10 +148,13 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
             loadError != null -> Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(loadError!!, fontSize = 13.sp, color = BearRed)
                 Spacer(Modifier.height(10.dp))
-                Button(
+                GradientPrimaryButton(
+                    text = "Retry",
+                    enabled = true,
                     onClick = { loading = true; loadError = null; wins.clear(); retryKey++ },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = Color.White)
-                ) { Text("Retry") }
+                    height = 44.dp,
+                    showArrow = false
+                )
             }
             wins.isEmpty() -> Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = BullGreen, modifier = Modifier.size(34.dp))

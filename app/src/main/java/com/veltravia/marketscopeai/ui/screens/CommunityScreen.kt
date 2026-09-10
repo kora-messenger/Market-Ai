@@ -56,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -86,6 +87,11 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.RoleBadge
 import com.veltravia.marketscopeai.ui.UserAvatar
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumGradientBrush
+import com.veltravia.marketscopeai.ui.components.pressScale
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.drawBehind
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -708,12 +714,13 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                         Spacer(Modifier.height(6.dp))
                         Text(msg, fontSize = 13.sp, color = TextMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         Spacer(Modifier.height(18.dp))
-                        androidx.compose.material3.Button(
+                        GradientPrimaryButton(
+                            text = "Retry",
+                            enabled = true,
                             onClick = { load(reset = true) },
-                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                        ) {
-                            Text("Retry", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.SemiBold)
-                        }
+                            height = 44.dp,
+                            showArrow = false
+                        )
                     }
                 } else {
                     Surface(
@@ -1229,32 +1236,37 @@ private fun PostComposer(
             Spacer(Modifier.height(10.dp))
             Row {
                 Spacer(Modifier.weight(1f))
-                Surface(
-                    color = AccentCyan,
-                    shape = RoundedCornerShape(12.dp),
-                    onClick = onPublish,
-                    enabled = !publishing && (
-                        (mode == "text" && text.text.isNotBlank()) ||
-                        (mode == "poll" && text.text.isNotBlank() && pollOptions.count { it.text.isNotBlank() } >= 2)
-                    )
+                val composeEnabled = !publishing && (
+                    (mode == "text" && text.text.isNotBlank()) ||
+                    (mode == "poll" && text.text.isNotBlank() && pollOptions.count { it.text.isNotBlank() } >= 2)
+                )
+                val composeInteraction = remember { MutableInteractionSource() }
+                val composeGradient = PremiumGradientBrush
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .pressScale(composeInteraction, downScale = 0.95f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .drawBehind { drawRect(brush = composeGradient, alpha = if (composeEnabled) 1f else 0.4f) }
+                        .clickable(
+                            interactionSource = composeInteraction,
+                            indication = rememberRipple(),
+                            enabled = composeEnabled
+                        ) { onPublish() }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        if (publishing) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(
-                                if (mode == "poll") Icons.Filled.HowToVote else Icons.Filled.Send,
-                                contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                if (mode == "poll") "Publish poll" else "Publish",
-                                fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White
-                            )
-                        }
+                    if (publishing) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            if (mode == "poll") Icons.Filled.HowToVote else Icons.Filled.Send,
+                            contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (mode == "poll") "Publish poll" else "Publish",
+                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White
+                        )
                     }
                 }
             }

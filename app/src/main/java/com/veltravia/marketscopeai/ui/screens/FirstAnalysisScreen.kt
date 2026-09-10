@@ -60,6 +60,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
@@ -252,12 +253,16 @@ fun FirstAnalysisScreen(
             Spacer(Modifier.height(10.dp))
         }
 
-        Button(
+        GradientPrimaryButton(
+            text = "Analyze",
+            enabled = !loading && instrument != null && imageH4 != null && imageM15 != null,
+            loading = loading,
+            height = 54.dp,
             onClick = {
                 val inst = instrument
                 val h4 = imageH4
                 val m15 = imageM15
-                if (inst == null || h4 == null || m15 == null) return@Button
+                if (inst == null || h4 == null || m15 == null) return@GradientPrimaryButton
                 loading = true
                 error = null
                 scope.launch {
@@ -291,29 +296,8 @@ fun FirstAnalysisScreen(
                         error = e.message ?: "Analysis failed"
                     }
                 }
-            },
-            enabled = !loading && instrument != null && imageH4 != null && imageM15 != null,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = AccentCyan,
-                contentColor = Color(0xFF06202A)
-            )
-        ) {
-            if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = Color(0xFF06202A),
-                    strokeWidth = 2.dp
-                )
-                Spacer(Modifier.width(10.dp))
-                Text("Analyzing your charts…", fontWeight = FontWeight.SemiBold)
-            } else {
-                Text("Analyze", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
-        }
+        )
 
         Spacer(Modifier.height(18.dp))
 

@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
@@ -265,27 +266,22 @@ fun ShareWinSheet(
             }
 
             Spacer(Modifier.height(14.dp))
-            Button(
+            PremiumSecondaryButton(
+                text = "Share now",
                 onClick = { submit() },
                 enabled = !sending,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = BullGreen)
-            ) {
-                if (sending) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Share now", fontWeight = FontWeight.SemiBold, color = Color.White)
-                }
-            }
+                loading = sending,
+                containerColor = BullGreen,
+                contentColor = Color.White,
+                borderColor = BullGreen,
+                height = 48.dp
+            )
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(
+            PremiumSecondaryButton(
+                text = "Share my win to apps",
                 onClick = { shareToApps() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = AccentCyan)
-                Spacer(Modifier.width(6.dp))
-                Text("Share my win to apps", color = AccentCyan, fontWeight = FontWeight.Medium)
-            }
+                height = 44.dp
+            )
             Spacer(Modifier.height(10.dp))
         }
     }

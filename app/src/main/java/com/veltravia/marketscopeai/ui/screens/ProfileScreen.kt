@@ -65,6 +65,7 @@ import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.ApiConfig
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -441,33 +442,25 @@ private fun DeleteAccountSheet(
 
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
+                PremiumSecondaryButton(
+                    text = "Cancel",
                     onClick = onDismiss,
                     enabled = !busy,
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
-                ) {
-                    Text("Cancel", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-                }
-                Button(
+                    modifier = Modifier.weight(1f),
+                    height = 48.dp,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                PremiumSecondaryButton(
+                    text = "Delete Account",
                     onClick = onConfirm,
                     enabled = canDelete,
-                    modifier = Modifier.weight(1f).height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BearRed,
-                        contentColor = Color.White,
-                        disabledContainerColor = BearRed.copy(alpha = 0.35f),
-                        disabledContentColor = Color.White.copy(alpha = 0.7f)
-                    )
-                ) {
-                    if (busy) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                    } else {
-                        Text("Delete Account", fontWeight = FontWeight.Bold)
-                    }
-                }
+                    modifier = Modifier.weight(1f),
+                    containerColor = BearRed,
+                    contentColor = Color.White,
+                    borderColor = BearRed,
+                    height = 48.dp,
+                    shape = RoundedCornerShape(12.dp)
+                )
             }
         }
     }

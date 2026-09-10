@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
@@ -189,7 +191,8 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
             NumberField(stop, { stop = it }, "Stop", Modifier.weight(1f))
         }
         Spacer(Modifier.height(10.dp))
-        OutlinedButton(
+        PremiumSecondaryButton(
+            text = "Generate stoploss distance",
             onClick = {
                 val e = parse(entry); val s = parse(stop)
                 val ps = instrument?.pointSize ?: Double.NaN
@@ -198,11 +201,9 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
                     result = null
                 }
             },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = instrument != null
-        ) {
-            Text("Generate stoploss distance")
-        }
+            enabled = instrument != null,
+            height = 44.dp
+        )
 
         Spacer(Modifier.height(16.dp))
         Text("Stop loss distance (points)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
@@ -228,7 +229,9 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(22.dp))
-        Button(
+        GradientPrimaryButton(
+            text = "Calculate position size",
+            enabled = instrument != null,
             onClick = {
                 val cap = parse(capital)
                 val d = parse(distance)
@@ -238,7 +241,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
                 val ps = instrument?.pointSize ?: Double.NaN
                 if (cap.isNaN() || d.isNaN() || rp.isNaN() || cs.isNaN() || ps.isNaN() || cap <= 0 || d <= 0 || rp <= 0 || ex <= 0) {
                     result = null
-                    return@Button
+                    return@GradientPrimaryButton
                 }
                 val riskAmount = cap * rp / 100.0
                 val pipValueInQuote = cs * ps
@@ -246,12 +249,8 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
                 val lots = riskAmount / (d * pipValueUsd)
                 result = CalcResult(lots = lots, units = lots * cs, riskAmount = riskAmount)
             },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-            enabled = instrument != null
-        ) {
-            Text("Calculate position size", fontWeight = FontWeight.SemiBold)
-        }
+            height = 48.dp
+        )
 
         result?.let { r ->
             Spacer(Modifier.height(16.dp))

@@ -64,6 +64,8 @@ import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.InstrumentCatalog
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
@@ -175,13 +177,13 @@ fun SignalCardScreen(
         if (continueCta != null) {
             Spacer(Modifier.height(20.dp))
             val (label, action) = continueCta
-            Button(
+            GradientPrimaryButton(
+                text = label,
+                enabled = true,
                 onClick = action,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text(label, fontWeight = FontWeight.SemiBold)
-            }
+                height = 48.dp,
+                showArrow = true
+            )
         }
 
         Spacer(Modifier.height(8.dp))
@@ -302,21 +304,15 @@ private fun TradeAnalysisBody(
     // --- Lot-size calculator entry ---
     if (!noTrade) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Button(
+            GradientPrimaryButton(
+                text = "Get lotsize for this trade",
+                enabled = true,
                 onClick = { showLotSheet = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(50)),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AccentCyan,
-                    contentColor = Color(0xFF06202A)
-                ),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 14.dp)
-            ) {
-                Icon(Icons.Filled.Calculate, contentDescription = null, tint = Color(0xFF06202A), modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Get lotsize for this trade", color = Color(0xFF06202A), fontWeight = FontWeight.SemiBold)
-            }
+                height = 48.dp,
+                showArrow = false,
+                shape = RoundedCornerShape(50),
+                leadingIcon = Icons.Filled.Calculate
+            )
             Spacer(Modifier.height(8.dp))
             Text(
                 "Sizing uses the AI's entry & stop — adjust your risk to your own comfort.",
@@ -541,7 +537,8 @@ private fun LotSizeSheet(
             }
             Spacer(Modifier.height(10.dp))
 
-            OutlinedButton(
+            PremiumSecondaryButton(
+                text = "Generate stoploss distance",
                 onClick = {
                     // Real computation from the instrument's actual point size:
                     // distance (points) = |entry - stop| / pointSize
@@ -553,10 +550,8 @@ private fun LotSizeSheet(
                         result = null
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Generate stoploss distance")
-            }
+                height = 44.dp
+            )
             Spacer(Modifier.height(10.dp))
 
             SheetField(distance, { distance = it; result = null }, "Stop loss distance (points)", Modifier.fillMaxWidth())
@@ -576,7 +571,9 @@ private fun LotSizeSheet(
                 Spacer(Modifier.height(10.dp))
             }
 
-            Button(
+            GradientPrimaryButton(
+                text = "Calculate position size",
+                enabled = true,
                 onClick = {
                     val d = parse(distance)
                     val rp = parse(riskPct)
@@ -585,7 +582,7 @@ private fun LotSizeSheet(
                     val ps = instrument?.pointSize ?: Double.NaN
                     if (d.isNaN() || rp.isNaN() || cs.isNaN() || ps.isNaN() || d <= 0 || rp <= 0 || ex <= 0) {
                         result = null
-                        return@Button
+                        return@GradientPrimaryButton
                     }
                     // Worked formula (USD/JPY example in comments):
                     //  riskAmount = capital * riskPct/100          → $10,000 * 1% = $100
@@ -602,11 +599,8 @@ private fun LotSizeSheet(
                         riskAmount = riskAmount
                     )
                 },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text("Calculate position size", fontWeight = FontWeight.SemiBold)
-            }
+                height = 48.dp
+            )
             Spacer(Modifier.height(14.dp))
 
             result?.let { r ->

@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BullGreen
@@ -231,31 +233,15 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
 
         Spacer(Modifier.height(24.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(if (joining) AccentViolet.copy(alpha = 0.6f) else AccentViolet)
-                .clickable(enabled = !joining) { proceed() }
-                .padding(vertical = 16.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (joining) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = Color.White
-                )
-            } else {
-                Text(
-                    text = if (alreadyJoined) "Continue" else "Start your trading journey",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
-                )
-            }
-        }
+        GradientPrimaryButton(
+            text = if (alreadyJoined) "Continue" else "Start your trading journey",
+            enabled = !joining,
+            loading = joining,
+            onClick = { proceed() },
+            showArrow = !alreadyJoined,
+            shape = RoundedCornerShape(50),
+            height = 52.dp
+        )
 
         Spacer(Modifier.height(48.dp))
     }

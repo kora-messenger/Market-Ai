@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.domain.ProjectionEngine
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
@@ -134,24 +136,14 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
 
         Spacer(Modifier.height(28.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(
-                    Brush.horizontalGradient(listOf(AccentViolet, AccentCyan))
-                )
-                .clickable { onContinue() }
-                .padding(vertical = 16.dp),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Analyze Now!",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
-            )
-        }
+        GradientPrimaryButton(
+            text = "Analyze Now!",
+            enabled = true,
+            onClick = { onContinue() },
+            showArrow = true,
+            shape = RoundedCornerShape(50),
+            height = 54.dp
+        )
 
         Spacer(Modifier.height(40.dp))
     }

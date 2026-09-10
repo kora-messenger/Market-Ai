@@ -61,6 +61,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumChoicePill
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -323,32 +325,14 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        // Timeframe chips
+        // Timeframe chips — premium pills with the shared gradient identity
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             INTERVALS.forEach { tf ->
-                val selected = tf == interval
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .then(
-                            if (selected) Modifier.background(Brush.horizontalGradient(listOf(AccentCyan, AccentViolet)))
-                            else Modifier
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (selected) Color.Transparent else BorderSubtle,
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                        .clickable { interval = tf }
-                        .padding(horizontal = 14.dp, vertical = 7.dp)
-                ) {
-                    Text(
-                        tf.uppercase(),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (selected) Color.White else TextSecondary
-                    )
-                }
+                PremiumChoicePill(
+                    option = tf.uppercase(),
+                    isSelected = tf == interval,
+                    onSelect = { interval = tf }
+                )
             }
         }
 
@@ -376,10 +360,13 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                 ) {
                     Text("TradingView could not be reached and live candles are temporarily unavailable.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                     Spacer(Modifier.height(12.dp))
-                    Button(
+                    GradientPrimaryButton(
+                        text = "Retry",
+                        enabled = true,
                         onClick = { retryKey++ },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, contentColor = Color.White)
-                    ) { Text("Retry") }
+                        height = 44.dp,
+                        showArrow = false
+                    )
                 }
                 shown == null -> Column(modifier = Modifier.fillMaxWidth()) {
                     repeat(3) { i ->
@@ -409,10 +396,13 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                         interval = interval
                     )
                     Spacer(Modifier.height(10.dp))
-                    Button(
+                    GradientPrimaryButton(
+                        text = if (tvEverFailed) "Try TradingView again" else "View on TradingView",
+                        enabled = true,
                         onClick = { tvRetryKey++; tvFailed = false },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentViolet, contentColor = Color.White)
-                    ) { Text(if (tvEverFailed) "Try TradingView again" else "View on TradingView") }
+                        height = 44.dp,
+                        showArrow = false
+                    )
                 }
             }
         } else {

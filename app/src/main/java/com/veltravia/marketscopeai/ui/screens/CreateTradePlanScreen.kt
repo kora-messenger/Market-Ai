@@ -47,6 +47,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -206,9 +207,12 @@ fun CreateTradePlanScreen(onBack: () -> Unit, onSaved: () -> Unit) {
         }
 
         Spacer(Modifier.height(24.dp))
-        Button(
+        GradientPrimaryButton(
+            text = "Save Trade Plan",
+            enabled = canSave,
+            loading = saving,
             onClick = {
-                val inst = instrument ?: return@Button
+                val inst = instrument ?: return@GradientPrimaryButton
                 saving = true
                 error = null
                 scope.launch {
@@ -234,16 +238,8 @@ fun CreateTradePlanScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                     }
                 }
             },
-            enabled = canSave,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = AccentViolet)
-        ) {
-            if (saving) {
-                CircularProgressIndicator(modifier = Modifier.height(20.dp), color = androidx.compose.ui.graphics.Color.White, strokeWidth = 2.dp)
-            } else {
-                Text("Save Trade Plan", fontWeight = FontWeight.SemiBold)
-            }
-        }
+            height = 50.dp
+        )
         Spacer(Modifier.height(32.dp))
     }
 }

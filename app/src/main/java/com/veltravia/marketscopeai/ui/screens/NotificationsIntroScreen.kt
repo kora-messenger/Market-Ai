@@ -44,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
@@ -153,32 +155,24 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
 
         Spacer(Modifier.height(32.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(if (requesting) AccentViolet.copy(alpha = 0.6f) else AccentViolet)
-                .clickable(enabled = !requesting) {
-                    if (alreadyGranted()) {
-                        SessionManager.setNotificationsPromptShown(context, true)
-                        SessionManager.setNotificationsEnabled(context, true)
-                        onDone()
-                    } else {
-                        requesting = true
-                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
+        GradientPrimaryButton(
+            text = "Enable notifications",
+            enabled = !requesting,
+            loading = requesting,
+            onClick = {
+                if (alreadyGranted()) {
+                    SessionManager.setNotificationsPromptShown(context, true)
+                    SessionManager.setNotificationsEnabled(context, true)
+                    onDone()
+                } else {
+                    requesting = true
+                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
-                .padding(vertical = 16.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Enable notifications",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
-            )
-        }
+            },
+            showArrow = false,
+            shape = RoundedCornerShape(50),
+            height = 52.dp
+        )
 
         Spacer(Modifier.height(16.dp))
 

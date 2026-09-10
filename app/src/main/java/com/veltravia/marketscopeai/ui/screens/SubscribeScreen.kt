@@ -49,6 +49,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
@@ -300,7 +302,11 @@ fun SubscribeScreen(
                 }
 
                 if (!isPremium) {
-                    Button(
+                    GradientPrimaryButton(
+                        text = "Subscribe",
+                        enabled = !busy,
+                        loading = busy,
+                        height = 54.dp,
                         onClick = {
                             busy = true
                             statusMessage = null
@@ -323,39 +329,16 @@ fun SubscribeScreen(
                                     statusMessage = e.message ?: "Checkout could not start. Please try again."
                                 }
                             }
-                        },
-                        enabled = !busy,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(54.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AccentCyan,
-                            contentColor = Color(0xFF06202A)
-                        )
-                    ) {
-                        if (busy) {
-                            CircularProgressIndicator(color = Color(0xFF06202A), modifier = Modifier.size(22.dp))
-                        } else {
-                            Text("Subscribe", fontWeight = FontWeight.Bold)
                         }
-                    }
+                    )
 
                     Spacer(Modifier.height(12.dp))
 
-                    Button(
+                    PremiumSecondaryButton(
+                        text = "Check subscription status",
                         onClick = { refreshStatus() },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SurfaceLight,
-                            contentColor = TextPrimary
-                        )
-                    ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Check subscription status")
-                    }
+                        height = 46.dp
+                    )
                 }
             }
 

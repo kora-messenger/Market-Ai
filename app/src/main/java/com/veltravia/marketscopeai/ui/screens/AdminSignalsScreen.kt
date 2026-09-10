@@ -55,6 +55,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -477,15 +478,18 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(16.dp))
-        Button(
+        GradientPrimaryButton(
+            text = "Publish Signal",
+            enabled = instrument != null && !saving,
+            loading = saving,
             onClick = {
-                val inst = instrument ?: return@Button
+                val inst = instrument ?: return@GradientPrimaryButton
                 val e = entry.toDoubleOrNull()
                 val sl = stopLoss.toDoubleOrNull()
                 val tps = listOfNotNull(tp1.toDoubleOrNull(), tp2.toDoubleOrNull(), tp3.toDoubleOrNull())
                 if (e == null || sl == null || tps.isEmpty()) {
                     formError = "Entry, stop loss and at least one TP are required"
-                    return@Button
+                    return@GradientPrimaryButton
                 }
                 formError = null
                 saving = true
@@ -504,13 +508,8 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
                     }
                 }
             },
-            enabled = instrument != null && !saving,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = AccentViolet)
-        ) {
-            if (saving) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
-            else Text("Publish Signal", fontWeight = FontWeight.SemiBold)
-        }
+            height = 48.dp
+        )
 
         Spacer(Modifier.height(28.dp))
 

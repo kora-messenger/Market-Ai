@@ -55,6 +55,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.TextMuted
@@ -169,11 +170,15 @@ fun ChartUploadScreen(
             Spacer(Modifier.height(8.dp))
         }
 
-        Button(
+        GradientPrimaryButton(
+            text = "Run AI Analysis",
+            enabled = !loading && imageH4 != null && imageM15 != null,
+            loading = loading,
+            height = 52.dp,
             onClick = {
                 val h4 = imageH4
                 val m15 = imageM15
-                if (h4 == null || m15 == null) return@Button
+                if (h4 == null || m15 == null) return@GradientPrimaryButton
                 loading = true
                 error = null
                 scope.launch {
@@ -203,31 +208,8 @@ fun ChartUploadScreen(
                         error = e.message ?: "Analysis failed"
                     }
                 }
-            },
-            enabled = !loading && imageH4 != null && imageM15 != null,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = AccentCyan,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        ) {
-            if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp
-                )
-                Spacer(Modifier.width(10.dp))
-                Text("Analyzing charts…", fontWeight = FontWeight.SemiBold)
-            } else {
-                Icon(Icons.Filled.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Run AI Analysis", fontWeight = FontWeight.SemiBold)
             }
-        }
+        )
 
         Spacer(Modifier.height(8.dp))
         Text(

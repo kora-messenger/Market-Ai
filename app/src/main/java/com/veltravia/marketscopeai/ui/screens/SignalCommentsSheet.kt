@@ -63,6 +63,11 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.RoleBadge
 import com.veltravia.marketscopeai.ui.UserAvatar
+import com.veltravia.marketscopeai.ui.components.PremiumGradientBrush
+import com.veltravia.marketscopeai.ui.components.pressScale
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.material.ripple.rememberRipple
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -445,16 +450,25 @@ fun SignalCommentsSheet(
                                         Text("Cancel", fontSize = 12.sp, color = TextMuted)
                                     }
                                     Spacer(Modifier.weight(1f))
-                                    Surface(
-                                        color = AccentViolet,
-                                        shape = RoundedCornerShape(10.dp),
-                                        onClick = { postUpdate(replyTo) },
-                                        enabled = updateInput.text.isNotBlank()
+                                    val postEnabled = updateInput.text.isNotBlank()
+                                    val postInteraction = remember { MutableInteractionSource() }
+                                    val postGradient = PremiumGradientBrush
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .pressScale(postInteraction, downScale = 0.95f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .drawBehind { drawRect(brush = postGradient, alpha = if (postEnabled) 1f else 0.4f) }
+                                            .clickable(
+                                                interactionSource = postInteraction,
+                                                indication = rememberRipple(),
+                                                enabled = postEnabled
+                                            ) { postUpdate(replyTo) }
+                                            .padding(horizontal = 16.dp, vertical = 7.dp)
                                     ) {
                                         Text(
                                             "Post",
-                                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)
+                                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White
                                         )
                                     }
                                 }
@@ -627,16 +641,24 @@ fun SignalCommentsSheet(
                     }
                 }
                 Spacer(Modifier.width(8.dp))
-                Surface(
-                    color = AccentCyan,
-                    shape = RoundedCornerShape(14.dp),
-                    onClick = { sendComment() },
-                    enabled = !sending && input.text.isNotBlank()
+                val sendEnabled = !sending && input.text.isNotBlank()
+                val sendInteraction = remember { MutableInteractionSource() }
+                val sendGradient = PremiumGradientBrush
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .pressScale(sendInteraction, downScale = 0.9f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .drawBehind { drawRect(brush = sendGradient, alpha = if (sendEnabled) 1f else 0.4f) }
+                        .clickable(
+                            interactionSource = sendInteraction,
+                            indication = rememberRipple(),
+                            enabled = sendEnabled
+                        ) { sendComment() }
                 ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(44.dp)) {
-                        if (sending) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Filled.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
+                    if (sending) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Filled.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
             Spacer(Modifier.height(6.dp))

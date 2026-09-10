@@ -16,12 +16,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -207,7 +212,10 @@ fun GradientPrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     height: Dp = 54.dp,
-    showArrow: Boolean = true
+    showArrow: Boolean = true,
+    shape: RoundedCornerShape = RoundedCornerShape(14.dp),
+    loading: Boolean = false,
+    leadingIcon: ImageVector? = null
 ) {
     val interaction = remember { MutableInteractionSource() }
     val view = LocalView.current
@@ -242,7 +250,7 @@ fun GradientPrimaryButton(
             .fillMaxWidth()
             .height(height)
             .pressScale(interaction, downScale = 0.98f)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(shape)
             .background(SurfaceDark)
             .drawBehind { drawRect(brush = gradient, alpha = enabledAlpha) }
             .drawWithContent {
@@ -274,21 +282,38 @@ fun GradientPrimaryButton(
                 }
             }
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = contentColor
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
+                color = Color.White
             )
-            if (showArrow) {
-                Spacer(Modifier.width(8.dp))
-                Icon(
-                    Icons.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(18.dp)
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (leadingIcon != null) {
+                    Icon(
+                        leadingIcon,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(
+                    text,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = contentColor
                 )
+                if (showArrow) {
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        Icons.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
@@ -353,5 +378,187 @@ fun StaggeredBlock(key: Any, index: Int, content: @Composable () -> Unit) {
         }
     ) {
         content()
+    }
+}
+
+/** One tab of the premium bottom bar: filled icon when active, outlined at rest. */
+data class PremiumTab(
+    val label: String,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector
+)
+
+/**
+ * Premium bottom tab bar: white surface, thin top border, gradient pill that
+ * fades in behind the active icon with a spring pop, animated label colors,
+ * and a light haptic tick on every switch. Replaces the stock M3
+ * NavigationBar on the main screen.
+ */
+@Composable
+fun PremiumTabBar(
+    tabs: List<PremiumTab>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val view = LocalView.current
+    val gradient = PremiumGradientBrush
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .navigationBarsPadding()
+    ) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(BorderSubtle))
+        Row(Modifier.fillMaxWidth().height(64.dp)) {
+            tabs.forEachIndexed { index, tab ->
+                val isSelected = selected == index
+                val gradientAlpha by animateFloatAsState(
+                    targetValue = if (isSelected) 1f else 0f,
+                    animationSpec = tween(220),
+                    label = "tabPill$index"
+                )
+                val iconTint by animateColorAsState(
+                    targetValue = if (isSelected) Color.White else TextSecondary,
+                    animationSpec = tween(200),
+                    label = "tabIcon$index"
+                )
+                val labelTint by animateColorAsState(
+                    targetValue = if (isSelected) AccentViolet else TextMuted,
+                    animationSpec = tween(200),
+                    label = "tabLabel$index"
+                )
+                // Pop the icon whenever this tab becomes active.
+                val pop = remember { Animatable(1f) }
+                LaunchedEffect(isSelected) {
+                    if (isSelected) {
+                        pop.snapTo(0.8f)
+                        pop.animateTo(
+                            1f,
+                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                        )
+                    }
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            onSelect(index)
+                        },
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .graphicsLayer {
+                                scaleX = pop.value
+                                scaleY = pop.value
+                            }
+                            .clip(RoundedCornerShape(50))
+                            .drawBehind { drawRect(brush = gradient, alpha = gradientAlpha) }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                            contentDescription = tab.label,
+                            tint = iconTint,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        tab.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = labelTint
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Premium secondary button: solid surface fill with a hairline border,
+ * spring squash on press, haptic tick, animated content color. Pass a red
+ * container/content pair for destructive actions — same motion, honest
+ * color semantics.
+ */
+@Composable
+fun PremiumSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    containerColor: Color = Color.White,
+    contentColor: Color = TextPrimary,
+    borderColor: Color = BorderSubtle,
+    height: Dp = 48.dp,
+    showArrow: Boolean = false,
+    shape: RoundedCornerShape = RoundedCornerShape(14.dp),
+    loading: Boolean = false
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val view = LocalView.current
+    val tint by animateColorAsState(
+        targetValue = if (enabled) contentColor else TextMuted,
+        animationSpec = tween(200),
+        label = "secondaryContent"
+    )
+    val borderTint by animateColorAsState(
+        targetValue = if (enabled) borderColor else BorderSubtle,
+        animationSpec = tween(200),
+        label = "secondaryBorder"
+    )
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .pressScale(interaction, downScale = 0.97f)
+            .clip(shape)
+            .background(containerColor)
+            .border(1.dp, borderTint, RoundedCornerShape(14.dp))
+            .clickable(
+                interactionSource = interaction,
+                indication = rememberRipple()
+            ) {
+                if (enabled) {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    onClick()
+                }
+            }
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = tint
+            )
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = tint
+                )
+                if (showArrow) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
     }
 }
