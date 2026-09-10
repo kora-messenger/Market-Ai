@@ -66,6 +66,7 @@ import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
+import com.veltravia.marketscopeai.ui.theme.TextPrimary
 
 /**
  * The app's single premium interaction identity: one violet→cyan gradient
