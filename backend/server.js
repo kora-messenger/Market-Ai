@@ -84,6 +84,10 @@ app.use(express.json({ limit: "25mb" }));
 
 const PORT = process.env.PORT || 3000;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+// Primary AI provider (fallback: OpenRouter above). Model is env-swappable so
+// we can move to newer OpenAI generations without a code change.
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
+const OPENAI_MODEL = process.env.OPENAI_ANALYSIS_MODEL || "gpt-4o";
 
 /** Calls OpenRouter with one automatic retry for transient upstream failures
  *  (429 rate-limited, or a 5xx from the model provider) — these are common
@@ -124,6 +128,72 @@ async function callOpenRouter(payload, label) {
     return { ok: false, status: lastStatus, detail: lastDetail };
   }
   return { ok: false, status: lastStatus, detail: lastDetail };
+}
+
+/** Calls OpenAI (chat completions) with the same retry semantics as
+ *  callOpenRouter. Accepts the OpenRouter-style payload and translates it:
+ *  - strips the OpenRouter-only `reasoning` object
+ *  - swaps in the OpenAI model (OPENAI_ANALYSIS_MODEL, default gpt-4o)
+ *  - newer reasoning models (gpt-5 family / o-series) require max_completion_tokens
+ *    instead of max_tokens; handled automatically. */
+async function callOpenAI(payload, label) {
+  const { model: _orModel, reasoning: _reasoning, ...rest } = payload;
+  const body = { ...rest, model: OPENAI_MODEL };
+  if (/^(gpt-5|o[134])/.test(OPENAI_MODEL)) {
+    delete body.max_tokens;
+    if (payload.max_tokens != null) body.max_completion_tokens = payload.max_tokens;
+    body.reasoning_effort = "low";
+  }
+  const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
+  let lastStatus = 0;
+  let lastDetail = "";
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    let response;
+    try {
+      response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (err) {
+      lastStatus = 0;
+      lastDetail = String(err.message || err);
+      console.error(`[openai:${label}] network error (attempt ${attempt}):`, lastDetail);
+      if (attempt === 1) { await new Promise(r => setTimeout(r, 1200)); continue; }
+      return { ok: false, status: 0, detail: lastDetail, provider: "openai" };
+    }
+    if (response.ok) return { ok: true, response, provider: "openai" };
+    lastStatus = response.status;
+    lastDetail = (await response.text()).slice(0, 500);
+    console.error(`[openai:${label}] HTTP ${lastStatus} (attempt ${attempt}):`, lastDetail);
+    if (lastStatus === 429) {
+      console.error(`[openai:${label}] QUOTA/RATE LIMIT — check plan and billing at https://platform.openai.com/usage`);
+    }
+    if (attempt === 1 && RETRYABLE.has(lastStatus)) {
+      await new Promise(r => setTimeout(r, 1200));
+      continue;
+    }
+    return { ok: false, status: lastStatus, detail: lastDetail, provider: "openai" };
+  }
+  return { ok: false, status: lastStatus, detail: lastDetail, provider: "openai" };
+}
+
+/** Unified AI call: OpenAI first, OpenRouter as automatic fallback.
+ *  Same { ok, response, status, detail } contract as callOpenRouter. */
+async function callAI(payload, label) {
+  if (OPENAI_API_KEY) {
+    const r = await callOpenAI(payload, label);
+    if (r.ok) return r;
+    console.error(
+      `[ai:${label}] OpenAI attempt failed (HTTP ${r.status}) — falling back to OpenRouter:`,
+      String(r.detail).slice(0, 200)
+    );
+  }
+  if (OPENROUTER_API_KEY) return callOpenRouter(payload, label);
+  return { ok: false, status: 0, detail: "No AI provider configured (set OPENAI_API_KEY and/or OPENROUTER_API_KEY)" };
 }
 
 const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || "";
@@ -475,7 +545,8 @@ app.get("/health", async (_req, res) => {
     databaseError: null,
     fcm: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
     googleAuth: Boolean(GOOGLE_WEB_CLIENT_ID),
-    analysis: Boolean(OPENROUTER_API_KEY)
+    analysis: Boolean(OPENAI_API_KEY || OPENROUTER_API_KEY),
+    analysisProvider: OPENAI_API_KEY ? "openai" : (OPENROUTER_API_KEY ? "openrouter" : null)
   };
   // Real connectivity check: env presence is NOT enough — a bad host or
   // dead route would otherwise show green while every DB query fails.
@@ -1364,9 +1435,9 @@ function extractJson(text) {
 }
 
 app.post("/api/analyze", requireAuth, async (req, res) => {
-  if (!OPENROUTER_API_KEY) {
+  if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
     return res.status(503).json({
-      error: "Analysis engine is not configured yet. Add OPENROUTER_API_KEY."
+      error: "Analysis engine is not configured yet. Add OPENAI_API_KEY or OPENROUTER_API_KEY."
     });
   }
   if (!pool) {
@@ -1443,7 +1514,7 @@ Respond ONLY with JSON:
     : "";
   let validation;
   try {
-    const vResult = await callOpenRouter({
+    const vResult = await callAI({
       model: ANALYSIS_MODEL,
       max_tokens: 1500,
       reasoning: { effort: "low" },
@@ -1497,7 +1568,7 @@ Respond ONLY with JSON:
 
   // --- Stage 3: the real analysis, anchored to the verified live market ---
   try {
-    const orResult = await callOpenRouter({
+    const orResult = await callAI({
       model: ANALYSIS_MODEL,
       max_tokens: 2500,
       reasoning: { effort: "low" },
@@ -1524,7 +1595,7 @@ Respond ONLY with JSON:
     if (!orResult.ok) {
       const billingIssue = orResult.status === 402;
       if (billingIssue) {
-        console.error("[analyze] OPENROUTER ACCOUNT OUT OF CREDIT — top up at https://openrouter.ai/settings/credits");
+        console.error("[analyze] OPENROUTER ACCOUNT OUT OF CREDIT — top up at https://openrouter.ai/settings/credits (or set OPENAI_API_KEY as the primary provider)");
       }
       return res.status(502).json({
         error: billingIssue
@@ -2040,7 +2111,7 @@ app.post("/api/daily-signals/auto", async (req, res) => {
       return res.status(403).json({ error: "Not authorized to trigger the daily AI signal." });
     }
   }
-  if (!OPENROUTER_API_KEY) return res.status(503).json({ error: "Analysis engine is not configured yet." });
+  if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) return res.status(503).json({ error: "Analysis engine is not configured yet." });
   try {
     const { rows: existing } = await pool.query(
       `SELECT id FROM daily_signals WHERE author = 'ai' AND published_at >= CURRENT_DATE`
@@ -2148,25 +2219,19 @@ app.post("/api/daily-signals/auto", async (req, res) => {
             { role: "assistant", content: JSON.stringify(lastRawSignal) },
             { role: "user", content: `That setup breaks the hard rules: ${lastErrors.join("; ")}. Fix it — same instrument or a different one from the data — and return corrected JSON that satisfies every hard rule.` }
           ];
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: ANALYSIS_MODEL,
-          max_tokens: 2500,
-          reasoning: { effort: "low" },
-          response_format: { type: "json_object" },
-          messages
-        })
-      });
-      if (!response.ok) {
-        const detail = await response.text();
-        return res.status(502).json({ error: "Analysis provider error", status: response.status, detail: detail.slice(0, 300) });
+      const aiResult = await callAI({
+        max_tokens: 2500,
+        reasoning: { effort: "low" },
+        response_format: { type: "json_object" },
+        messages
+      }, "daily-signal");
+      if (!aiResult.ok) {
+        if (aiResult.status === 402) {
+          console.error("[daily-signal] OPENROUTER ACCOUNT OUT OF CREDIT — top up at https://openrouter.ai/settings/credits (or set OPENAI_API_KEY as primary)");
+        }
+        return res.status(502).json({ error: "Analysis provider error", status: aiResult.status, detail: String(aiResult.detail || "").slice(0, 300) });
       }
-      const data = await response.json();
+      const data = await aiResult.response.json();
       const signal = extractJson(data.choices?.[0]?.message?.content || "");
       lastRawSignal = signal;
       const result = validateSignal(signal);
@@ -3114,41 +3179,33 @@ async function guardLinks(author, body) {
   }
 
   if (toCheck.length) {
-    if (!OPENROUTER_API_KEY) {
+    if (!OPENROUTER_API_KEY && !OPENAI_API_KEY) {
       return { allowed: false, error: "Links can't be posted right now — please try again in a moment or remove the link." };
     }
     let checked = [];
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: ANALYSIS_MODEL,
-          max_tokens: 400,
-          reasoning: { effort: "low" },
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are the link safety monitor for a trading community app. Judge each link from a trading context. " +
-                "ALLOW: reputable broker/exchange sites, financial news, charting tools, educational trading content, official docs, government/central-bank sites. " +
-                "BLOCK: WhatsApp/Telegram/Discord invite links and any DM-bait, signal-selling or VIP groups, socials used to funnel users, referral/affiliate spam, " +
-                "giveaways or get-rich schemes, unverified investment/cryptocurrency platforms, URL shorteners pointing anywhere unknown, phishing or brand lookalikes, " +
-                "gambling, adult content, malware. Judge the domain AND the surrounding message. " +
-                'Respond ONLY as JSON: {"verdicts":[{"domain":"...","allowed":true|false,"reason":"short"}]} with one entry per link.'
-            },
-            {
-              role: "user",
-              content: "Links to judge:\n" + toCheck.map((c) => "- " + c.link).join("\n") +
-                "\n\nFull message for context:\n" + String(body).slice(0, 1500)
-            }
-          ]
-        })
-      });
+      const response = await callAI({
+        max_tokens: 400,
+        reasoning: { effort: "low" },
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are the link safety monitor for a trading community app. Judge each link from a trading context. " +
+              "ALLOW: reputable broker/exchange sites, financial news, charting tools, educational trading content, official docs, government/central-bank sites. " +
+              "BLOCK: WhatsApp/Telegram/Discord invite links and any DM-bait, signal-selling or VIP groups, socials used to funnel users, referral/affiliate spam, " +
+              "giveaways or get-rich schemes, unverified investment/cryptocurrency platforms, URL shorteners pointing anywhere unknown, phishing or brand lookalikes, " +
+              "gambling, adult content, malware. Judge the domain AND the surrounding message. " +
+              'Respond ONLY as JSON: {"verdicts":[{"domain":"...","allowed":true|false,"reason":"short"}]} with one entry per link.'
+          },
+          {
+            role: "user",
+            content: "Links to judge:\n" + toCheck.map((c) => "- " + c.link).join("\n") +
+              "\n\nFull message for context:\n" + String(body).slice(0, 1500)
+          }
+        ]
+      }, "link-guard");
       if (!response.ok) {
         return { allowed: false, error: "Links can't be posted right now — please try again in a moment or remove the link." };
       }
