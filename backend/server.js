@@ -88,6 +88,13 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 // we can move to newer OpenAI generations without a code change.
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_ANALYSIS_MODEL || "gpt-4o";
+// OpenRouter keeps a rotating ":free" model tier that works on an unfunded
+// account (strict upstream rate limits, lower quality than paid GPT-4o —
+// a $0 floor so analysis never hard-fails while accounts are untopped).
+// AI_FREE_MODEL="" disables the floor. Vision+JSON verified live.
+const AI_FREE_MODEL = process.env.AI_FREE_MODEL !== undefined
+  ? process.env.AI_FREE_MODEL
+  : "nex-agi/nex-n2.5-pro:free";
 
 /** Calls OpenRouter with one automatic retry for transient upstream failures
  *  (429 rate-limited, or a 5xx from the model provider) — these are common
@@ -192,7 +199,22 @@ async function callAI(payload, label) {
       String(r.detail).slice(0, 200)
     );
   }
-  if (OPENROUTER_API_KEY) return callOpenRouter(payload, label);
+  if (OPENROUTER_API_KEY) {
+    const r = await callOpenRouter(payload, label);
+    if (r.ok) return r;
+    console.error(
+      `[ai:${label}] OpenRouter paid attempt failed (HTTP ${r.status}) — trying free tier:`,
+      String(r.detail).slice(0, 200)
+    );
+    // Last resort: OpenRouter free models. Drop the paid-only knobs
+    // (response_format/reasoning) — extractJson() handles raw text anyway.
+    if (AI_FREE_MODEL) {
+      const { reasoning: _r, response_format: _f, ...freeBody } = payload;
+      const fr = await callOpenRouter({ ...freeBody, model: AI_FREE_MODEL }, `${label}:free`);
+      if (fr.ok) return fr;
+      console.error(`[ai:${label}] free tier also failed (HTTP ${fr.status})`);
+    }
+  }
   return { ok: false, status: 0, detail: "No AI provider configured (set OPENAI_API_KEY and/or OPENROUTER_API_KEY)" };
 }
 
