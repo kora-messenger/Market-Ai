@@ -128,7 +128,7 @@ fun ChartUploadScreen(
         }
 
         GradientPrimaryButton(
-            text = "Analyze Now!",
+            text = "Run AI Analysis",
             enabled = !loading && instrument != null && imageH4 != null && imageM15 != null,
             loading = loading,
             height = 54.dp,
