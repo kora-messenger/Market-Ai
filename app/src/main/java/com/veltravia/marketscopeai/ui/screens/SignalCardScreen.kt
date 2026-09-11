@@ -723,11 +723,14 @@ private fun MarketPerformanceSection(marketData: JSONObject, copy: (String) -> U
 
     fun pct(key: String): Double = marketData.optDouble(key, Double.NaN)
     fun pctText(v: Double): String = if (v.isNaN()) "—" else "${if (v > 0) "+" else ""}${trimNum(v)}%"
+    // TextPrimary is a composable-scoped getter — read it once in composable
+    // scope; local (non-composable) helpers must not touch it directly.
+    val neutralColor = TextPrimary
     fun pctColor(v: Double): Color = when {
-        v.isNaN() -> TextPrimary
+        v.isNaN() -> neutralColor
         v > 0 -> BullGreen
         v < 0 -> BearRed
-        else -> TextPrimary
+        else -> neutralColor
     }
 
     val changeToday = pct("changePctToday")
