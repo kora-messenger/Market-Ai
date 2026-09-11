@@ -456,7 +456,11 @@ fun StaggeredBlock(key: Any, index: Int, content: @Composable () -> Unit) {
             )
         )
     }
-    Box(
+    // Column, not Box: every call site passes multiple children (a heading +
+    // subtitle, or a question label + its pill row) meant to stack vertically.
+    // Box stacks children on top of each other instead — that was rendering
+    // the questionnaire's labels and pills overlapping one another.
+    Column(
         modifier = Modifier.graphicsLayer {
             alpha = progress.value
             translationY = (1f - progress.value) * 26f
