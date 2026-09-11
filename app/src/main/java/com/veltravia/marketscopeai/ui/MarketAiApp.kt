@@ -51,8 +51,10 @@ import androidx.compose.foundation.layout.width
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.PremiumTab
 import com.veltravia.marketscopeai.ui.components.PremiumTabBar
@@ -73,7 +75,6 @@ import com.veltravia.marketscopeai.ui.screens.CreateTradePlanScreen
 import com.veltravia.marketscopeai.ui.screens.ChartUploadScreen
 import com.veltravia.marketscopeai.ui.screens.FirstAnalysisScreen
 import com.veltravia.marketscopeai.ui.screens.SubscribeScreen
-import com.veltravia.marketscopeai.ui.screens.InstrumentPickerScreen
 import com.veltravia.marketscopeai.ui.screens.SignalCardScreen
 import com.veltravia.marketscopeai.ui.screens.ProfileScreen
 import com.veltravia.marketscopeai.ui.screens.ScreenshotGuideScreen
@@ -343,17 +344,10 @@ fun MarketAiApp() {
         composable("main") {
             MainTabs(navController)
         }
-        composable("picker") {
-            InstrumentPickerScreen(
-                onSelected = { instrument ->
-                    navController.navigate("upload/${instrument.id}") {
-                        popUpTo("main")
-                    }
-                },
-                onCancel = { navController.popBackStack() }
-            )
-        }
-        composable("upload/{instrumentId}") { entry ->
+        composable(
+            "upload?instrumentId={instrumentId}",
+            arguments = listOf(navArgument("instrumentId") { type = NavType.StringType; defaultValue = "" })
+        ) { entry ->
             ChartUploadScreen(
                 instrumentId = entry.arguments?.getString("instrumentId") ?: "",
                 onBack = { navController.popBackStack() },
@@ -412,7 +406,12 @@ private fun MainTabs(navController: NavHostController) {
         ) {
             when (currentTab) {
                 0 -> HomeScreen(
-                    onPickInstrument = { navController.navigate("picker") },
+                    onPickInstrument = {
+                        // Skip the full-screen "Choose Instrument" picker —
+                        // AnalyzeFlow already has its own inline instrument
+                        // picker, so landing there directly saves a screen.
+                        navController.navigate("upload") { popUpTo("main") }
+                    },
                     onSwitchTab = { index -> currentTab = index },
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
                     onOpenNotifications = { navController.navigate("notifications") },
@@ -464,7 +463,12 @@ private fun MainTabs(navController: NavHostController) {
                         .offset(y = (-20).dp)
                         .clip(RoundedCornerShape(28.dp))
                         .background(Brush.horizontalGradient(listOf(AccentCyan, AccentViolet)))
-                        .clickable { navController.navigate("picker") }
+                        .clickable {
+                            // Skip the full-screen "Choose Instrument" picker
+                            // — go straight to Analyze the market, which has
+                            // its own inline instrument picker.
+                            navController.navigate("upload") { popUpTo("main") }
+                        }
                         .padding(horizontal = 22.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
