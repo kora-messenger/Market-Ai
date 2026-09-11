@@ -2423,7 +2423,8 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "invalidation": "what would invalidate this view",
   "keyLevels": [number]
 }
-Hard rules: LONG pairs with recommendation BUY; SHORT with SELL; NO_TRADE with HOLD. All prices must be in the stock's own currency and near its real current price. Ground every claim in the provided data — never invent numbers.`;
+Hard rules: LONG pairs with recommendation BUY; SHORT with SELL; NO_TRADE with HOLD. All prices must be in the stock's own currency and near its real current price. Ground every claim in the provided data — never invent numbers.
+Critical: if the 3-month, 6-month, 1-year or YTD performance is strongly positive (double digits) but you are NOT recommending BUY, the FIRST sentence of your thesis MUST explicitly reconcile that apparent tension — e.g. explain the rally already looks priced in, that short-term momentum has stalled versus the longer-term trend, that you'd want a pullback before entering, or a valuation concern — so a trader skimming the performance numbers immediately understands why you are not chasing an already-strong stock rather than seeing a contradiction.`;
 
 app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {

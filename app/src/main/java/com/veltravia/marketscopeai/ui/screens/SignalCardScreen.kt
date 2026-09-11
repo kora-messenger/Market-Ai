@@ -383,10 +383,21 @@ private fun TradeAnalysisBody(
         Spacer(Modifier.height(16.dp))
     }
 
-    // --- Chip row: PAIR / BIAS / TIME / DATE ---
+    // --- Chip row: stocks show TICKER + EXCHANGE (their own real identity);
+    // forex/crypto keep PAIR + BIAS (their trading mode). Showing "BIAS:
+    // Stock" for every stock analysis was just the asset class repeated back
+    // — never an actual bias — and made stock results look like a reskinned
+    // forex card. ---
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        InfoChip("PAIR", instrumentDisplay, Modifier.weight(1f))
-        InfoChip("BIAS", mode.replaceFirstChar { it.uppercase() }.ifEmpty { "—" }, Modifier.weight(1f))
+        if (isStock) {
+            val ticker = instrumentDisplay.substringAfterLast('(').substringBefore(')').ifBlank { instrumentDisplay }
+            val exchange = marketData?.optString("exchange", "")?.ifBlank { "—" } ?: "—"
+            InfoChip("TICKER", ticker, Modifier.weight(1f))
+            InfoChip("EXCHANGE", exchange, Modifier.weight(1f))
+        } else {
+            InfoChip("PAIR", instrumentDisplay, Modifier.weight(1f))
+            InfoChip("BIAS", mode.replaceFirstChar { it.uppercase() }.ifEmpty { "—" }, Modifier.weight(1f))
+        }
         InfoChip("TIME", formatTimeOfDay(analyzedAt), Modifier.weight(1f))
         InfoChip("DATE", formatDate(analyzedAt), Modifier.weight(1.4f))
     }
@@ -405,7 +416,10 @@ private fun TradeAnalysisBody(
         Icon(Icons.Filled.Info, contentDescription = null, tint = GoldAmber, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(10.dp))
         Text(
-            "Tip: when price reaches your first take profit, consider moving your stop to break-even so the trade can no longer turn into a loss.",
+            if (isStock)
+                "Tip: once this stock reaches your first take profit, consider moving your stop to break-even so this position can no longer turn into a loss."
+            else
+                "Tip: when price reaches your first take profit, consider moving your stop to break-even so the trade can no longer turn into a loss.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )
@@ -430,7 +444,7 @@ private fun TradeAnalysisBody(
     val ideaLabel = when (direction) {
         "LONG" -> "Buy"
         "SHORT" -> "Sell"
-        else -> "No Trade"
+        else -> if (isStock) "Hold" else "No Trade"
     }
     val strengthLabel = when {
         confidence >= 75 -> "Strong"
@@ -500,7 +514,12 @@ private fun TradeAnalysisBody(
 
     // --- EXPLANATION ---
     if (thesis.isNotBlank()) {
-        SectionHeader("EXPLANATION")
+        val strongRecentRun = isStock && marketData != null && (
+            marketData.optDouble("perf6M", Double.NaN).let { !it.isNaN() && it > 8.0 } ||
+            marketData.optDouble("perf1Y", Double.NaN).let { !it.isNaN() && it > 15.0 } ||
+            marketData.optDouble("perfYTD", Double.NaN).let { !it.isNaN() && it > 15.0 }
+        )
+        SectionHeader(if (noTrade && strongRecentRun) "WHY NOT BUY DESPITE THE GAINS?" else "EXPLANATION")
         Spacer(Modifier.height(10.dp))
         Column(
             modifier = Modifier
