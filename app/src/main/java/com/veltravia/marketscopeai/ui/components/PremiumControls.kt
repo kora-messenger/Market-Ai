@@ -773,29 +773,41 @@ fun PremiumOptionCard(
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextMuted)
         }
         Spacer(Modifier.width(8.dp))
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(CircleShape)
-                .border(2.dp, borderColor, CircleShape),
-            contentAlignment = Alignment.Center
+        PremiumRadioDot(isSelected = isSelected, borderColor = borderColor)
+    }
+}
+
+/**
+ * The radio indicator drawn inside [PremiumOptionCard]. Extracted into its
+ * own plain @Composable on purpose: called directly inside the card's Row
+ * scope, AnimatedVisibility resolves to the RowScope extension and the
+ * compiler rejects the implicit receiver — this wrapper has no such scope.
+ */
+@Composable
+private fun PremiumRadioDot(isSelected: Boolean, borderColor: Color) {
+    val gradient = PremiumGradientBrush
+    Box(
+        modifier = Modifier
+            .size(22.dp)
+            .clip(CircleShape)
+            .border(2.dp, borderColor, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = isSelected,
+            enter = scaleIn(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
         ) {
-            AnimatedVisibility(
-                visible = isSelected,
-                enter = scaleIn(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(11.dp)
-                        .clip(CircleShape)
-                        .drawBehind { drawRect(brush = gradient) }
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .size(11.dp)
+                    .clip(CircleShape)
+                    .drawBehind { drawRect(brush = gradient) }
+            )
         }
     }
 }

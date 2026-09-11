@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -89,6 +90,11 @@ private val assetOptions = listOf("Forex", "Crypto", "Stocks", "Synthetic", "Ind
 private val riskPerTradeOptions = listOf("0.5%", "1%", "2%", "3%", "5%")
 private val targetReturnOptions = listOf("5%", "10%", "15%", "20%", "30%+")
 
+// Quick-add entry setups on page 2: tapping a chip appends the term to the
+// free-text entry-criteria field (tapping again removes it) — a fast path
+// on top of the fully editable field, never a replacement for it.
+private val entryChipOptions = listOf("Break & retest", "Liquidity sweep", "Trendline break", "S/R bounce")
+
 // Experience options rendered as PremiumOptionCard rows on page 1: label,
 // short description, and an icon — richer than a plain choice pill.
 private val ExperienceCardData = listOf(
@@ -109,8 +115,10 @@ private const val MAX_TIMEFRAMES = 3
  *
  * Screen 1 — "Welcome {NAME}": experience level, primary trading goal,
  * current capital (USD), risk % per trade, target % monthly return.
- * Screen 2 — "Nice! {NAME}": assets traded, trading style, preferred
- * timeframes (max 3), entry criteria.
+ * Screen 2 — "CHAPTER 02 · THE EDGE": assets (multi-select), style,
+ * timeframes (max 3), entry criteria with quick-add setup chips
+ * (break & retest, liquidity sweep, trendline break, S/R bounce) above
+ * the fully editable field.
  * Screen 3 — "Now lastly {NAME}": emotional struggles, ideal daily
  * routine. CTA reads "Save and Test Analysis Now" instead of "Next".
  */
@@ -350,15 +358,15 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     }
                 } else if (pageIdx == 1) {
                     StaggeredBlock(key = pageIdx, index = 0) {
-                        Text(
-                            "Nice! $firstName,",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
+                        PremiumChapterLabel(chapterNumber = 2, chapterTitle = "THE EDGE", name = firstName)
+                        Spacer(Modifier.height(10.dp))
+                        PremiumTwoToneHeadline(
+                            line1 = "An edge is earned.",
+                            line2 = "Let's shape yours."
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Now tell us about your current approach to trading so that we can tailor your experience.",
+                            "Your approach shapes every idea, level and timeframe we hand you.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -366,7 +374,11 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     Spacer(Modifier.height(32.dp))
 
                     StaggeredBlock(key = pageIdx, index = 1) {
-                        QuestionLabel("Assets Traded")
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            QuestionLabel("Assets")
+                            Spacer(Modifier.width(6.dp))
+                            Text("— all that apply", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        }
                         Spacer(Modifier.height(12.dp))
                         PremiumPillRow(
                             options = assetOptions,
@@ -379,7 +391,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 2) {
-                        QuestionLabel("Trading Style")
+                        QuestionLabel("Style")
                         Spacer(Modifier.height(12.dp))
                         PremiumPillRow(
                             options = styleOptions,
@@ -390,7 +402,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 3) {
-                        QuestionLabel("Preferred Timeframe(s)")
+                        QuestionLabel("Timeframes — up to $MAX_TIMEFRAMES")
                         Spacer(Modifier.height(6.dp))
                         if (timeframes.isNotEmpty()) {
                             Text(
@@ -443,7 +455,26 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 4) {
-                        QuestionLabel("What are your trading Entry Criteria")
+                        QuestionLabel("How do you enter trades?")
+                        Spacer(Modifier.height(12.dp))
+                        // Quick-add chips: tap to append a setup you use, tap
+                        // again to remove it — the field below stays fully
+                        // editable for anything the chips don't cover.
+                        PremiumPillRow(
+                            options = entryChipOptions.map { "+ $it" },
+                            selected = entryChipOptions.filter { entryCriteria.contains(it, ignoreCase = true) }.map { "+ $it" },
+                            onSelect = { option ->
+                                val term = option.removePrefix("+ ")
+                                val terms = entryCriteria
+                                    .split(",")
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .toMutableList()
+                                val existing = terms.firstOrNull { it.equals(term, ignoreCase = true) }
+                                if (existing != null) terms.remove(existing) else terms.add(term)
+                                entryCriteria = terms.joinToString(", ")
+                            }
+                        )
                         Spacer(Modifier.height(12.dp))
                         OutlinedTextField(
                             value = entryCriteria,
