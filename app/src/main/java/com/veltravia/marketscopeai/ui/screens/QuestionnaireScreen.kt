@@ -81,6 +81,8 @@ private val goalOptions = listOf(
     "Retirement savings", "Quit 9-5 job"
 )
 private val assetOptions = listOf("Forex", "Crypto", "Stocks", "Synthetic", "Indices", "Commodities")
+private val riskPerTradeOptions = listOf("0.5%", "1%", "2%", "3%", "5%")
+private val targetReturnOptions = listOf("5%", "10%", "15%", "20%", "30%+")
 private val styleOptions = listOf("Scalping", "Day Trading", "Swing Trading", "Position Trading")
 private val timeframeOptions = listOf("1M", "5M", "15M", "1H", "4H", "1D")
 private const val MAX_TIMEFRAMES = 3
@@ -93,7 +95,7 @@ private const val MAX_TIMEFRAMES = 3
  * staggered question entrances.
  *
  * Screen 1 — "Welcome {NAME}": experience level, primary trading goal,
- * current capital (USD).
+ * current capital (USD), risk % per trade, target % monthly return.
  * Screen 2 — "Nice! {NAME}": assets traded, trading style, preferred
  * timeframes (max 3), entry criteria.
  * Screen 3 — "Now lastly {NAME}": emotional struggles, ideal daily
@@ -125,6 +127,8 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
     var experience by remember { mutableStateOf(savedAnswers?.optString("experience") ?: "") }
     var goal by remember { mutableStateOf(savedAnswers?.optString("goal") ?: "") }
     var capital by remember { mutableStateOf(savedAnswers?.optString("capital") ?: "") }
+    var riskPerTrade by remember { mutableStateOf(savedAnswers?.optString("riskPerTrade") ?: "") }
+    var targetReturn by remember { mutableStateOf(savedAnswers?.optString("targetReturn") ?: "") }
 
     // Screen 2 answers
     val assets = remember { mutableStateListOf<String>() }
@@ -147,7 +151,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
     // --- Persist progress on every change: the instant the user types,
     // selects, or moves to the next page, the resume point updates. */
     LaunchedEffect(
-        page, experience, goal, capital,
+        page, experience, goal, capital, riskPerTrade, targetReturn,
         assets.joinToString(","), style,
         timeframes.joinToString(","), entryCriteria,
         emotionalStruggles, dailyRoutine
@@ -156,6 +160,8 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
             .put("experience", experience)
             .put("goal", goal)
             .put("capital", capital)
+            .put("riskPerTrade", riskPerTrade)
+            .put("targetReturn", targetReturn)
             .put("assets", JSONArray(assets.toList()))
             .put("style", style)
             .put("timeframes", JSONArray(timeframes.toList()))
@@ -168,7 +174,8 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
     // Every page starts from the top; the entrance animation covers the jump.
     LaunchedEffect(page) { scrollState.scrollTo(0) }
 
-    val page1Valid = experience.isNotBlank() && goal.isNotBlank() && capital.isNotBlank()
+    val page1Valid = experience.isNotBlank() && goal.isNotBlank() && capital.isNotBlank() &&
+        riskPerTrade.isNotBlank() && targetReturn.isNotBlank()
     val page2Valid = assets.isNotEmpty() && style.isNotBlank() && timeframes.isNotEmpty()
     val page3Valid = emotionalStruggles.isNotBlank() && dailyRoutine.isNotBlank()
 
@@ -279,6 +286,28 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                         PremiumCapitalField(
                             capital = capital,
                             onCapitalChange = { capital = it }
+                        )
+                    }
+
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 4) {
+                        QuestionLabel("How much % are you willing to risk per trade?")
+                        Spacer(Modifier.height(12.dp))
+                        PremiumPillRow(
+                            options = riskPerTradeOptions,
+                            selected = listOf(riskPerTrade),
+                            onSelect = { riskPerTrade = it }
+                        )
+                    }
+
+                    Spacer(Modifier.height(28.dp))
+                    StaggeredBlock(key = pageIdx, index = 5) {
+                        QuestionLabel("What % monthly return are you aiming to get?")
+                        Spacer(Modifier.height(12.dp))
+                        PremiumPillRow(
+                            options = targetReturnOptions,
+                            selected = listOf(targetReturn),
+                            onSelect = { targetReturn = it }
                         )
                     }
                 } else if (pageIdx == 1) {
@@ -456,6 +485,8 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             experience = experience,
                             goal = goal,
                             capitalUsd = capital,
+                            riskPerTrade = riskPerTrade,
+                            targetReturn = targetReturn,
                             assets = assets.toList(),
                             style = style,
                             timeframes = timeframes.toList(),

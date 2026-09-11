@@ -23,6 +23,8 @@ data class QuestionnaireAnswers(
     val experience: String,
     val goal: String,
     val capitalUsd: String,
+    val riskPerTrade: String,
+    val targetReturn: String,
     val assets: List<String>,
     val style: String,
     val timeframes: List<String>,
@@ -34,6 +36,8 @@ data class QuestionnaireAnswers(
         put("experience", experience)
         put("goal", goal)
         put("capitalUsd", capitalUsd)
+        put("riskPerTrade", riskPerTrade)
+        put("targetReturn", targetReturn)
         put("assets", JSONArray(assets))
         put("style", style)
         put("timeframes", JSONArray(timeframes))
@@ -47,6 +51,8 @@ data class QuestionnaireAnswers(
             experience = json.optString("experience", ""),
             goal = json.optString("goal", ""),
             capitalUsd = json.optString("capitalUsd", ""),
+            riskPerTrade = json.optString("riskPerTrade", ""),
+            targetReturn = json.optString("targetReturn", ""),
             assets = json.optJSONArray("assets")?.let { arr ->
                 List(arr.length()) { arr.optString(it) }
             } ?: json.optJSONArray("markets")?.let { arr ->

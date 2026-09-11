@@ -196,6 +196,8 @@ fun ProfileScreen(
                 ProfileRow("Experience", profile.experience)
                 ProfileRow("Primary goal", profile.goal)
                 if (profile.capitalUsd.isNotBlank()) ProfileRow("Capital (USD)", profile.capitalUsd)
+                if (profile.riskPerTrade.isNotBlank()) ProfileRow("Risk per trade", profile.riskPerTrade)
+                if (profile.targetReturn.isNotBlank()) ProfileRow("Target monthly return", profile.targetReturn)
                 ProfileRow("Assets traded", profile.assets.joinToString(", "))
                 ProfileRow("Style", profile.style)
                 ProfileRow("Timeframes", profile.timeframes.joinToString(", "))

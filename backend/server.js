@@ -2164,6 +2164,27 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
 });
 
 // --- AI chart analysis (server-side, OpenRouter vision) ---
+// Builds the "this is who you are analyzing for" text injected into every
+// analysis request from the trader's own onboarding questionnaire — the
+// system literally gives the user back what they filled in: their capital,
+// risk %, target return, style, timeframes and entry criteria shape the
+// AI's framing, duration estimates and risk language.
+function profilePromptText(q) {
+  if (!q || typeof q !== "object") return "";
+  const bits = [];
+  if (q.experience) bits.push(`experience level: ${q.experience}`);
+  if (q.goal) bits.push(`primary goal: ${q.goal}`);
+  if (q.capitalUsd) bits.push(`trading capital: $${q.capitalUsd}`);
+  if (q.riskPerTrade) bits.push(`risk per trade: ${q.riskPerTrade} of capital`);
+  if (q.targetReturn) bits.push(`target monthly return: ${q.targetReturn}`);
+  if (Array.isArray(q.assets) && q.assets.length) bits.push(`assets they trade: ${q.assets.join(", ")}`);
+  if (q.style) bits.push(`trading style: ${q.style}`);
+  if (Array.isArray(q.timeframes) && q.timeframes.length) bits.push(`preferred timeframes: ${q.timeframes.join(", ")}`);
+  if (q.entryCriteria) bits.push(`their own entry criteria: ${q.entryCriteria}`);
+  if (!bits.length) return "";
+  return ` Trader profile from their onboarding questionnaire — this is the person you are advising: ${bits.join("; ")}.`;
+}
+
 const SYSTEM_PROMPT = `You are a senior market analyst. You receive two real chart screenshots of the same instrument:
 - a 4H (higher timeframe) chart and a 15M (lower timeframe) chart.
 The trader picked Scalp mode (favor 15M entries, quicker targets) or Swing mode (favor 4H structure, wider targets).
@@ -2181,7 +2202,8 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "invalidation": "what would invalidate this setup",
   "keyLevels": [number]
 }
-Prices must be plausible for the instrument shown on the charts. Provide a realistic estimated duration based on timeframe and momentum. If the setup is not clean, choose NO_TRADE with a clear thesis.`;
+Prices must be plausible for the instrument shown on the charts. Provide a realistic estimated duration based on timeframe and momentum. If the setup is not clean, choose NO_TRADE with a clear thesis.
+If a trader profile is provided with the request, tailor the analysis to it: respect their stated risk per trade when framing risk, lean the reasoning toward their preferred style/timeframes/entry criteria, and pitch the explanation to their experience level. The profile describes THIS trader — never contradict it (e.g. never present a scalp-style setup to a declared position trader as ideal).`;
 
 function extractJson(text) {
   let t = (text || "").trim();
@@ -2222,7 +2244,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   let userRow;
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, questionnaire FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
@@ -2233,6 +2255,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
   }
 
+  const traderProfile = profilePromptText(userRow.questionnaire);
   const trial = trialInfo(userRow);
   const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
@@ -2353,7 +2376,8 @@ Respond ONLY with JSON:
               text: `Instrument: ${instrument.display}. Mode: ${mode === "scalp" ? "Scalp (15M-biased)" : "Swing (4H-biased)"}.` +
                 (livePrice != null
                   ? ` Verified current market price of ${instrument.display}: ${livePrice}. Cross-check the chart against this live market — if the chart and the live market contradict each other, say so in the thesis.`
-                  : "")
+                  : "") +
+                (traderProfile || "")
             },
             { type: "image_url", image_url: { url: imageH4 } },
             { type: "image_url", image_url: { url: imageM15 } }
@@ -2424,7 +2448,8 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "keyLevels": [number]
 }
 Hard rules: LONG pairs with recommendation BUY; SHORT with SELL; NO_TRADE with HOLD. All prices must be in the stock's own currency and near its real current price. Ground every claim in the provided data — never invent numbers.
-Critical: if the 3-month, 6-month, 1-year or YTD performance is strongly positive (double digits) but you are NOT recommending BUY, the FIRST sentence of your thesis MUST explicitly reconcile that apparent tension — e.g. explain the rally already looks priced in, that short-term momentum has stalled versus the longer-term trend, that you'd want a pullback before entering, or a valuation concern — so a trader skimming the performance numbers immediately understands why you are not chasing an already-strong stock rather than seeing a contradiction.`;
+Critical: if the 3-month, 6-month, 1-year or YTD performance is strongly positive (double digits) but you are NOT recommending BUY, the FIRST sentence of your thesis MUST explicitly reconcile that apparent tension — e.g. explain the rally already looks priced in, that short-term momentum has stalled versus the longer-term trend, that you'd want a pullback before entering, or a valuation concern — so a trader skimming the performance numbers immediately understands why you are not chasing an already-strong stock rather than seeing a contradiction.
+If a trader profile is provided with the request, tailor the analysis to it: shape the holding-period estimate (estimatedDuration) toward their style and preferred timeframes, respect their stated risk per trade and capital when framing position risk, and pitch the explanation to their experience level. The profile describes THIS trader — never contradict it.`;
 
 app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
@@ -2444,7 +2469,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   let userRow;
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, questionnaire FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
@@ -2453,6 +2478,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
   }
 
+  const traderProfile = profilePromptText(userRow.questionnaire);
   const trial = trialInfo(userRow);
   const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
@@ -2565,7 +2591,8 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
           (stats.eps != null ? `, EPS ${stats.eps}` : "") +
           (stats.sector ? `, sector: ${stats.sector}` : "") +
           (stats.tvRecommendation != null ? `. Aggregated technical rating of this stock on its exchange: ${stats.tvRecommendation} (-1 strong sell to +1 strong buy)` : "") +
-          `. User query: "${resolvedQuery}". Decide: should a trader BUY this stock now or not, and with what confidence percentage?`
+          `. User query: "${resolvedQuery}". Decide: should a trader BUY this stock now or not, and with what confidence percentage?` +
+          (traderProfile || "")
       }
     ];
     if (hasImage) {

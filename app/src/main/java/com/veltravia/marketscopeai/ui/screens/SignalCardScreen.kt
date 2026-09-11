@@ -831,7 +831,13 @@ private fun ShareOrderSheet(
     val referencePrice = if (!livePrice.isNaN()) livePrice else entryMid
     var entry by remember { mutableStateOf(if (entryMid.isNaN()) "" else trimNum(entryMid)) }
     var stop by remember { mutableStateOf(if (stopLoss.isNaN()) "" else trimNum(stopLoss)) }
-    var riskPct by remember { mutableStateOf("1") }
+    // Pre-filled from the trader's own questionnaire answer ("how much % are
+    // you willing to risk per trade?") — falls back to the standard 1%.
+    val savedRiskPct = remember {
+        val raw = SessionManager.questionnaireAnswers(context)?.riskPerTrade ?: ""
+        raw.replace(Regex("[^0-9.]"), "").take(4).ifBlank { "1" }
+    }
+    var riskPct by remember { mutableStateOf(savedRiskPct) }
     var rate by remember { mutableStateOf("1") }
     var result by remember { mutableStateOf<ShareOrderResult?>(null) }
 
