@@ -687,6 +687,7 @@ app.get("/privacy", (_req, res) => {
   res.set("Content-Type", "text/html; charset=utf-8").send(privacyPolicyHtml());
 });
 
+
 // --- Health ---
 app.get("/health", async (_req, res) => {
   const config = {
