@@ -1,7 +1,6 @@
 package com.veltravia.marketscopeai.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,15 +17,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,6 +35,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -45,19 +46,25 @@ import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
-
+import com.veltravia.marketscopeai.ui.components.PremiumSegmentedProgress
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
-import com.veltravia.marketscopeai.ui.theme.BullGreen
+import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
+import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
- * Shown right after sign-in: onboards the trader into MarketScope AI's free community —
- * live signal drops and trader posts. "Join" is a real, backend-persisted action
- * (POST /api/community/join), not a cosmetic transition.
+ * The 4th step of onboarding — right after the 3-page questionnaire, before
+ * notifications/projection/broker setup and the first analysis. Reference layout:
+ * step progress bar, centered icon badge, two-tone headline, member-count strip,
+ * three benefit rows, single CTA. Every sentence here is our own wording (same
+ * meaning as the reference, different words, per the no-verbatim-copy rule); the
+ * member count is a REAL fetched total, never a hardcoded number — if the fetch
+ * fails we show a plain caption with no fabricated figure. "Join" is a real,
+ * backend-persisted action (POST /api/community/join), not a cosmetic transition.
  */
 @Composable
 fun CommunityIntroScreen(onJoined: () -> Unit) {
@@ -67,6 +74,13 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
     var joining by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val alreadyJoined = remember { SessionManager.communityJoined(context) }
+    var memberTotal by remember { mutableStateOf(-1) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        runCatching { ApiClient.fetchCommunityStats() }.getOrNull()?.let {
+            memberTotal = it.optInt("totalMembers", -1)
+        }
+    }
 
     fun proceed() {
         val token = SessionManager.sessionToken(context)
@@ -96,129 +110,124 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.Center
+            .padding(horizontal = 24.dp)
     ) {
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(24.dp))
 
-        Text(
-            text = "YOU'RE JOINING SOMETHING LIVE",
-            style = MaterialTheme.typography.labelMedium,
-            letterSpacing = 1.5.sp,
-            color = TextSecondary
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        Text(
-            text = "Welcome to the trading desk",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            text = "Finish setup and you're automatically part of the free MarketScope AI community — trader posts and select signal drops.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary
-        )
-
-        Spacer(Modifier.height(28.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(Modifier.padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(AccentCyan.copy(alpha = 0.15f))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.Groups,
-                                contentDescription = null,
-                                tint = AccentCyan,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "Free community access",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = AccentCyan,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
+            PremiumSegmentedProgress(current = 3, total = 4, modifier = Modifier.weight(1f))
+            Text(
+                "First signal",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+        }
 
-                Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(40.dp))
 
-                Text(
-                    "Live market energy, structured for serious traders",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(AccentViolet.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Groups,
+                    contentDescription = null,
+                    tint = AccentViolet,
+                    modifier = Modifier.size(30.dp)
                 )
+            }
 
-                Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(24.dp))
 
-                Text(
-                    "Follow AI signal drops and trader posts in one feed — free, before you ever go Pro.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
+            Text(
+                "You've been figuring this out alone.",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                "Not anymore.",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = AccentCyan,
+                textAlign = TextAlign.Center
+            )
 
-                Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(10.dp))
 
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    FeatureTile(
-                        icon = Icons.Filled.Forum,
-                        title = "Trader posts",
-                        description = "See what the community is watching in real time.",
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    FeatureTile(
-                        icon = Icons.Filled.ShowChart,
-                        title = "Free signals",
-                        description = "Selected setups and trade proof before going Pro.",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+            Text(
+                "Free community access unlocks the second you finish setup.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
 
-                Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(20.dp))
 
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val dotColors = listOf(AccentViolet, AccentCyan, Color(0xFF16A34A), Color(0xFFD97706))
+                val dotSize = 28.dp
+                val overlap = 10.dp
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(BullGreen.copy(alpha = 0.14f))
-                        .padding(16.dp)
+                    modifier = Modifier.width(dotSize + overlap * (dotColors.size - 1)).height(dotSize)
                 ) {
-                    Column {
-                        Text(
-                            "WHAT HAPPENS NEXT",
-                            style = MaterialTheme.typography.labelSmall,
-                            letterSpacing = 1.sp,
-                            color = BullGreen,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Finish setup and your free community access unlocks immediately.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                    dotColors.forEachIndexed { index, color ->
+                        Box(
+                            modifier = Modifier
+                                .offset(x = overlap * index)
+                                .size(dotSize)
+                                .clip(CircleShape)
+                                .background(color.copy(alpha = 0.85f))
                         )
                     }
+                }
+                Spacer(Modifier.width(12.dp))
+                if (memberTotal > 0) {
+                    Text(
+                        formatMemberCount(memberTotal),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextSecondary
+                    )
+                } else {
+                    Text(
+                        "Growing every day",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextMuted
+                    )
                 }
             }
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            CommunityBenefitRow(
+                icon = Icons.Filled.RecordVoiceOver,
+                title = "Mentor updates",
+                description = "See what the desk is watching, live"
+            )
+            CommunityBenefitRow(
+                icon = Icons.Filled.ShowChart,
+                title = "Free signals",
+                description = "Selected setups, before they go Pro-only"
+            )
+            CommunityBenefitRow(
+                icon = Icons.Filled.CheckCircle,
+                title = "Member wins",
+                description = "Real results shared by real members"
+            )
         }
 
         if (error != null) {
@@ -231,61 +240,69 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(28.dp))
 
         GradientPrimaryButton(
-            text = if (alreadyJoined) "Continue" else "Start your trading journey",
+            text = if (alreadyJoined) "Continue" else "Unlock Community Access",
             enabled = !joining,
             loading = joining,
             onClick = { proceed() },
             showArrow = !alreadyJoined,
             shape = RoundedCornerShape(50),
-            height = 52.dp
+            height = 54.dp
         )
 
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(40.dp))
     }
 }
 
 @Composable
-private fun FeatureTile(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    description: String,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceLight)
-            .padding(14.dp)
+private fun CommunityBenefitRow(icon: ImageVector, title: String, description: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceLight),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
     ) {
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(AccentCyan.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = AccentCyan,
-                modifier = Modifier.size(16.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(AccentCyan.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+            }
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            description,
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted
-        )
     }
+}
+
+/** "1.2k" / "834" style compact count — always derived from a real fetched total. */
+private fun formatMemberCount(total: Int): String {
+    val label = if (total >= 1000) {
+        val thousands = total / 1000.0
+        "${"%.1f".format(thousands).removeSuffix(".0")}k"
+    } else {
+        total.toString()
+    }
+    return "$label traders already in"
 }
