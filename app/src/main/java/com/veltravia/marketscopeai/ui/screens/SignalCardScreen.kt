@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -170,6 +171,8 @@ fun SignalCardScreen(
                     mode = stored.optString("mode", rec.optString("mode", "")),
                     analyzedAt = stored.optString("analyzedAt", rec.optString("analyzedAt", "")),
                     analysis = ai,
+                    marketData = stored.optJSONObject("marketData"),
+                    livePrice = stored.optDouble("livePrice", Double.NaN),
                     monitoring = stored.optBoolean("monitoring", false) && stored.optString("mode", rec.optString("mode", "")) == "stock",
                     onOpenBrokerInfo = onOpenBrokerInfo
                 )
@@ -205,13 +208,17 @@ private fun TradeAnalysisBody(
     mode: String,
     analyzedAt: String,
     analysis: JSONObject,
+    marketData: JSONObject? = null,
+    livePrice: Double = Double.NaN,
     monitoring: Boolean = false,
     onOpenBrokerInfo: (() -> Unit)?
 ) {
+    val isStock = mode.equals("stock", ignoreCase = true)
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var showBrokerCard by remember { mutableStateOf(true) }
     var showLotSheet by remember { mutableStateOf(false) }
+    var showShareOrderSheet by remember { mutableStateOf(false) }
 
     val direction = analysis.optString("direction", "").uppercase()
     val noTrade = direction == "NO_TRADE"
@@ -333,25 +340,45 @@ private fun TradeAnalysisBody(
         Spacer(Modifier.height(14.dp))
     }
 
-    // --- Lot-size calculator entry ---
+    // --- Position-size entry: stocks get a share-order estimate (lot sizing
+    // is a forex/CFD concept and doesn't apply to buying real shares) ---
     if (!noTrade) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            GradientPrimaryButton(
-                text = "Get lotsize for this trade",
-                enabled = true,
-                onClick = { showLotSheet = true },
-                height = 48.dp,
-                showArrow = false,
-                shape = RoundedCornerShape(50),
-                leadingIcon = Icons.Filled.Calculate
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Sizing uses the AI's entry & stop — adjust your risk to your own comfort.",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
+            if (isStock) {
+                GradientPrimaryButton(
+                    text = "Estimate share order",
+                    enabled = true,
+                    onClick = { showShareOrderSheet = true },
+                    height = 48.dp,
+                    showArrow = false,
+                    shape = RoundedCornerShape(50),
+                    leadingIcon = Icons.Filled.ShoppingCart
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Sizing uses the AI's entry & stop and today's live price — adjust your risk to your own comfort.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            } else {
+                GradientPrimaryButton(
+                    text = "Get lotsize for this trade",
+                    enabled = true,
+                    onClick = { showLotSheet = true },
+                    height = 48.dp,
+                    showArrow = false,
+                    shape = RoundedCornerShape(50),
+                    leadingIcon = Icons.Filled.Calculate
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Sizing uses the AI's entry & stop — adjust your risk to your own comfort.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
         }
         Spacer(Modifier.height(16.dp))
     }
@@ -464,6 +491,13 @@ private fun TradeAnalysisBody(
 
     Spacer(Modifier.height(16.dp))
 
+    // --- MARKET PERFORMANCE (stocks only, real exchange data) — this is what
+    // makes a stock result feel like a stock, not a reskinned forex card. ---
+    if (isStock && marketData != null) {
+        MarketPerformanceSection(marketData, copy)
+        Spacer(Modifier.height(16.dp))
+    }
+
     // --- EXPLANATION ---
     if (thesis.isNotBlank()) {
         SectionHeader("EXPLANATION")
@@ -502,6 +536,17 @@ private fun TradeAnalysisBody(
             entryMid = if (entryZone != null) (entryZone.optDouble("low") + entryZone.optDouble("high")) / 2.0 else Double.NaN,
             stopLoss = stopLoss,
             onDismiss = { showLotSheet = false }
+        )
+    }
+
+    if (showShareOrderSheet && !noTrade) {
+        ShareOrderSheet(
+            instrumentDisplay = instrumentDisplay,
+            currency = marketData?.optString("currency")?.takeIf { it.isNotBlank() } ?: "USD",
+            livePrice = livePrice,
+            entryMid = if (entryZone != null) (entryZone.optDouble("low") + entryZone.optDouble("high")) / 2.0 else Double.NaN,
+            stopLoss = stopLoss,
+            onDismiss = { showShareOrderSheet = false }
         )
     }
 }
@@ -663,6 +708,243 @@ private fun LotSizeSheet(
 }
 
 private data class LotResult(val lots: Double, val units: Double, val riskAmount: Double)
+
+// ---------------------------------------------------------------------------
+// Market Performance — real exchange data (TradingView-sourced), stock only.
+// This is what makes a stock result feel like a stock, not a reskinned
+// forex/crypto card: real 1D/1W/1M/3M/6M/1Y/YTD performance, 52-week range,
+// RSI, and P/E, all fetched live when the analysis ran.
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun MarketPerformanceSection(marketData: JSONObject, copy: (String) -> Unit) {
+    SectionHeader("MARKET PERFORMANCE")
+    Spacer(Modifier.height(10.dp))
+
+    fun pct(key: String): Double = marketData.optDouble(key, Double.NaN)
+    fun pctText(v: Double): String = if (v.isNaN()) "—" else "${if (v > 0) "+" else ""}${trimNum(v)}%"
+    fun pctColor(v: Double): Color = when {
+        v.isNaN() -> TextPrimary
+        v > 0 -> BullGreen
+        v < 0 -> BearRed
+        else -> TextPrimary
+    }
+
+    val changeToday = pct("changePctToday")
+    val perf1W = pct("perf1W")
+    val perf1M = pct("perf1M")
+    val perf3M = pct("perf3M")
+    val perf6M = pct("perf6M")
+    val perf1Y = pct("perf1Y")
+    val perfYTD = pct("perfYTD")
+    val high52w = marketData.optDouble("high52w", Double.NaN)
+    val low52w = marketData.optDouble("low52w", Double.NaN)
+    val rsi = marketData.optDouble("rsi", Double.NaN)
+    val peRatio = marketData.optDouble("peRatio", Double.NaN)
+
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard(title = "TODAY", value = pctText(changeToday), color = pctColor(changeToday), weight = 1f, onCopy = { copy(pctText(changeToday)) })
+        SnapshotCard(title = "1 WEEK", value = pctText(perf1W), color = pctColor(perf1W), weight = 1f, onCopy = { copy(pctText(perf1W)) })
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard(title = "1 MONTH", value = pctText(perf1M), color = pctColor(perf1M), weight = 1f, onCopy = { copy(pctText(perf1M)) })
+        SnapshotCard(title = "3 MONTHS", value = pctText(perf3M), color = pctColor(perf3M), weight = 1f, onCopy = { copy(pctText(perf3M)) })
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard(title = "6 MONTHS", value = pctText(perf6M), color = pctColor(perf6M), weight = 1f, onCopy = { copy(pctText(perf6M)) })
+        SnapshotCard(title = "1 YEAR", value = pctText(perf1Y), color = pctColor(perf1Y), weight = 1f, onCopy = { copy(pctText(perf1Y)) })
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard(title = "YTD", value = pctText(perfYTD), color = pctColor(perfYTD), weight = 1f, onCopy = { copy(pctText(perfYTD)) })
+        val rangeText = if (!low52w.isNaN() && !high52w.isNaN()) "${formatPrice(low52w)} – ${formatPrice(high52w)}" else "—"
+        SnapshotCard(title = "52-WEEK RANGE", value = rangeText, weight = 1f, onCopy = { copy(rangeText) })
+    }
+    if (!rsi.isNaN() || !peRatio.isNaN()) {
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            val rsiText = if (!rsi.isNaN()) trimNum(rsi) else "—"
+            val rsiColor = when {
+                rsi.isNaN() -> TextPrimary
+                rsi >= 70 -> BearRed
+                rsi <= 30 -> BullGreen
+                else -> TextPrimary
+            }
+            SnapshotCard(title = "RSI", value = rsiText, color = rsiColor, weight = 1f, onCopy = { copy(rsiText) })
+            val peText = if (!peRatio.isNaN()) trimNum(peRatio) else "—"
+            SnapshotCard(title = "P/E RATIO", value = peText, weight = 1f, onCopy = { copy(peText) })
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Share-order estimator — the stock equivalent of the forex lot-size sheet.
+// Buying real shares has no "lot size"; instead we size the NUMBER OF SHARES
+// from the AI's entry/stop and the user's own risk %, using today's real
+// live price to also tell them whether their entry is at-market or a limit
+// away from the current price.
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShareOrderSheet(
+    instrumentDisplay: String,
+    currency: String,
+    livePrice: Double,
+    entryMid: Double,
+    stopLoss: Double,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // User's real questionnaire capital (honest fallback if missing/zero).
+    val capitalUsd = remember {
+        val raw = SessionManager.questionnaireAnswers(context)?.capitalUsd?.toDoubleOrNull() ?: 0.0
+        if (raw > 0.0) raw else 1_000.0
+    }
+
+    val referencePrice = if (!livePrice.isNaN()) livePrice else entryMid
+    var entry by remember { mutableStateOf(if (entryMid.isNaN()) "" else trimNum(entryMid)) }
+    var stop by remember { mutableStateOf(if (stopLoss.isNaN()) "" else trimNum(stopLoss)) }
+    var riskPct by remember { mutableStateOf("1") }
+    var rate by remember { mutableStateOf("1") }
+    var result by remember { mutableStateOf<ShareOrderResult?>(null) }
+
+    val needsRate = currency.uppercase() != "USD"
+    val parse: (String) -> Double = { it.trim().toDoubleOrNull() ?: Double.NaN }
+
+    // Real-data-driven order type: if the AI's entry is essentially today's
+    // live price, it's a market order; if the AI wants a specific zone away
+    // from the current price, it's a limit order at that level.
+    val orderType = if (!livePrice.isNaN() && !entryMid.isNaN() && livePrice > 0) {
+        val diffPct = kotlin.math.abs(entryMid - livePrice) / livePrice * 100.0
+        if (diffPct <= 0.5) "Market Order" else "Limit Order"
+    } else "Market Order"
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+        ) {
+            Text("Share order estimate", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(instrumentDisplay, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+            Spacer(Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Order Type", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text(orderType, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (orderType == "Market Order") "The AI's entry is essentially today's live price."
+                else "The AI's entry zone is away from today's live price — place a limit order near it.",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+            Spacer(Modifier.height(16.dp))
+
+            Text("Entry & Stop (optional)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SheetField(entry, { entry = it; result = null }, "Entry ($currency)", Modifier.weight(1f))
+                SheetField(stop, { stop = it; result = null }, "Stop ($currency)", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(10.dp))
+
+            SheetField(riskPct, { riskPct = it; result = null }, "Risk % of capital", Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+
+            if (needsRate) {
+                SheetField(rate, { rate = it; result = null }, "Exchange rate ($currency → USD)", Modifier.fillMaxWidth())
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "MarketScope AI has no live FX feed for $currency — enter your broker's current $currency/USD rate for exact sizing.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+
+            GradientPrimaryButton(
+                text = "Calculate shares to buy",
+                enabled = true,
+                onClick = {
+                    val e = parse(entry).takeUnless { it.isNaN() } ?: referencePrice
+                    val s = parse(stop)
+                    val rp = parse(riskPct)
+                    val ex = parse(rate).takeUnless { it.isNaN() } ?: 1.0
+                    val perShareRisk = kotlin.math.abs(e - s)
+                    if (e.isNaN() || s.isNaN() || rp.isNaN() || perShareRisk <= 0 || rp <= 0 || ex <= 0) {
+                        result = null
+                        return@GradientPrimaryButton
+                    }
+                    // riskAmountUsd = capital * riskPct/100
+                    // riskAmountLocal = riskAmountUsd * rate (when the stock trades in a non-USD currency)
+                    // shares = riskAmountLocal / |entry - stop|
+                    // estimatedCost = shares * entry
+                    val riskAmountUsd = capitalUsd * rp / 100.0
+                    val riskAmountLocal = if (needsRate) riskAmountUsd * ex else riskAmountUsd
+                    val shares = kotlin.math.floor(riskAmountLocal / perShareRisk)
+                    result = ShareOrderResult(
+                        shares = shares,
+                        estimatedCost = shares * e,
+                        riskAmountLocal = riskAmountLocal
+                    )
+                },
+                height = 48.dp
+            )
+            Spacer(Modifier.height(14.dp))
+
+            result?.let { r ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(SurfaceDark)
+                        .padding(16.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Number of Shares", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        Text("${"%,.0f".format(r.shares)}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AccentCyan)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Estimated Cost", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        Text("$currency ${"%,.2f".format(r.estimatedCost)}", fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Risk Amount", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        Text("$currency ${"%,.2f".format(r.riskAmountLocal)}", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+
+            Text(
+                "Estimates only — MarketScope AI doesn't place orders. Buy shares through your own broker or brokerage app.",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+private data class ShareOrderResult(val shares: Double, val estimatedCost: Double, val riskAmountLocal: Double)
 
 @Composable
 private fun SheetField(

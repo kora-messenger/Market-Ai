@@ -2610,9 +2610,14 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       chartValidated: true,
       analysis,
       marketData: {
-        perf1M: stats.perf1M, perf3M: stats.perf3M, perf6M: stats.perf6M, perf1Y: stats.perf1Y,
+        price: stats.price, changePctToday: stats.changePctToday,
+        perf1W: stats.perf1W, perf1M: stats.perf1M, perf3M: stats.perf3M,
+        perf6M: stats.perf6M, perf1Y: stats.perf1Y, perfYTD: stats.perfYTD,
         high52w: stats.high52w, low52w: stats.low52w, currency: stats.currency,
-        exchange: match.exchange
+        exchange: match.exchange, volume: stats.volume, avgVolume10d: stats.avgVolume10d,
+        dailyVolatilityPct: stats.dailyVolatilityPct, marketCap: stats.marketCap,
+        rsi: stats.rsi, peRatio: stats.peRatio, eps: stats.eps, sector: stats.sector,
+        tvRecommendation: stats.tvRecommendation
       },
       analyzedAt: new Date().toISOString()
     };
