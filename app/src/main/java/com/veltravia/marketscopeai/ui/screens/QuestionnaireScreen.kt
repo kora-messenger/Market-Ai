@@ -90,10 +90,30 @@ private val assetOptions = listOf("Forex", "Crypto", "Stocks", "Synthetic", "Ind
 private val riskPerTradeOptions = listOf("0.5%", "1%", "2%", "3%", "5%")
 private val targetReturnOptions = listOf("5%", "10%", "15%", "20%", "30%+")
 
+// Page 3 multi-select: trading-psychology patterns that commonly cost
+// traders money. Selection is stored as a comma-joined string (same
+// approach as the free-text fields) so no backend/schema change is needed.
+private val emotionalPatternOptions = listOf(
+    "FOMO entries", "Revenge trading", "Closing winners early", "Holding losers too long",
+    "Oversizing when confident", "Hesitating on A-setups", "Overtrading slow days"
+)
+
+// Quick-add chips for the daily-routine field — same append/remove-term
+// mechanic as the entry-criteria chips below.
+private val routineChipOptions = listOf("Morning analysis", "London session", "New York session", "After work only")
+
 // Quick-add entry setups on page 2: tapping a chip appends the term to the
 // free-text entry-criteria field (tapping again removes it) — a fast path
 // on top of the fully editable field, never a replacement for it.
 private val entryChipOptions = listOf("Break & retest", "Liquidity sweep", "Trendline break", "S/R bounce")
+
+/** Appends [term] to [current] (comma-joined) if absent, removes it if present. */
+private fun toggleTermInList(current: String, term: String): String {
+    val terms = current.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+    val existing = terms.firstOrNull { it.equals(term, ignoreCase = true) }
+    if (existing != null) terms.remove(existing) else terms.add(term)
+    return terms.joinToString(", ")
+}
 
 // Experience options rendered as PremiumOptionCard rows on page 1: label,
 // short description, and an icon — richer than a plain choice pill.
@@ -120,7 +140,9 @@ private const val MAX_TIMEFRAMES = 3
  * (break & retest, liquidity sweep, trendline break, S/R bounce) above
  * the fully editable field.
  * Screen 3 — "Now lastly {NAME}": emotional struggles, ideal daily
- * routine. CTA reads "Save and Test Analysis Now" instead of "Next".
+ * Screen 3 — "PART 03 · FACE THE TRUTH": trading-psychology patterns
+ * (multi-select) and typical-day routine with quick-add chips. CTA reads
+ * "Save & Run My First Analysis" instead of "Next".
  */
 @Composable
 fun QuestionnaireScreen(onDone: () -> Unit) {
@@ -464,15 +486,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             options = entryChipOptions.map { "+ $it" },
                             selected = entryChipOptions.filter { entryCriteria.contains(it, ignoreCase = true) }.map { "+ $it" },
                             onSelect = { option ->
-                                val term = option.removePrefix("+ ")
-                                val terms = entryCriteria
-                                    .split(",")
-                                    .map { it.trim() }
-                                    .filter { it.isNotBlank() }
-                                    .toMutableList()
-                                val existing = terms.firstOrNull { it.equals(term, ignoreCase = true) }
-                                if (existing != null) terms.remove(existing) else terms.add(term)
-                                entryCriteria = terms.joinToString(", ")
+                                entryCriteria = toggleTermInList(entryCriteria, option.removePrefix("+ "))
                             }
                         )
                         Spacer(Modifier.height(12.dp))
@@ -488,15 +502,15 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     }
                 } else {
                     StaggeredBlock(key = pageIdx, index = 0) {
-                        Text(
-                            "Now lastly $firstName,",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
+                        PremiumChapterLabel(chapterNumber = 3, chapterTitle = "FACE THE TRUTH", name = firstName)
+                        Spacer(Modifier.height(10.dp))
+                        PremiumTwoToneHeadline(
+                            line1 = "The chart rarely beats you.",
+                            line2 = "Your reactions usually do."
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Before our first analysis, let's understand your psychology and routine so we can help you better.",
+                            "Every trader falls into patterns — the disciplined ones know theirs, and we'll flag yours before they get expensive.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -504,21 +518,28 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     Spacer(Modifier.height(32.dp))
 
                     StaggeredBlock(key = pageIdx, index = 1) {
-                        QuestionLabel("What are some of your emotional struggles?")
+                        QuestionLabel("What's actually been costing you money?")
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "Select every one that applies",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
                         Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = emotionalStruggles,
-                            onValueChange = { emotionalStruggles = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("e.g. Impatience, Fear, Revenge", color = TextMuted) },
-                            singleLine = true,
-                            colors = PremiumFieldColors()
+                        PremiumPillRow(
+                            options = emotionalPatternOptions,
+                            selected = emotionalPatternOptions.filter {
+                                emotionalStruggles.split(",").map { t -> t.trim() }.any { t -> t.equals(it, ignoreCase = true) }
+                            },
+                            onSelect = { option ->
+                                emotionalStruggles = toggleTermInList(emotionalStruggles, option)
+                            }
                         )
                     }
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 2) {
-                        QuestionLabel("What is your ideal daily routine?")
+                        QuestionLabel("What does a typical day look like right now?")
                         Spacer(Modifier.height(12.dp))
                         OutlinedTextField(
                             value = dailyRoutine,
@@ -526,8 +547,16 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp),
-                            placeholder = { Text("Honestly describe what your usual days are like right now..", color = TextMuted) },
+                            placeholder = { Text("Be honest — what does a normal day actually look like?", color = TextMuted) },
                             colors = PremiumFieldColors()
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        PremiumPillRow(
+                            options = routineChipOptions.map { "+ $it" },
+                            selected = routineChipOptions.filter { dailyRoutine.contains(it, ignoreCase = true) }.map { "+ $it" },
+                            onSelect = { option ->
+                                dailyRoutine = toggleTermInList(dailyRoutine, option.removePrefix("+ "))
+                            }
                         )
                     }
                 }
@@ -537,7 +566,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
         Spacer(Modifier.height(36.dp))
 
         GradientPrimaryButton(
-            text = if (page == 2) "Save and Test Analysis Now" else "Next",
+            text = if (page == 2) "Save & Run My First Analysis" else "Next",
             enabled = when (page) {
                 0 -> page1Valid
                 1 -> page2Valid
