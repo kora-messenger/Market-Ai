@@ -1,7 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.ShowChart
@@ -27,28 +28,32 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.domain.ProjectionEngine
-import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
-
+import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
+import com.veltravia.marketscopeai.ui.theme.DarkInk
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
-import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import java.text.NumberFormat
@@ -58,7 +63,10 @@ import kotlin.math.roundToInt
  * Illustrative "next 12 trades" consistency pitch shown once, right after the
  * notifications soft-ask. Uses the trader's real capital/experience/style from
  * the questionnaire (already completed earlier in onboarding). All numbers are
- * computed live by ProjectionEngine — this is MarketScope AI's own math, not hardcoded copy.
+ * computed live by ProjectionEngine — this is MarketScope AI's own math, not
+ * hardcoded copy. The equity visual is a smooth line/area chart (not the old
+ * per-trade bar chart) with a "drifting without one" comparison baseline,
+ * matching the requested look — drawn with our own violet/cyan accents.
  */
 @Composable
 fun ProjectionIntroScreen(onContinue: () -> Unit) {
@@ -151,136 +159,223 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
 
 @Composable
 private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: NumberFormat) {
+    val trades = projection.trades
+    val growthLabel = "+${(projection.growthPct * 100).roundToInt()}%"
+    val riskPct = if (trades.isNotEmpty()) (trades.first().risk / projection.startingEquity) * 100 else 0.0
+    val rMultiple = trades.firstOrNull { it.isWin }?.let { it.pnl / it.risk } ?: 0.0
+    val winRatePct = if (trades.isNotEmpty()) trades.count { it.isWin } * 100 / trades.size else 0
+    val statsLine = "Risk %.1f%% \u00b7 Target %.1fR \u00b7 Win rate %d%%".format(riskPct, rMultiple, winRatePct)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Brush.linearGradient(listOf(AccentViolet, AccentCyan)))
-            .padding(16.dp)
+            .background(DarkInk)
+            .padding(18.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "12-Trade Projection (illustrative)",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
-            )
-            Text(
-                "Target \u2265 ${(projection.targetPct * 100).roundToInt()}%",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.85f)
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            ProjectionStat("Starting", usd.format(projection.startingEquity))
-            ProjectionStat("Projected", usd.format(projection.finalEquity))
-            ProjectionStat("Growth", "${(projection.growthPct * 100).roundToInt()}%")
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.95f))
-                .padding(12.dp)
-        ) {
-            Text(
-                "Potential Gain",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextPrimary.copy(alpha = 0.6f)
-            )
-            Spacer(Modifier.height(2.dp))
-            val gain = projection.finalEquity - projection.startingEquity
-            Text(
-                text = "+${usd.format(gain)}",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color = BullGreen
-            )
-
-            Spacer(Modifier.height(12.dp))
-            Text(
-                "Equity path across 12 disciplined trades",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextPrimary.copy(alpha = 0.55f)
-            )
-            Spacer(Modifier.height(8.dp))
-            EquityBars(projection)
-            Spacer(Modifier.height(8.dp))
-
-            val riskPctLabel = if (projection.trades.isNotEmpty()) {
-                val pct = (projection.trades.first().risk / projection.startingEquity) * 100
-                "Risk/Trade: %.1f%%".format(pct)
-            } else "Risk/Trade: —"
-            val winRateLabel = if (projection.trades.isNotEmpty()) {
-                val wins = projection.trades.count { it.isWin }
-                "Win-rate: ${(wins * 100 / projection.trades.size)}%"
-            } else "Win-rate: —"
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(riskPctLabel, style = MaterialTheme.typography.labelSmall, color = TextPrimary.copy(alpha = 0.55f))
-                Text(winRateLabel, style = MaterialTheme.typography.labelSmall, color = TextPrimary.copy(alpha = 0.55f))
+            Column {
+                Text("Starting", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    usd.format(projection.startingEquity),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
-
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "This is a graphical illustration — not the exact order of outcomes. " +
-                    "It shows how small, repeatable edges can compound.",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextPrimary.copy(alpha = 0.45f)
+            Icon(
+                Icons.Filled.ArrowForward,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.4f),
+                modifier = Modifier.size(16.dp)
             )
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Projected", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
+                Spacer(Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        usd.format(projection.finalEquity),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(BullGreen.copy(alpha = 0.22f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            growthLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = BullGreen
+                        )
+                    }
+                }
+            }
         }
+
+        Spacer(Modifier.height(18.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ChartLegendSwatch(color = AccentCyan, dashed = false)
+            Spacer(Modifier.width(6.dp))
+            Text("With an edge", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.75f))
+            Spacer(Modifier.width(16.dp))
+            ChartLegendSwatch(color = Color.White.copy(alpha = 0.4f), dashed = true)
+            Spacer(Modifier.width(6.dp))
+            Text("Drifting without one", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        EquityLineChart(projection = projection, modifier = Modifier.fillMaxWidth().height(130.dp))
+
+        Spacer(Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            trades.forEach { trade ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(22.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background((if (trade.isWin) BullGreen else BearRed).copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (trade.isWin) "W" else "L",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (trade.isWin) BullGreen else BearRed
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            statsLine,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            "A pattern, not a prediction \u2014 real outcomes never line up this neatly. " +
+                "What it shows is how a small, repeatable edge compounds over time.",
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.4f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
 @Composable
-private fun EquityBars(projection: ProjectionEngine.ProjectionResult) {
-    val equities = projection.trades.map { it.equity }
-    val minE = minOf(projection.startingEquity, equities.minOrNull() ?: projection.startingEquity)
-    val maxE = equities.maxOrNull() ?: projection.finalEquity
-    val range = (maxE - minE).takeIf { it > 0.0 } ?: 1.0
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(70.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        projection.trades.forEach { trade ->
-            val fraction = ((trade.equity - minE) / range).toFloat().coerceIn(0.12f, 1f)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .height((70 * fraction).dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(if (trade.isWin) BullGreen else BearRed.copy(alpha = 0.8f))
-            )
-        }
+private fun ChartLegendSwatch(color: Color, dashed: Boolean) {
+    Canvas(modifier = Modifier.width(16.dp).height(3.dp)) {
+        val y = size.height / 2f
+        drawLine(
+            color = color,
+            start = Offset(0f, y),
+            end = Offset(size.width, y),
+            strokeWidth = size.height,
+            pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(4f, 3f)) else null
+        )
     }
 }
 
+/**
+ * Smooth mountain-style equity chart: the trader's illustrative "with an edge"
+ * path (gradient-filled, solid line) against a flat/declining "drifting
+ * without one" baseline (dashed) \u2014 replaces the old per-trade bar chart.
+ */
 @Composable
-private fun ProjectionStat(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
-        Spacer(Modifier.height(2.dp))
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+private fun EquityLineChart(projection: ProjectionEngine.ProjectionResult, modifier: Modifier = Modifier) {
+    val edgeColor = AccentCyan
+    val fillTop = AccentCyan.copy(alpha = 0.35f)
+    val fillBottom = AccentViolet.copy(alpha = 0.02f)
+    val driftColor = Color.White.copy(alpha = 0.32f)
+
+    val edgeSeries = remember(projection) {
+        listOf(projection.startingEquity) + projection.trades.map { it.equity }
+    }
+    val driftSeries = remember(projection) {
+        val start = projection.startingEquity
+        val n = edgeSeries.size
+        val denom = (n - 1).coerceAtLeast(1)
+        List(n) { i -> start * (1.0 - 0.09 * i / denom) }
+    }
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val n = edgeSeries.size
+        val allValues = edgeSeries + driftSeries
+        val minV = allValues.min()
+        val maxV = allValues.max()
+        val range = (maxV - minV).takeIf { it > 0.0 } ?: 1.0
+        val denom = (n - 1).coerceAtLeast(1)
+
+        fun pointsFor(series: List<Double>): List<Offset> = series.mapIndexed { i, v ->
+            val x = w * i / denom
+            val y = h - (h * ((v - minV) / range)).toFloat()
+            Offset(x, y)
+        }
+
+        fun smoothPath(points: List<Offset>): Path {
+            val path = Path()
+            if (points.isEmpty()) return path
+            path.moveTo(points[0].x, points[0].y)
+            for (i in 0 until points.size - 1) {
+                val p0 = points[i]
+                val p1 = points[i + 1]
+                val midX = (p0.x + p1.x) / 2f
+                path.cubicTo(midX, p0.y, midX, p1.y, p1.x, p1.y)
+            }
+            return path
+        }
+
+        val edgePts = pointsFor(edgeSeries)
+        val driftPts = pointsFor(driftSeries)
+        val edgePath = smoothPath(edgePts)
+        val driftPath = smoothPath(driftPts)
+
+        val fillPath = Path().apply {
+            addPath(edgePath)
+            lineTo(edgePts.last().x, h)
+            lineTo(edgePts.first().x, h)
+            close()
+        }
+        drawPath(fillPath, brush = Brush.verticalGradient(listOf(fillTop, fillBottom)))
+        drawPath(
+            driftPath,
+            color = driftColor,
+            style = Stroke(
+                width = 2.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 7f))
+            )
+        )
+        drawPath(
+            edgePath,
+            color = edgeColor,
+            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
     }
 }
 
