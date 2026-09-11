@@ -217,9 +217,59 @@ const PRIVACY_SECTIONS = [
   }
 ];
 
+
+const COMMUNITY_SECTIONS = [
+  {
+    heading: "1. Real Traders, Honest Content",
+    blocks: [
+      { type: "p", text: "Share real charts, real trades, and real results. Never post fabricated or edited trade \"proofs\", screenshots that are not yours, or claims of profits you did not make. Win shares (\"Share Your Win\") are reviewed by the mentor team before they appear on the Wall of Wins — keep them genuine." },
+      { type: "p", text: "Outcomes you tag on your posts (for example \"Profited\" or \"Lesson learned\") must reflect what actually happened. Members rely on each other's honesty." }
+    ]
+  },
+  {
+    heading: "2. Respect Each Other",
+    blocks: [
+      { type: "p", text: "No harassment, hate speech, slurs, personal attacks, or targeted abuse. Disagree with ideas, not people. Bullish and bearish debates are welcome — abuse is not." }
+    ]
+  },
+  {
+    heading: "3. No Spam, Scams, or Promotion",
+    blocks: [
+      { type: "p", text: "Do not sell signals, offer \"managed accounts\", guaranteed-returns schemes, copy-trading deals, or any paid service in the Community. Do not post invite links to WhatsApp, Telegram, or Discord groups, or bait members into direct messages (\"DM me for signals\")." },
+      { type: "p", text: "Off-platform links in posts and comments are automatically checked by our moderation systems, and questionable links do not post. Circumventing these checks (for example by disguising a link) is itself a violation." }
+    ]
+  },
+  {
+    heading: "4. Trading Content Standards",
+    blocks: [
+      { type: "p", text: "Keep posts relevant to trading and markets. Screenshots attached to signal comments are reviewed by our team before they become visible to other members. Do not upload content you do not have the right to share — including other people's paid signals or copyrighted courses." }
+    ]
+  },
+  {
+    heading: "5. Privacy of Others",
+    blocks: [
+      { type: "p", text: "Do not post other people's personal information — names, email addresses, phone numbers, or account statements. If it is not yours to share, do not share it." }
+    ]
+  },
+  {
+    heading: "6. Enforcement",
+    blocks: [
+      { type: "p", text: "We moderate the Community at our discretion. Content that breaks these Guidelines may be removed, and accounts that violate them can have their Community access restricted or be suspended or terminated under our Terms of Service. Severe or repeat violations end in account termination." }
+    ]
+  },
+  {
+    heading: "7. Flagging Content & Questions",
+    blocks: [
+      { type: "p", text: "To report a post, comment, or member, email us with the details — we review every report. The same address answers any question about these Guidelines." },
+      { type: "link", text: CONTACT_EMAIL, href: CONTACT_HREF }
+    ]
+  }
+];
+
 const DOCS = {
-  terms: { title: "Terms of Service", sections: TERMS_SECTIONS },
-  privacy: { title: "Privacy Policy", sections: PRIVACY_SECTIONS }
+  terms: { title: "Terms of Service", sections: TERMS_SECTIONS, path: "/terms" },
+  privacy: { title: "Privacy Policy", sections: PRIVACY_SECTIONS, path: "/privacy" },
+  community: { title: "Community Guidelines", sections: COMMUNITY_SECTIONS, path: "/community-guidelines" }
 };
 
 // --- HTML rendering (public web pages) ---
@@ -263,6 +313,10 @@ function renderDocHtml(docKey) {
   const body = doc.sections.map((s) =>
     `<h2>${esc(s.heading)}</h2>\n${renderBlocksHtml(s.blocks)}`
   ).join("\n");
+  const others = Object.entries(DOCS).filter(([k]) => k !== docKey)
+    .map(([, d]) => `<a href="${esc(d.path)}">${esc(d.title)}</a>`)
+    .join(' &nbsp;<span style="color:#7A8499">·</span>&nbsp; ');
+  const footer = `<p style="margin-top:48px;color:#7A8499;font-size:13px">More policies: ${others}</p>`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -276,6 +330,7 @@ function renderDocHtml(docKey) {
 <h1>${esc(doc.title)}</h1>
 <p class="updated">Effective ${esc(EFFECTIVE_DATE)}</p>
 ${body}
+${footer}
 </div>
 </body>
 </html>`;
@@ -283,5 +338,6 @@ ${body}
 
 function termsOfServiceHtml() { return renderDocHtml("terms"); }
 function privacyPolicyHtml() { return renderDocHtml("privacy"); }
+function communityGuidelinesHtml() { return renderDocHtml("community"); }
 
-module.exports = { termsOfServiceHtml, privacyPolicyHtml };
+module.exports = { termsOfServiceHtml, privacyPolicyHtml, communityGuidelinesHtml };

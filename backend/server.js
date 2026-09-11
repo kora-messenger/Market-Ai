@@ -10,7 +10,7 @@ const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
 const monetization = require("./src/monetization");
 const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
-const { termsOfServiceHtml, privacyPolicyHtml } = require("./src/legalPages");
+const { termsOfServiceHtml, privacyPolicyHtml, communityGuidelinesHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
@@ -685,6 +685,9 @@ app.get("/terms", (_req, res) => {
 });
 app.get("/privacy", (_req, res) => {
   res.set("Content-Type", "text/html; charset=utf-8").send(privacyPolicyHtml());
+});
+app.get("/community-guidelines", (_req, res) => {
+  res.set("Content-Type", "text/html; charset=utf-8").send(communityGuidelinesHtml());
 });
 
 

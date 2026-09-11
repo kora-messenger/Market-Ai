@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PersonAddAlt
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WorkspacePremium
@@ -301,7 +302,13 @@ fun ProfileScreen(
                 icon = Icons.Filled.PrivacyTip,
                 tint = TextSecondary,
                 label = "Privacy policy",
-                onClick = { uriHandler.openUri("${ApiConfig.BASE_URL}/privacy") },
+                onClick = { uriHandler.openUri("${ApiConfig.BASE_URL}/privacy") }
+            )
+            SettingsRow(
+                icon = Icons.Filled.Groups,
+                tint = TextSecondary,
+                label = "Community guidelines",
+                onClick = { uriHandler.openUri("${ApiConfig.BASE_URL}/community-guidelines") },
                 showDivider = false
             )
         }
