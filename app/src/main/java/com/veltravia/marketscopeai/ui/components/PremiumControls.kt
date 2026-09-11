@@ -657,13 +657,13 @@ fun PremiumSecondaryButton(
 
 /**
  * Small uppercase "chapter" label above a questionnaire page's headline —
- * e.g. "CHAPTER 01 · THE TRADER — IJEZIE". Purely cosmetic wayfinding,
+ * e.g. "PART 01 · KNOW THE TRADER — IJEZIE". Purely cosmetic wayfinding,
  * gives each page a sense of place beyond the segmented progress bar.
  */
 @Composable
 fun PremiumChapterLabel(chapterNumber: Int, chapterTitle: String, name: String) {
     Text(
-        "CHAPTER ${chapterNumber.toString().padStart(2, '0')} · $chapterTitle — ${name.uppercase()}",
+        "PART ${chapterNumber.toString().padStart(2, '0')} · $chapterTitle — ${name.uppercase()}",
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.sp,

@@ -115,7 +115,7 @@ private const val MAX_TIMEFRAMES = 3
  *
  * Screen 1 — "Welcome {NAME}": experience level, primary trading goal,
  * current capital (USD), risk % per trade, target % monthly return.
- * Screen 2 — "CHAPTER 02 · THE EDGE": assets (multi-select), style,
+ * Screen 2 — "PART 02 · BUILD YOUR EDGE": assets (multi-select), style,
  * timeframes (max 3), entry criteria with quick-add setup chips
  * (break & retest, liquidity sweep, trendline break, S/R bounce) above
  * the fully editable field.
@@ -279,11 +279,11 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
             Column(Modifier.fillMaxWidth()) {
                 if (pageIdx == 0) {
                     StaggeredBlock(key = pageIdx, index = 0) {
-                        PremiumChapterLabel(chapterNumber = 1, chapterTitle = "THE TRADER", name = firstName)
+                        PremiumChapterLabel(chapterNumber = 1, chapterTitle = "KNOW THE TRADER", name = firstName)
                         Spacer(Modifier.height(10.dp))
                         PremiumTwoToneHeadline(
-                            line1 = "Every trader has a story.",
-                            line2 = "Where does yours begin?"
+                            line1 = "Every trader starts somewhere.",
+                            line2 = "Where are you on the path?"
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
@@ -358,15 +358,15 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     }
                 } else if (pageIdx == 1) {
                     StaggeredBlock(key = pageIdx, index = 0) {
-                        PremiumChapterLabel(chapterNumber = 2, chapterTitle = "THE EDGE", name = firstName)
+                        PremiumChapterLabel(chapterNumber = 2, chapterTitle = "BUILD YOUR EDGE", name = firstName)
                         Spacer(Modifier.height(10.dp))
                         PremiumTwoToneHeadline(
-                            line1 = "An edge is earned.",
-                            line2 = "Let's shape yours."
+                            line1 = "Real edges aren't found.",
+                            line2 = "They're built — let's build yours."
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Your approach shapes every idea, level and timeframe we hand you.",
+                            "The way you trade informs every idea, level and timeframe we send your way.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -377,7 +377,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                         Row(verticalAlignment = Alignment.Bottom) {
                             QuestionLabel("Assets")
                             Spacer(Modifier.width(6.dp))
-                            Text("— all that apply", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text("— pick every market you trade", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                         }
                         Spacer(Modifier.height(12.dp))
                         PremiumPillRow(
@@ -402,7 +402,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 3) {
-                        QuestionLabel("Timeframes — up to $MAX_TIMEFRAMES")
+                        QuestionLabel("Timeframes — choose up to $MAX_TIMEFRAMES")
                         Spacer(Modifier.height(6.dp))
                         if (timeframes.isNotEmpty()) {
                             Text(
@@ -455,7 +455,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 4) {
-                        QuestionLabel("How do you enter trades?")
+                        QuestionLabel("How do you take your entries?")
                         Spacer(Modifier.height(12.dp))
                         // Quick-add chips: tap to append a setup you use, tap
                         // again to remove it — the field below stays fully
@@ -482,7 +482,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp),
-                            placeholder = { Text("Describe how you enter trades", color = TextMuted) },
+                            placeholder = { Text("Describe your entry routine", color = TextMuted) },
                             colors = PremiumFieldColors()
                         )
                     }
