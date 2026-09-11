@@ -45,9 +45,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.domain.ProjectionEngine
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumSegmentedProgress
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
@@ -55,6 +57,7 @@ import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.DarkInk
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
+import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import java.text.NumberFormat
 import kotlin.math.roundToInt
@@ -105,13 +108,43 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(24.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            PremiumSegmentedProgress(current = 3, total = 4, modifier = Modifier.weight(1f))
+            Text(
+                "First signal",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
 
         Text(
-            text = "Now imagine your next 12 trades with MarketScope AI",
+            "WHAT COMES NEXT · ILLUSTRATIVE",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            color = AccentCyan
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = "Now imagine your next 12 trades",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
+            color = TextPrimary
+        )
+        Text(
+            text = "with MarketScope AI.",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = AccentCyan
         )
 
         Spacer(Modifier.height(10.dp))
@@ -227,8 +260,10 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
         Row(verticalAlignment = Alignment.CenterVertically) {
             ChartLegendSwatch(color = AccentCyan, dashed = false)
             Spacer(Modifier.width(6.dp))
-            Text("With an edge", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.75f))
-            Spacer(Modifier.width(16.dp))
+            Text("With an edge", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = AccentCyan)
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
             ChartLegendSwatch(color = Color.White.copy(alpha = 0.4f), dashed = true)
             Spacer(Modifier.width(6.dp))
             Text("Drifting without one", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
@@ -242,15 +277,15 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             trades.forEach { trade ->
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background((if (trade.isWin) BullGreen else BearRed).copy(alpha = 0.22f)),
+                        .height(20.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background((if (trade.isWin) BullGreen else BearRed).copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -338,15 +373,14 @@ private fun EquityLineChart(projection: ProjectionEngine.ProjectionResult, modif
             Offset(x, y)
         }
 
+        // Straight-segment (zigzag) path — matches the reference's angular
+        // peaks/valleys rather than a smoothed curve.
         fun smoothPath(points: List<Offset>): Path {
             val path = Path()
             if (points.isEmpty()) return path
             path.moveTo(points[0].x, points[0].y)
-            for (i in 0 until points.size - 1) {
-                val p0 = points[i]
-                val p1 = points[i + 1]
-                val midX = (p0.x + p1.x) / 2f
-                path.cubicTo(midX, p0.y, midX, p1.y, p1.x, p1.y)
+            for (i in 1 until points.size) {
+                path.lineTo(points[i].x, points[i].y)
             }
             return path
         }
