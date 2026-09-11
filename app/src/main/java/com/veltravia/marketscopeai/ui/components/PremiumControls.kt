@@ -67,6 +67,8 @@ import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.sp
 
 /**
  * The app's single premium interaction identity: one violet→cyan gradient
@@ -647,6 +649,152 @@ fun PremiumSecondaryButton(
                         modifier = Modifier.size(16.dp)
                     )
                 }
+            }
+        }
+    }
+}
+
+
+/**
+ * Small uppercase "chapter" label above a questionnaire page's headline —
+ * e.g. "CHAPTER 01 · THE TRADER — IJEZIE". Purely cosmetic wayfinding,
+ * gives each page a sense of place beyond the segmented progress bar.
+ */
+@Composable
+fun PremiumChapterLabel(chapterNumber: Int, chapterTitle: String, name: String) {
+    Text(
+        "CHAPTER ${chapterNumber.toString().padStart(2, '0')} · $chapterTitle — ${name.uppercase()}",
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        color = AccentViolet
+    )
+}
+
+/**
+ * Two-line headline: a neutral first line and an accent-colored second line
+ * — the same violet-to-cyan brand pop used everywhere else, applied to
+ * page headlines instead of just buttons/pills.
+ */
+@Composable
+fun PremiumTwoToneHeadline(line1: String, line2: String) {
+    Text(
+        line1,
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.Bold,
+        color = TextPrimary
+    )
+    Text(
+        line2,
+        style = MaterialTheme.typography.headlineSmall,
+        fontWeight = FontWeight.Bold,
+        color = AccentCyan
+    )
+}
+
+/**
+ * Full-width selectable option card: icon avatar, title + subtitle, and a
+ * radio indicator that fills with the signature gradient when selected.
+ * Used for single-choice questions where each option deserves a short
+ * description (e.g. experience level) — richer than a plain choice pill.
+ */
+@Composable
+fun PremiumOptionCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val view = LocalView.current
+    val gradient = PremiumGradientBrush
+
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) AccentViolet else BorderSubtle,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "cardBorder"
+    )
+    val washAlpha by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0f,
+        animationSpec = tween(240),
+        label = "cardWash"
+    )
+
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(isSelected) {
+        if (isSelected) {
+            pop.snapTo(0.97f)
+            pop.animateTo(
+                1f,
+                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+            )
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pop.value
+                scaleY = pop.value
+            }
+            .pressScale(interaction, downScale = 0.985f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White)
+            .drawBehind {
+                drawRect(brush = gradient, alpha = washAlpha * 0.07f)
+            }
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
+            .clickable(
+                interactionSource = interaction,
+                indication = rememberRipple(color = AccentViolet)
+            ) {
+                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                onSelect()
+            }
+            .padding(16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(AccentViolet.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .border(2.dp, borderColor, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            AnimatedVisibility(
+                visible = isSelected,
+                enter = scaleIn(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(11.dp)
+                        .clip(CircleShape)
+                        .drawBehind { drawRect(brush = gradient) }
+                )
             }
         }
     }

@@ -61,10 +61,16 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.QuestionnaireAnswers
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.PremiumChapterLabel
 import com.veltravia.marketscopeai.ui.components.PremiumChoicePill
+import com.veltravia.marketscopeai.ui.components.PremiumOptionCard
 import com.veltravia.marketscopeai.ui.components.PremiumSegmentedProgress
+import com.veltravia.marketscopeai.ui.components.PremiumTwoToneHeadline
 import com.veltravia.marketscopeai.ui.components.StaggeredBlock
 import com.veltravia.marketscopeai.ui.components.pressScale
+import androidx.compose.material.icons.filled.Eco
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.TrendingUp
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.TextMuted
@@ -75,7 +81,6 @@ import org.json.JSONObject
 import kotlinx.coroutines.launch
 
 // Reference app's real questionnaire — exactly 3 screens.
-private val experienceOptions = listOf("Beginner", "Intermediate", "Advanced")
 private val goalOptions = listOf(
     "Consistent monthly income", "Account growth", "Funded trader status",
     "Retirement savings", "Quit 9-5 job"
@@ -83,6 +88,14 @@ private val goalOptions = listOf(
 private val assetOptions = listOf("Forex", "Crypto", "Stocks", "Synthetic", "Indices", "Commodities")
 private val riskPerTradeOptions = listOf("0.5%", "1%", "2%", "3%", "5%")
 private val targetReturnOptions = listOf("5%", "10%", "15%", "20%", "30%+")
+
+// Experience options rendered as PremiumOptionCard rows on page 1: label,
+// short description, and an icon — richer than a plain choice pill.
+private val ExperienceCardData = listOf(
+    Triple("Beginner", "Under a year in", Icons.Filled.Eco),
+    Triple("Intermediate", "Consistent but refining", Icons.Filled.TrendingUp),
+    Triple("Advanced", "Edge, rules, journal", Icons.Filled.EmojiEvents)
+)
 private val styleOptions = listOf("Scalping", "Day Trading", "Swing Trading", "Position Trading")
 private val timeframeOptions = listOf("1M", "5M", "15M", "1H", "4H", "1D")
 private const val MAX_TIMEFRAMES = 3
@@ -217,7 +230,22 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
             Spacer(Modifier.height(20.dp))
         }
 
-        PremiumSegmentedProgress(current = page, total = 3)
+        val sectionLabel = when (page) {
+            0 -> "About you"
+            1 -> "Your approach"
+            else -> "Mindset"
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            PremiumSegmentedProgress(current = page, total = 3, modifier = Modifier.weight(1f))
+            Text(
+                sectionLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+        }
 
         Spacer(Modifier.height(24.dp))
 
@@ -243,15 +271,15 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
             Column(Modifier.fillMaxWidth()) {
                 if (pageIdx == 0) {
                     StaggeredBlock(key = pageIdx, index = 0) {
-                        Text(
-                            "Welcome $firstName,",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
+                        PremiumChapterLabel(chapterNumber = 1, chapterTitle = "THE TRADER", name = firstName)
+                        Spacer(Modifier.height(10.dp))
+                        PremiumTwoToneHeadline(
+                            line1 = "Every trader has a story.",
+                            line2 = "Where does yours begin?"
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Let us get to understand your trading preferences and perform our first analysis!",
+                            "No judgment here — honest answers are how we tailor every analysis to you.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -259,18 +287,24 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     Spacer(Modifier.height(32.dp))
 
                     StaggeredBlock(key = pageIdx, index = 1) {
-                        QuestionLabel("What is your Experience Level?")
+                        QuestionLabel("Experience")
                         Spacer(Modifier.height(12.dp))
-                        PremiumPillRow(
-                            options = experienceOptions,
-                            selected = listOf(experience),
-                            onSelect = { experience = it }
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            ExperienceCardData.forEach { (label, subtitle, icon) ->
+                                PremiumOptionCard(
+                                    title = label,
+                                    subtitle = subtitle,
+                                    icon = icon,
+                                    isSelected = experience == label,
+                                    onSelect = { experience = label }
+                                )
+                            }
+                        }
                     }
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 2) {
-                        QuestionLabel("What is your Primary Trading Goal?")
+                        QuestionLabel("Main goal")
                         Spacer(Modifier.height(12.dp))
                         PremiumPillRow(
                             options = goalOptions,
@@ -281,7 +315,11 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
 
                     Spacer(Modifier.height(28.dp))
                     StaggeredBlock(key = pageIdx, index = 3) {
-                        QuestionLabel("How much capital do you currently have? (USD)")
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            QuestionLabel("Trading capital")
+                            Spacer(Modifier.width(6.dp))
+                            Text("(USD)", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        }
                         Spacer(Modifier.height(12.dp))
                         PremiumCapitalField(
                             capital = capital,
@@ -564,6 +602,14 @@ private fun PremiumCapitalField(capital: String, onCapitalChange: (String) -> Un
             onCapitalChange(value.filter { it.isDigit() }.take(12))
         },
         modifier = Modifier.fillMaxWidth(),
+        leadingIcon = {
+            Text(
+                "$",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = AccentViolet
+            )
+        },
         placeholder = { Text("e.g. 500", color = TextMuted) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
