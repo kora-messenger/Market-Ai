@@ -705,7 +705,10 @@ app.get("/health", async (_req, res) => {
     fcm: !!process.env.FCM_SERVICE_ACCOUNT_JSON,
     googleAuth: Boolean(GOOGLE_WEB_CLIENT_ID),
     analysis: Boolean(OPENAI_API_KEY || OPENROUTER_API_KEY),
-    analysisProvider: OPENAI_API_KEY ? "openai" : (OPENROUTER_API_KEY ? "openrouter" : null)
+    analysisProvider: OPENAI_API_KEY ? "openai" : (OPENROUTER_API_KEY ? "openrouter" : null),
+    // Image storage: r2 = Cloudflare R2 (primary, when all keys are set);
+    // otherwise member images fall back to base64-in-Postgres.
+    imageStorage: r2.isR2Configured() ? "r2" : "database"
   };
   // Real connectivity check: env presence is NOT enough — a bad host or
   // dead route would otherwise show green while every DB query fails.
