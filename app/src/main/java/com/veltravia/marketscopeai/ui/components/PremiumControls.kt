@@ -45,7 +45,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -308,13 +311,20 @@ fun GradientPrimaryButton(
     val view = LocalView.current
     val gradient = PremiumGradientBrush
 
+    // Keep the gradient lit while analyzing — only a genuinely disabled
+    // button (missing inputs) should fade to the muted look. `enabled`
+    // still gates the click handler below so this never lets a double-tap
+    // fire twice; it only affects the visual (previously the gradient
+    // faded to a near-white surface during loading, hiding a white
+    // spinner on a white background).
+    val lookEnabled = enabled || loading
     val enabledAlpha by animateFloatAsState(
-        targetValue = if (enabled) 1f else 0f,
+        targetValue = if (lookEnabled) 1f else 0f,
         animationSpec = tween(280),
         label = "ctaEnabled"
     )
     val contentColor by animateColorAsState(
-        targetValue = if (enabled) Color.White else TextMuted,
+        targetValue = if (lookEnabled) Color.White else TextMuted,
         animationSpec = tween(280),
         label = "ctaContent"
     )
@@ -370,10 +380,18 @@ fun GradientPrimaryButton(
             }
     ) {
         if (loading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                strokeWidth = 2.dp,
-                color = Color.White
+            var dotCount by remember { mutableStateOf(0) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(420)
+                    dotCount = (dotCount + 1) % 4
+                }
+            }
+            Text(
+                "Analyzing" + ".".repeat(dotCount),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = contentColor
             )
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
