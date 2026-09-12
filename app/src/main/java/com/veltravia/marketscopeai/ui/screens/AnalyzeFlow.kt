@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +20,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -50,6 +55,7 @@ import com.veltravia.marketscopeai.ui.components.PremiumSegmentedTabs
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
+import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import androidx.compose.material.icons.filled.PlayArrow
@@ -57,6 +63,8 @@ import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
@@ -104,6 +112,10 @@ fun AnalyzeFlow(
     var stockName by rememberSaveable { mutableStateOf("") }
     var stockImage by remember { mutableStateOf<Uri?>(null) }
     var loading by remember { mutableStateOf(false) }
+    // Deep Analysis (premium perk): scenario paths, confluence checklist,
+    // risk map. Trial users keep access so they feel the difference.
+    var deep by rememberSaveable { mutableStateOf(false) }
+    val canUseDeep = SessionManager.isPremium(context) || SessionManager.trialActive(context)
     var fxError by remember { mutableStateOf<String?>(null) }
     var crError by remember { mutableStateOf<String?>(null) }
     var stkError by remember { mutableStateOf<String?>(null) }
@@ -158,7 +170,7 @@ fun AnalyzeFlow(
                 }
                 val dataH4 = ApiClient.prepareChartImage(context, h4)
                 val dataM15 = ApiClient.prepareChartImage(context, m15)
-                val result = ApiClient.analyze(token, inst.id, mode, dataH4, dataM15)
+                val result = ApiClient.analyze(token, inst.id, mode, dataH4, dataM15, deep)
                 val id = result.optString("id", "")
                 loading = false
                 if (id.isNotEmpty()) onAnalysisComplete(id)
@@ -190,7 +202,7 @@ fun AnalyzeFlow(
                     return@launch
                 }
                 val imageData = image?.let { ApiClient.prepareChartImage(context, it) }
-                val result = ApiClient.analyzeStock(token, name.trim(), imageData)
+                val result = ApiClient.analyzeStock(token, name.trim(), imageData, deep)
                 val id = result.optString("id", "")
                 loading = false
                 if (id.isNotEmpty()) onAnalysisComplete(id)
@@ -250,7 +262,14 @@ fun AnalyzeFlow(
                     )
                     Spacer(Modifier.height(24.dp))
                     AnalyzeModeSection(mode = mode, onModeChange = { mode = it })
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(16.dp))
+                    DeepAnalysisToggle(
+                        deep = deep,
+                        canUseDeep = canUseDeep,
+                        onToggle = { deep = it },
+                        onUpgradeRequired = onUpgradeRequired
+                    )
+                    Spacer(Modifier.height(16.dp))
                     fxError?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(10.dp))
@@ -291,7 +310,14 @@ fun AnalyzeFlow(
                     )
                     Spacer(Modifier.height(24.dp))
                     AnalyzeModeSection(mode = mode, onModeChange = { mode = it })
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(16.dp))
+                    DeepAnalysisToggle(
+                        deep = deep,
+                        canUseDeep = canUseDeep,
+                        onToggle = { deep = it },
+                        onUpgradeRequired = onUpgradeRequired
+                    )
+                    Spacer(Modifier.height(16.dp))
                     crError?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(10.dp))
@@ -350,7 +376,14 @@ fun AnalyzeFlow(
                         onPick = { launchPick(pickStock) },
                         onClear = { stockImage = null }
                     )
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(16.dp))
+                    DeepAnalysisToggle(
+                        deep = deep,
+                        canUseDeep = canUseDeep,
+                        onToggle = { deep = it },
+                        onUpgradeRequired = onUpgradeRequired
+                    )
+                    Spacer(Modifier.height(16.dp))
                     stkError?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(10.dp))
@@ -476,5 +509,77 @@ private fun AnalyzeTabInfo(
             color = TextSecondary,
             modifier = Modifier.padding(top = 5.dp)
         )
+    }
+}
+
+/**
+ * Deep Analysis toggle — a premium perk. Premium/trial users flip it freely;
+ * free users tap it and land on the subscribe screen. The row reads as part
+ * of the form (same SurfaceDark card language as the rest of the flow).
+ */
+@Composable
+internal fun DeepAnalysisToggle(
+    deep: Boolean,
+    canUseDeep: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onUpgradeRequired: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (deep) AccentViolet.copy(alpha = 0.12f) else SurfaceDark)
+            .border(
+                1.dp,
+                if (deep) AccentViolet else BorderSubtle,
+                RoundedCornerShape(14.dp)
+            )
+            .clickable { if (canUseDeep) onToggle(!deep) else onUpgradeRequired() }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.WorkspacePremium,
+            contentDescription = null,
+            tint = if (deep) AccentViolet else AccentCyan,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Deep analysis",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
+            Text(
+                "Scenario paths, confluence checklist & risk map",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+        }
+        if (canUseDeep) {
+            Switch(
+                checked = deep,
+                onCheckedChange = { onToggle(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = androidx.compose.ui.graphics.Color.White,
+                    checkedTrackColor = AccentViolet,
+                    uncheckedThumbColor = TextSecondary,
+                    uncheckedTrackColor = BorderSubtle
+                )
+            )
+        } else {
+            Text(
+                "PRO",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = AccentViolet,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(AccentViolet.copy(alpha = 0.14f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
     }
 }

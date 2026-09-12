@@ -315,6 +315,11 @@ async function callAI(payload, label) {
 const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || "";
 const JWT_SECRET = process.env.SESSION_JWT_SECRET || "";
 const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL || "google/gemini-3.8-flash";
+// Deep Analysis (premium perk): a heavier, scenario-based pass. Defaults to
+// the same model with higher reasoning effort; set DEEP_ANALYSIS_MODEL (and
+// top up OpenAI with OPENAI_ANALYSIS_MODEL=gpt-5, or an OpenRouter model id)
+// to route deep passes to a stronger reasoning model with no code change.
+const DEEP_ANALYSIS_MODEL = process.env.DEEP_ANALYSIS_MODEL || ANALYSIS_MODEL;
 // Comma-separated admin emails (e.g. "a@gmail.com,b@gmail.com"); the
 // first account ever created also stays admin as a fallback.
 const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || "")
@@ -2385,6 +2390,28 @@ Respond with STRICT JSON only (no markdown fences), shape:
 Prices must be plausible for the instrument shown on the charts. Provide a realistic estimated duration based on timeframe and momentum. If the setup is not clean, choose NO_TRADE with a clear thesis.
 If a trader profile is provided with the request, tailor the analysis to it: respect their stated risk per trade when framing risk, lean the reasoning toward their preferred style/timeframes/entry criteria, and pitch the explanation to their experience level. The profile describes THIS trader — never contradict it (e.g. never present a scalp-style setup to a declared position trader as ideal).`;
 
+// Deep Analysis prompt: everything the standard pass produces, plus a
+// scenario map (bull/base/bear paths with triggers), the confluence
+// checklist that supports the idea, and an honest list of what could hurt
+// the position. Same strict-JSON contract so the app renders it uniformly.
+const DEEP_EXTRA_PROMPT = `
+You are running a DEEP pass — the trader has asked for the full workup, not just the headline verdict.
+In addition to the standard fields, your response MUST also include:
+{
+  "scenarios": [
+    { "name": "Primary path", "probability": "High" | "Medium" | "Low", "path": "one or two sentences describing how price likely travels and where", "trigger": "the concrete level or event that confirms this path" },
+    { "name": "Alternate path", ... },
+    { "name": "Failure path", "probability": "...", "path": "...", "trigger": "..." }
+  ],
+  "confluence": ["3-5 short points of evidence stacking in favor of the read — structure, momentum, level history"],
+  "risks": ["2-4 short, specific threats to the idea — news risk, session liquidity, conflicting timeframe signals"]
+}
+Rules for the deep pass:
+- Exactly 3 scenarios: the primary path matching your direction call, one alternate path, and one failure path. Probabilities must not all be equal.
+- thesis should be 4-7 sentences in a deep pass — walk through structure across BOTH timeframes, not a summary.
+- confluence points must reference what is actually visible on the charts; never generic filler.
+- risks must be specific to this instrument and setup, not boilerplate disclaimers.`;
+
 function extractJson(text) {
   let t = (text || "").trim();
   if (t.startsWith("```")) {
@@ -2405,7 +2432,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
   }
-  const { instrumentId, mode, imageH4, imageM15 } = req.body || {};
+  const { instrumentId, mode, imageH4, imageM15, deep } = req.body || {};
 
   const instrument = byId[(instrumentId || "").toLowerCase()];
   if (!instrument) {
@@ -2438,6 +2465,15 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   const traderProfile = profilePromptText(userRow.questionnaire);
   const trial = trialInfo(userRow);
   const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
+  // Deep Analysis is a premium perk (paid subscribers + trial users so they
+  // can feel the difference before buying).
+  const wantsDeep = Boolean(deep);
+  if (wantsDeep && !premium && !trial.trialActive) {
+    return res.status(403).json({
+      error: "Deep Analysis is a Premium feature. Upgrade to unlock scenario paths, the confluence checklist and the risk map.",
+      deepPremiumOnly: true
+    });
+  }
   if (!trial.trialActive && !premium) {
     // Trial lapsed without a subscription: the free tier keeps the core
     // feature alive at 3 analyses per rolling 24h — the upgrade pressure
@@ -2542,15 +2578,15 @@ Respond ONLY with JSON:
   // --- Stage 3: the real analysis, anchored to the verified live market ---
   try {
     const orResult = await callAI({
-      model: ANALYSIS_MODEL,
+      model: wantsDeep ? DEEP_ANALYSIS_MODEL : ANALYSIS_MODEL,
       // 1800 covers the thesis comfortably and fits OpenRouter's remaining
       // credit ceiling (was 2500 — 402'd every time, forcing the slow
       // free-model fallback chain on every single chart analysis).
       max_tokens: 1800,
-      reasoning: { effort: "low" },
+      reasoning: { effort: wantsDeep ? "medium" : "low" },
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: wantsDeep ? SYSTEM_PROMPT + DEEP_EXTRA_PROMPT : SYSTEM_PROMPT },
         {
           role: "user",
           content: [
@@ -2591,7 +2627,8 @@ Respond ONLY with JSON:
       instrument: instrument.display,
       instrumentId: instrument.id,
       mode,
-      model: ANALYSIS_MODEL,
+      deep: wantsDeep,
+      model: wantsDeep ? DEEP_ANALYSIS_MODEL : ANALYSIS_MODEL,
       livePrice,
       marketVerified: livePrice != null,
       chartValidated: true,
@@ -2641,7 +2678,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
   }
-  const { name, image } = req.body || {};
+  const { name, image, deep } = req.body || {};
   const isDataUrl = (s) => typeof s === "string" && /^data:image\/(png|jpe?g|webp);base64,/.test(s);
   const hasImage = isDataUrl(image);
   const stockQuery = typeof name === "string" ? name.trim() : "";
@@ -2664,6 +2701,13 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   const traderProfile = profilePromptText(userRow.questionnaire);
   const trial = trialInfo(userRow);
   const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
+  const wantsDeep = Boolean(deep);
+  if (wantsDeep && !premium && !trial.trialActive) {
+    return res.status(403).json({
+      error: "Deep Analysis is a Premium feature. Upgrade to unlock scenario paths, the confluence checklist and the risk map.",
+      deepPremiumOnly: true
+    });
+  }
   if (!trial.trialActive && !premium) {
     const usage = await analysisUsage(userRow.id);
     if (usage.used >= usage.limit) {
@@ -2783,13 +2827,13 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
     }
 
     const orResult = await callAI({
-      model: ANALYSIS_MODEL,
+      model: wantsDeep ? DEEP_ANALYSIS_MODEL : ANALYSIS_MODEL,
       // See chart-analysis note above — same OpenRouter credit-ceiling fix.
       max_tokens: 1800,
-      reasoning: { effort: "low" },
+      reasoning: { effort: wantsDeep ? "medium" : "low" },
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: STOCK_SYSTEM_PROMPT },
+        { role: "system", content: wantsDeep ? STOCK_SYSTEM_PROMPT + DEEP_EXTRA_PROMPT : STOCK_SYSTEM_PROMPT },
         { role: "user", content: userContent }
       ]
     }, "stock-analysis");
@@ -2816,7 +2860,8 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       instrument: `${stats.company} (${stats.ticker})`,
       instrumentId: match.symbol,
       mode: "stock",
-      model: ANALYSIS_MODEL,
+      deep: wantsDeep,
+      model: wantsDeep ? DEEP_ANALYSIS_MODEL : ANALYSIS_MODEL,
       livePrice: stats.price,
       marketVerified: true,
       chartValidated: true,
