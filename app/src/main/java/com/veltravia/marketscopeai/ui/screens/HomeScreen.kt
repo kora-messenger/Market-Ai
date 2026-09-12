@@ -308,7 +308,7 @@ fun HomeScreen(
                 )
             }
             IconButton(onClick = {
-                val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@veltraviatech.com"))
+                val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
                 runCatching { context.startActivity(mail) }
             }) {
                 Icon(Icons.Filled.Email, contentDescription = "Contact support", tint = TextSecondary)

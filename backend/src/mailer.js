@@ -24,7 +24,7 @@
 const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
 const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || "";
 const SENDER_NAME = process.env.MAIL_FROM_NAME || "MarketScope AI";
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@veltraviatech.com";
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@marketscopeai.com";
 const LOGO_URL =
   process.env.APP_LOGO_URL ||
   "https://raw.githubusercontent.com/kora-messenger/Market-Ai/main/branding/email_logo.png";

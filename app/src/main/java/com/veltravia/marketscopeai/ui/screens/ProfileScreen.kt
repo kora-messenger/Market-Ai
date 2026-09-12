@@ -290,7 +290,7 @@ fun ProfileScreen(
                 tint = AccentCyan,
                 label = "Help & support",
                 onClick = {
-                    val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@veltraviatech.com"))
+                    val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
                     context.startActivity(mail)
                 }
             )

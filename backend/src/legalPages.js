@@ -9,8 +9,8 @@
  */
 
 const EFFECTIVE_DATE = "September 11, 2026";
-const CONTACT_EMAIL = "support@veltraviatech.com";
-const CONTACT_HREF = "mailto:support@veltraviatech.com";
+const CONTACT_EMAIL = "support@marketscopeai.com";
+const CONTACT_HREF = "mailto:support@marketscopeai.com";
 
 /**
  * Structured policy documents (single source of truth for web + app).
