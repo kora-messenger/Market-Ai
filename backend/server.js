@@ -3429,7 +3429,9 @@ app.post("/api/daily-signals/auto", async (req, res) => {
           ];
       const aiResult = await callAI({
         model: ANALYSIS_MODEL,
-        max_tokens: 2500,
+        // 1600 is plenty for the signal JSON (~500 tokens used) and stays
+        // under the OpenRouter "can only afford ~2000" credit floor.
+        max_tokens: 1600,
         reasoning: { effort: "low" },
         response_format: { type: "json_object" },
         messages
