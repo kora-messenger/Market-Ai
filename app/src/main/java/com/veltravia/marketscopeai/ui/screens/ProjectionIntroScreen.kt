@@ -54,7 +54,6 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
-import com.veltravia.marketscopeai.ui.theme.DarkInk
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
@@ -71,6 +70,11 @@ import kotlin.math.roundToInt
  * per-trade bar chart) with a "drifting without one" comparison baseline,
  * matching the requested look — drawn with our own violet/cyan accents.
  */
+/** FxLens's confirmed dark-card shade (Tailwind slate-900, #0F172A) — found live
+ *  in their decompiled bundle, used app-wide for dark surfaces. Used only for this
+ *  card's background; doesn't touch the shared DarkInk constant used elsewhere. */
+private val ProjectionCardNavy = Color(0xFF0F172A)
+
 @Composable
 fun ProjectionIntroScreen(onContinue: () -> Unit) {
     val context = LocalContext.current
@@ -203,7 +207,7 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(DarkInk)
+            .background(ProjectionCardNavy)
             .padding(18.dp)
     ) {
         Row(
