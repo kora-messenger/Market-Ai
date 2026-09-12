@@ -1740,6 +1740,64 @@ app.post("/api/admin/members/:id/role", requireAuth, async (req, res) => {
   }
 });
 
+/** Admin/cron: permanently delete every non-admin account and all the data
+ *  attached to it (analyses, payments, trade plans, premium grants, reactions,
+ *  votes, views, saves, monitors, push tokens, notifications). The owner/admin
+ *  account (ADMIN_EMAIL, or the first account ever created) is never deleted.
+ *  Requires an explicit confirm string in the body so it can never fire by
+ *  accident. */
+app.post("/api/admin/users/purge", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!((await isAdminRequest(req)) || isCronRequest(req))) {
+    return res.status(403).json({ error: "Only the MarketScope AI team can purge accounts." });
+  }
+  if (String((req.body || {}).confirm || "") !== "purge-all-accounts") {
+    return res.status(400).json({ error: "Missing confirm field. Send {\"confirm\": \"purge-all-accounts\"}." });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: targets } = await client.query(
+      `SELECT id, email FROM users
+        WHERE NOT (lower(email) = ANY($1))
+          AND google_sub <> COALESCE((
+                SELECT google_sub FROM users ORDER BY created_at ASC LIMIT 1
+              ), '')`,
+      [ADMIN_EMAILS.length ? ADMIN_EMAILS.map((e) => String(e).toLowerCase()) : [""]]
+    );
+    const ids = targets.map((t) => t.id);
+    if (!ids.length) {
+      await client.query("COMMIT");
+      return res.json({ deleted: 0, accounts: [], kept: ADMIN_EMAILS });
+    }
+    for (const table of [
+      "analyses",
+      "subscription_payments",
+      "trade_plans",
+      "premium_grants",
+      "signal_reactions",
+      "signal_saves",
+      "signal_comment_reactions",
+      "post_poll_votes",
+      "post_reactions",
+      "post_views"
+    ]) {
+      await client.query(`DELETE FROM ${table} WHERE user_id = ANY($1)`, [ids]);
+    }
+    // signal_takers / stock_monitors / push_tokens / notifications cascade on
+    // user deletion; comments/posts/testimonials fall back to anonymous.
+    const { rowCount } = await client.query(`DELETE FROM users WHERE id = ANY($1)`, [ids]);
+    await client.query("COMMIT");
+    console.log(`[purge] deleted ${rowCount} account(s): ${targets.map((t) => t.email).join(", ")}`);
+    res.json({ deleted: rowCount, accounts: targets.map((t) => t.email), kept: ADMIN_EMAILS });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    res.status(500).json({ error: "Purge failed — nothing was deleted", detail: String(err.message || err) });
+  } finally {
+    client.release();
+  }
+});
+
 app.get("/api/community/status", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
