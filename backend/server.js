@@ -2930,7 +2930,7 @@ async function isAdminRequest(req) {
   if (!pool) return false;
   if (ADMIN_EMAILS.includes(String((req.session && req.session.email) || "").toLowerCase())) return true;
   const adminSub = await getAdminSub();
-  return !!adminSub && String(req.session.sub) === adminSub;
+  return !!adminSub && String((req.session && req.session.sub) || "") === adminSub;
 }
 
 /** Cron endpoints are callable by the admin or with the CRON_SECRET header. */
