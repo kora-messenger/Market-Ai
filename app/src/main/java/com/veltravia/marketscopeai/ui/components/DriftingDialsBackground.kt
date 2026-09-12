@@ -180,13 +180,13 @@ private fun DrawScope.drawShootingStar(
             ),
             start = head,
             end = tailStart,
-            strokeWidth = 2.dp2px(density),
+            strokeWidth = 2f.dp2px(density),
             cap = StrokeCap.Round
         )
     }
 
     // Bright head: soft glow halo + a solid core dot.
-    drawCircle(color = AccentViolet, radius = 7.dp2px(density), center = head, alpha = 0.16f * alpha)
+    drawCircle(color = AccentViolet, radius = 7f.dp2px(density), center = head, alpha = 0.16f * alpha)
     drawCircle(color = AccentViolet, radius = 2.6f.dp2px(density), center = head, alpha = 0.85f * alpha)
 }
 
