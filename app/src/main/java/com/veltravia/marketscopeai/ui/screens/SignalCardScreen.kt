@@ -30,9 +30,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.AltRoute
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -240,13 +237,6 @@ private fun TradeAnalysisBody(
     val thesis = analysis.optString("thesis", "")
     val invalidation = analysis.optString("invalidation", "")
     val keyLevels = analysis.optJSONArray("keyLevels")
-    // --- Deep Analysis extras (only present on a deep pass) ---
-    val deepScenarios = analysis.optJSONArray("scenarios")
-    val deepConfluence = analysis.optJSONArray("confluence")
-    val deepRisks = analysis.optJSONArray("risks")
-    val hasDeep = (deepScenarios != null && deepScenarios.length() > 0) ||
-        (deepConfluence != null && deepConfluence.length() > 0) ||
-        (deepRisks != null && deepRisks.length() > 0)
 
     // --- Logo row ---
     Row(
@@ -554,159 +544,6 @@ private fun TradeAnalysisBody(
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary
                 )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-    }
-
-    // --- DEEP DIVE (deep analysis pass only) ---
-    if (hasDeep) {
-        Spacer(Modifier.height(12.dp))
-        SectionHeader("DEEP DIVE")
-        Spacer(Modifier.height(10.dp))
-
-        // Scenario paths: primary / alternate / failure, each with trigger
-        if (deepScenarios != null && deepScenarios.length() > 0) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceDark)
-                    .padding(16.dp)
-            ) {
-                Text(
-                    "Scenario paths",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = AccentCyan,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(10.dp))
-                for (i in 0 until deepScenarios.length()) {
-                    val sc = deepScenarios.optJSONObject(i)
-                    if (sc != null) {
-                    val name = sc.optString("name", "").ifBlank { "Path ${i + 1}" }
-                    val probability = sc.optString("probability", "")
-                    val path = sc.optString("path", "")
-                    val trigger = sc.optString("trigger", "")
-                    val isFailure = name.contains("failure", ignoreCase = true) ||
-                        name.contains("invalidat", ignoreCase = true)
-                    Row(verticalAlignment = Alignment.Top) {
-                        Icon(
-                            Icons.Filled.AltRoute,
-                            contentDescription = null,
-                            tint = if (isFailure) BearRed else AccentCyan,
-                            modifier = Modifier.size(16.dp).padding(top = 2.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    name,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = TextPrimary
-                                )
-                                if (probability.isNotBlank()) {
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        probability.uppercase(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isFailure) BearRed else AccentCyan,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .background(if (isFailure) BearRed.copy(alpha = 0.12f) else AccentCyan.copy(alpha = 0.12f))
-                                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            if (path.isNotBlank()) {
-                                Spacer(Modifier.height(3.dp))
-                                Text(path, style = MaterialTheme.typography.bodySmall, color = TextSecondary, lineHeight = 18.sp)
-                            }
-                            if (trigger.isNotBlank()) {
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    "Trigger: $trigger",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                    if (i < deepScenarios.length() - 1) Spacer(Modifier.height(14.dp))
-                    }
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
-        // Confluence checklist + risk map side by side
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (deepConfluence != null && deepConfluence.length() > 0) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(SurfaceDark)
-                        .padding(14.dp)
-                ) {
-                    Text(
-                        "Confluence",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = BullGreen,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    for (i in 0 until deepConfluence.length()) {
-                        val point = deepConfluence.optString(i, "")
-                        if (point.isNotBlank()) {
-                            Row(modifier = Modifier.padding(bottom = 8.dp)) {
-                                Icon(
-                                    Icons.Filled.CheckCircle,
-                                    contentDescription = null,
-                                    tint = BullGreen,
-                                    modifier = Modifier.size(14.dp).padding(top = 2.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(point, style = MaterialTheme.typography.bodySmall, color = TextSecondary, lineHeight = 17.sp)
-                            }
-                        }
-                    }
-                }
-            }
-            if (deepRisks != null && deepRisks.length() > 0) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(SurfaceDark)
-                        .padding(14.dp)
-                ) {
-                    Text(
-                        "Risks",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = BearRed,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    for (i in 0 until deepRisks.length()) {
-                        val risk = deepRisks.optString(i, "")
-                        if (risk.isNotBlank()) {
-                            Row(modifier = Modifier.padding(bottom = 8.dp)) {
-                                Icon(
-                                    Icons.Filled.WarningAmber,
-                                    contentDescription = null,
-                                    tint = BearRed,
-                                    modifier = Modifier.size(14.dp).padding(top = 2.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(risk, style = MaterialTheme.typography.bodySmall, color = TextSecondary, lineHeight = 17.sp)
-                            }
-                        }
-                    }
-                }
             }
         }
         Spacer(Modifier.height(12.dp))

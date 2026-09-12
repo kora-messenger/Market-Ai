@@ -59,15 +59,13 @@ object ApiClient {
         instrumentId: String,
         mode: String,
         imageH4DataUrl: String,
-        imageM15DataUrl: String,
-        deep: Boolean = false
+        imageM15DataUrl: String
     ): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject()
             .put("instrumentId", instrumentId)
             .put("mode", mode)
             .put("imageH4", imageH4DataUrl)
             .put("imageM15", imageM15DataUrl)
-            .put("deep", deep)
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/analyze")
             .addHeader("Authorization", "Bearer $sessionToken")
@@ -102,12 +100,10 @@ object ApiClient {
     suspend fun analyzeStock(
         sessionToken: String,
         name: String,
-        imageDataUrl: String?,
-        deep: Boolean = false
+        imageDataUrl: String?
     ): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject()
             .put("name", name)
-            .put("deep", deep)
         if (imageDataUrl != null) payload.put("image", imageDataUrl)
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/analyze/stock")
