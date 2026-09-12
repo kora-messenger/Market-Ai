@@ -442,7 +442,9 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                         }
                         Spacer(Modifier.height(12.dp))
                         // The pill row shakes when a 4th timeframe is refused.
-                        Box(
+                        // Column, not Box — PremiumPillRow emits several rows of
+                        // pills that must stack vertically, not overlap at top-start.
+                        Column(
                             modifier = Modifier.graphicsLayer {
                                 translationX = shake.value
                             }
