@@ -53,6 +53,7 @@ import com.veltravia.marketscopeai.auth.GoogleSignIn
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.data.UserSession
+import com.veltravia.marketscopeai.ui.components.DriftingDialsBackground
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
@@ -73,6 +74,10 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        // Ambient drifting dial glyphs BEHIND the content (Cowrywise-style
+        // background texture). The logo itself stays fully static.
+        DriftingDialsBackground()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()

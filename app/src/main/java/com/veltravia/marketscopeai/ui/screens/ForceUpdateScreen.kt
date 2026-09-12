@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
+import com.veltravia.marketscopeai.ui.components.DriftingDialsBackground
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 
@@ -60,6 +61,10 @@ fun ForceUpdateScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        // Ambient drifting dial glyphs BEHIND the content. The logo stays
+        // fully static (standing rule: no logo animation anywhere).
+        DriftingDialsBackground()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
