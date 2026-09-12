@@ -1,5 +1,11 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
@@ -81,12 +88,26 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Gentle continuous float, like the app is drifting in place —
+            // pure decorative motion on the logo, nothing else on this
+            // screen changes.
+            val floatTransition = rememberInfiniteTransition(label = "logoFloat")
+            val floatOffset by floatTransition.animateFloat(
+                initialValue = -8f,
+                targetValue = 8f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2200, easing = LinearOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "logoFloatOffset"
+            )
             Image(
                 painter = painterResource(R.drawable.app_logo),
                 contentDescription = "MarketScope AI",
                 modifier = Modifier
                     .size(120.dp)
                     .clip(RoundedCornerShape(28.dp))
+                    .graphicsLayer { translationY = floatOffset }
             )
 
             Spacer(Modifier.height(28.dp))
