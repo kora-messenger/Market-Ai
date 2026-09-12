@@ -56,6 +56,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.BuildConfig
+import com.veltravia.marketscopeai.ui.screens.ForceUpdateScreen
 import com.veltravia.marketscopeai.ui.components.PremiumTab
 import com.veltravia.marketscopeai.ui.components.PremiumTabBar
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
@@ -126,6 +129,41 @@ private val tabs = listOf(
 fun MarketAiApp() {
     val navController = rememberNavController()
     val context = LocalContext.current
+
+    // Force-update gate — server-driven, checked once at launch, BEFORE the
+    // welcome screen or any session state is even considered. null = still
+    // checking (render nothing yet, avoids a home-screen flash); true = the
+    // installed build is below the admin's configured minimum, block with
+    // ForceUpdateScreen; false = proceed into the app as normal.
+    var updateRequired by remember { mutableStateOf<Boolean?>(null) }
+    var updateInfo by remember { mutableStateOf<org.json.JSONObject?>(null) }
+    LaunchedEffect(Unit) {
+        val result = runCatching { ApiClient.checkAppVersion(BuildConfig.VERSION_CODE) }.getOrNull()
+        updateInfo = result
+        updateRequired = result?.optBoolean("updateRequired", false) ?: false
+    }
+
+    if (updateRequired == true) {
+        val info = updateInfo
+        ForceUpdateScreen(
+            latestVersionName = info?.optString("latestVersionName", "").takeUnless { it.isNullOrBlank() } ?: BuildConfig.VERSION_NAME,
+            updateMessage = info?.optString("updateMessage", "").takeUnless { it.isNullOrBlank() }
+                ?: "New version available. We strongly recommend installing the update before using the app.",
+            playStoreUrl = info?.optString("playStoreUrl", "").takeUnless { it.isNullOrBlank() }
+                ?: "https://play.google.com/store/apps/details?id=com.veltravia.marketscopeai"
+        )
+        return
+    }
+    if (updateRequired == null) {
+        // Brief version-check window — same white canvas as the rest of the
+        // app so there is no flash, just a beat before content appears.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        )
+        return
+    }
 
     val startDestination = remember {
         val hasSession = SessionManager.currentUser(context) != null

@@ -9,6 +9,7 @@ const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
 const monetization = require("./src/monetization");
+const appVersion = require("./src/appVersion");
 const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml, communityGuidelinesHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
@@ -350,6 +351,7 @@ async function initDb() {
     );
   `);
   await monetization.ensureMonetizationTables(pool);
+  await appVersion.ensureAppVersionTable(pool);
   if (introducingQuestionnaire) {
     await pool.query(
       `UPDATE users SET questionnaire_completed_at = created_at WHERE questionnaire_completed_at IS NULL`
@@ -1665,6 +1667,63 @@ app.put("/api/admin/monetization/config", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("[admin-monetization] update failed:", String(err.message || err));
     res.status(500).json({ error: "Could not update monetization settings" });
+  }
+});
+
+// Force-update gate — public, called by the app BEFORE sign-in so an
+// out-of-date install is blocked before it can even reach the welcome
+// screen. Server-driven: the admin raises minVersionCode any time, no
+// app release needed to start enforcing it.
+app.get("/api/app-version/check", async (req, res) => {
+  if (!pool) return res.json({ updateRequired: false });
+  try {
+    const cfg = await appVersion.getAppVersionConfig(pool);
+    const versionCode = parseInt(req.query.versionCode, 10) || 0;
+    const updateRequired = !!cfg.enforced && versionCode > 0 && versionCode < cfg.minVersionCode;
+    res.json({
+      updateRequired,
+      minVersionName: cfg.minVersionName,
+      latestVersionName: cfg.latestVersionName,
+      updateMessage: cfg.updateMessage,
+      playStoreUrl: cfg.playStoreUrl
+    });
+  } catch (err) {
+    console.error("[app-version] check failed:", String(err.message || err));
+    // Fail OPEN — a backend hiccup must never lock users out of the app.
+    res.json({ updateRequired: false });
+  }
+});
+
+// Admin: read + update the force-update configuration (no app release needed).
+app.get("/api/admin/app-version/config", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can manage the update gate." });
+  }
+  try {
+    const { rows } = await pool.query(`SELECT updated_at, updated_by FROM app_version_config WHERE id = 1`);
+    const cfg = await appVersion.getAppVersionConfig(pool);
+    res.json({ config: cfg, updatedAt: rows[0] ? rows[0].updated_at : null, updatedBy: rows[0] ? rows[0].updated_by : null });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load update-gate settings" });
+  }
+});
+
+app.put("/api/admin/app-version/config", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) {
+    return res.status(403).json({ error: "Only MarketScope AI administrators can manage the update gate." });
+  }
+  const partial = req.body && req.body.config;
+  if (!partial || typeof partial !== "object" || Array.isArray(partial)) {
+    return res.status(400).json({ error: "Body must be { config: { ... } }" });
+  }
+  try {
+    const result = await appVersion.updateAppVersionConfig(pool, partial, req.session.email || "admin");
+    res.json(result);
+  } catch (err) {
+    console.error("[admin-app-version] update failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not update the update-gate settings" });
   }
 });
 
