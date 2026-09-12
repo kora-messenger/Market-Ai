@@ -104,7 +104,6 @@ fun ProfileScreen(
     val scope = rememberCoroutineScope()
     val token = SessionManager.sessionToken(context)
     val user = SessionManager.currentUser(context)
-    val answers = SessionManager.questionnaireAnswers(context)
 
     var savedPlanCount by remember { mutableStateOf<Int?>(null) }
     var trialActive by remember { mutableStateOf(true) }
@@ -186,35 +185,6 @@ fun ProfileScreen(
                         deleteBusy = false
                     }
                 }
-            )
-        }
-
-        answers?.let { profile ->
-            Spacer(Modifier.height(20.dp))
-            SectionLabel("Trading profile")
-            SettingsGroup {
-                ProfileRow("Experience", profile.experience)
-                ProfileRow("Primary goal", profile.goal)
-                if (profile.capitalUsd.isNotBlank()) ProfileRow("Capital (USD)", profile.capitalUsd)
-                if (profile.riskPerTrade.isNotBlank()) ProfileRow("Risk per trade", profile.riskPerTrade)
-                if (profile.targetReturn.isNotBlank()) ProfileRow("Target monthly return", profile.targetReturn)
-                ProfileRow("Assets traded", profile.assets.joinToString(", "))
-                ProfileRow("Style", profile.style)
-                ProfileRow("Timeframes", profile.timeframes.joinToString(", "))
-                if (profile.entryCriteria.isNotBlank()) ProfileRow("Entry criteria", profile.entryCriteria)
-                if (profile.emotionalStruggles.isNotBlank()) ProfileRow("Emotional struggles", profile.emotionalStruggles)
-                if (profile.dailyRoutine.isNotBlank()) ProfileRow("Daily routine", profile.dailyRoutine)
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                SessionManager.coachingLine(profile),
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(AccentCyan.copy(alpha = 0.08f))
-                    .padding(14.dp)
             )
         }
 
