@@ -22,7 +22,14 @@ const YAHOO_SYMBOLS = {
   spa35: "^IBEX", it40: "FTSEMIB.MI", swi20: "^SSMI", ned25: "^AEX", se30: "^OMX",
   us2000: "^RUT", vix: "^VIX", ndx: "^NDX", spx: "^GSPC", dji: "^DJI",
   // metals (futures track spot closely for signal resolution)
-  xauusd: "GC=F", xagusd: "SI=F"
+  xauusd: "GC=F", xagusd: "SI=F",
+  // crypto — Yahoo only serves intraday candles under the TICKER-USD form;
+  // the forex-style BTCUSD=X form silently returns no hourly data.
+  btcusd: "BTC-USD", ethusd: "ETH-USD", solusd: "SOL-USD", bnbusd: "BNB-USD",
+  xrpusd: "XRP-USD", adausd: "ADA-USD", dogeusd: "DOGE-USD", dotusd: "DOT-USD",
+  ltcusd: "LTC-USD", bchusd: "BCH-USD", avaxusd: "AVAX-USD", linkusd: "LINK-USD",
+  maticusd: "MATIC-USD", trxusd: "TRX-USD", xlmusd: "XLM-USD", etcusd: "ETC-USD",
+  atomusd: "ATOM-USD", filusd: "FIL-USD", uniusd: "UNI-USD", aaveusd: "AAVE-USD"
 };
 
 const STOOQ_SYMBOLS = {

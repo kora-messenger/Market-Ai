@@ -249,8 +249,15 @@ async function callAI(payload, label) {
         }
         if (wantsJson) {
           const preview = await fr.response.clone().text();
-          if (!preview.includes("{")) {
-            console.error(`[ai:${label}] free model ${freeModel} returned no JSON — trying next`);
+          const first = preview.indexOf("{");
+          const last = preview.lastIndexOf("}");
+          let parseOk = first !== -1 && last > first;
+          if (parseOk) {
+            try { JSON.parse(preview.slice(first, last + 1)); }
+            catch (_e) { parseOk = false; }
+          }
+          if (!parseOk) {
+            console.error(`[ai:${label}] free model ${freeModel} returned no parseable JSON — trying next`);
             continue;
           }
         }
@@ -3312,7 +3319,16 @@ app.post("/api/daily-signals/auto", async (req, res) => {
       return res.json({ skipped: true, reason: "AI signal already published today" });
     }
 
-    const candidates = ["eurusd", "gbpusd", "usdjpy", "xauusd", "nas100", "btcusd", "ethusd"];
+    // Alternating focus days: even UTC dates cover FX/metals/indices, odd
+    // UTC dates cover crypto — forex one day, crypto the next, forever.
+    // Calendar-based (not last-signal-based) so a failed day never breaks
+    // the rhythm; both the cron (06:00 UTC) and manual admin triggers
+    // resolve the same category for the same date.
+    const FOREX_DAY_CANDIDATES = ["eurusd", "gbpusd", "usdjpy", "xauusd", "nas100"];
+    const CRYPTO_DAY_CANDIDATES = ["btcusd", "ethusd", "solusd", "bnbusd", "xrpusd", "dogeusd"];
+    const signalCategory = new Date().getUTCDate() % 2 === 0 ? "forex" : "crypto";
+    const candidates = signalCategory === "crypto" ? CRYPTO_DAY_CANDIDATES : FOREX_DAY_CANDIDATES;
+    console.log(`[daily-signal] category today: ${signalCategory} — candidates: ${candidates.join(", ")}`);
     const historyBlocks = [];
     const instContext = {}; // id -> { lastClose, atr }
     for (const id of candidates) {
@@ -3412,6 +3428,7 @@ app.post("/api/daily-signals/auto", async (req, res) => {
             { role: "user", content: `That setup breaks the hard rules: ${lastErrors.join("; ")}. Fix it — same instrument or a different one from the data — and return corrected JSON that satisfies every hard rule.` }
           ];
       const aiResult = await callAI({
+        model: ANALYSIS_MODEL,
         max_tokens: 2500,
         reasoning: { effort: "low" },
         response_format: { type: "json_object" },
@@ -3423,8 +3440,18 @@ app.post("/api/daily-signals/auto", async (req, res) => {
         }
         return res.status(502).json({ error: "Analysis provider error", status: aiResult.status, detail: String(aiResult.detail || "").slice(0, 300) });
       }
-      const data = await aiResult.response.json();
-      const signal = extractJson(data.choices?.[0]?.message?.content || "");
+      // Parse defensively INSIDE the attempt loop: a model that answers
+      // without valid JSON used to throw out of the whole run (one bad
+      // response killed the day's signal). Now it counts as a failed
+      // attempt and the loop retries with the error fed back.
+      let signal = null;
+      try {
+        const data = await aiResult.response.json();
+        signal = extractJson(data.choices?.[0]?.message?.content || "");
+      } catch (parseErr) {
+        lastErrors = [`model did not return valid JSON (${String(parseErr.message || parseErr).slice(0, 120)})`];
+        continue;
+      }
       lastRawSignal = signal;
       const result = validateSignal(signal);
       if (result.ok) {
@@ -3451,7 +3478,7 @@ app.post("/api/daily-signals/auto", async (req, res) => {
         aiMode
       ]
     );
-    res.status(201).json(signalToApi(rows[0]));
+    res.status(201).json({ ...signalToApi(rows[0]), signalCategory });
     broadcastNewSignal(signalToApi(rows[0])).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: "Could not generate the daily AI signal", detail: String(err.message || err) });
