@@ -2928,7 +2928,7 @@ async function getAdminSub() {
 
 async function isAdminRequest(req) {
   if (!pool) return false;
-  if (ADMIN_EMAILS.includes(String(req.session.email || "").toLowerCase())) return true;
+  if (ADMIN_EMAILS.includes(String((req.session && req.session.email) || "").toLowerCase())) return true;
   const adminSub = await getAdminSub();
   return !!adminSub && String(req.session.sub) === adminSub;
 }
