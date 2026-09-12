@@ -196,10 +196,15 @@ async function callOpenAI(payload, label) {
     lastStatus = response.status;
     lastDetail = (await response.text()).slice(0, 500);
     console.error(`[openai:${label}] HTTP ${lastStatus} (attempt ${attempt}):`, lastDetail);
+    const outOfCredits = lastStatus === 429 && /insufficient_quota|credit_balance_exhausted/.test(lastDetail);
     if (lastStatus === 429) {
       console.error(`[openai:${label}] QUOTA/RATE LIMIT — check plan and billing at https://platform.openai.com/usage`);
     }
-    if (attempt === 1 && RETRYABLE.has(lastStatus)) {
+    // A hard quota-exhaustion 429 can never succeed on retry within this
+    // request — waiting 1.2s and asking again just delays every analysis
+    // for no benefit. Skip straight to OpenRouter fallback in that case;
+    // still retry genuine transient rate limits / 5xx once as before.
+    if (attempt === 1 && !outOfCredits && RETRYABLE.has(lastStatus)) {
       await new Promise(r => setTimeout(r, 1200));
       continue;
     }
@@ -2500,7 +2505,10 @@ Respond ONLY with JSON:
   try {
     const orResult = await callAI({
       model: ANALYSIS_MODEL,
-      max_tokens: 2500,
+      // 1800 covers the thesis comfortably and fits OpenRouter's remaining
+      // credit ceiling (was 2500 — 402'd every time, forcing the slow
+      // free-model fallback chain on every single chart analysis).
+      max_tokens: 1800,
       reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
@@ -2738,7 +2746,8 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
 
     const orResult = await callAI({
       model: ANALYSIS_MODEL,
-      max_tokens: 2500,
+      // See chart-analysis note above — same OpenRouter credit-ceiling fix.
+      max_tokens: 1800,
       reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
