@@ -3,12 +3,6 @@ package com.veltravia.marketscopeai.ui.screens
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,11 +20,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,8 +44,7 @@ import com.veltravia.marketscopeai.ui.theme.TextSecondary
  * platform whether the update lives on the Play Store ("Open Play Store",
  * opened via the market:// app with a web fallback) or on the App Store
  * ("Open App Store", opened via the itms-apps:// scheme with a web
- * fallback). The icon floats gently in place, matching the same idle
- * motion as the welcome screen's logo.
+ * fallback). The logo is static, matching the welcome screen.
  */
 @Composable
 fun ForceUpdateScreen(
@@ -78,23 +69,12 @@ fun ForceUpdateScreen(
         ) {
             Spacer(Modifier.height(48.dp))
 
-            val floatTransition = rememberInfiniteTransition(label = "updateLogoFloat")
-            val floatOffset by floatTransition.animateFloat(
-                initialValue = -8f,
-                targetValue = 8f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(2200, easing = LinearOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "updateLogoFloatOffset"
-            )
             Image(
                 painter = painterResource(R.drawable.app_logo),
                 contentDescription = "MarketScope AI",
                 modifier = Modifier
                     .size(120.dp)
                     .clip(RoundedCornerShape(28.dp))
-                    .graphicsLayer { translationY = floatOffset }
             )
 
             Spacer(Modifier.weight(1f))
