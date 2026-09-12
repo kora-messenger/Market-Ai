@@ -20,6 +20,7 @@ const { fetchWatchlist, WATCHLIST } = require("./src/markets");
 const { fetchCandles, INTERVALS } = require("./src/candles");
 const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
 const { searchStock, bestMatch, fetchStockStats } = require("./src/stocks");
+const r2 = require("./src/r2");
 
 const app = express();
 
@@ -465,6 +466,7 @@ async function initDb() {
       data_base64 TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE signal_testimonial_images ADD COLUMN IF NOT EXISTS r2_key TEXT;
     CREATE TABLE IF NOT EXISTS trade_plans (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id),
@@ -501,6 +503,7 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (post_id, position)
     );
+    ALTER TABLE community_post_images ADD COLUMN IF NOT EXISTS r2_key TEXT;
     CREATE TABLE IF NOT EXISTS post_poll_votes (
       poll_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
       user_id UUID NOT NULL,
@@ -3975,9 +3978,20 @@ app.post("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) =>
     const t = rows[0];
     if (imageDataUrl) {
       const m = imageDataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,/);
+      const contentType = m ? m[1] : "image/jpeg";
+      // R2 first (bytes in object storage, DB keeps only the key);
+      // base64-in-Postgres remains the fallback when R2 is not configured.
+      let r2Key = null;
+      if (r2.isR2Configured()) {
+        try {
+          r2Key = await r2.uploadImage(Buffer.from(imageDataUrl.split(",")[1] || "", "base64"), contentType, "wins");
+        } catch (err) {
+          console.error("[r2] win-proof upload failed, storing in DB:", String(err.message || err));
+        }
+      }
       await pool.query(
-        `INSERT INTO signal_testimonial_images (testimonial_id, content_type, data_base64) VALUES ($1::uuid, $2, $3)`,
-        [t.id, m ? m[1] : "image/jpeg", imageDataUrl.split(",")[1] || ""]
+        `INSERT INTO signal_testimonial_images (testimonial_id, content_type, data_base64, r2_key) VALUES ($1::uuid, $2, $3, $4)`,
+        [t.id, contentType, r2Key ? "" : (imageDataUrl.split(",")[1] || ""), r2Key]
       );
     }
     res.status(201).json({
@@ -3998,7 +4012,7 @@ app.get("/api/daily-signals/testimonials/:testimonialId/image", requireAuth, asy
     const me = await currentUser(req);
     const admin = await isAdminRequest(req);
     const { rows } = await pool.query(
-      `SELECT t.user_id, t.status, i.content_type, i.data_base64
+      `SELECT t.user_id, t.status, i.content_type, i.data_base64, i.r2_key
        FROM signal_testimonials t JOIN signal_testimonial_images i ON i.testimonial_id = t.id
        WHERE t.id = $1::uuid`,
       [req.params.testimonialId]
@@ -4008,7 +4022,17 @@ app.get("/api/daily-signals/testimonials/:testimonialId/image", requireAuth, asy
     if (row.status !== "approved" && !admin && !(me && row.user_id === me.id)) {
       return res.status(403).json({ error: "This image is awaiting review." });
     }
-    const buf = Buffer.from(row.data_base64, "base64");
+    // R2-stored image: sign a short-lived URL and redirect. Access checks
+    // above already ran, so only this caller gets a working URL.
+    if (row.r2_key && r2.isR2Configured()) {
+      try {
+        return res.redirect(302, await r2.signedImageUrl(row.r2_key));
+      } catch (err) {
+        console.error("[r2] win-proof sign failed:", String(err.message || err));
+      }
+    }
+    const buf = Buffer.from(row.data_base64 || "", "base64");
+    if (!buf.length) return res.status(500).json({ error: "Image data unavailable." });
     res.setHeader("Content-Type", row.content_type);
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.send(buf);
@@ -4641,9 +4665,20 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     for (let i = 0; i < imageList.length; i++) {
       const dataUrl = String(imageList[i]);
       const m = dataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,/);
+      const contentType = m ? m[1] : "image/jpeg";
+      // R2 first (bytes in object storage, DB keeps only the key);
+      // base64-in-Postgres remains the fallback when R2 is not configured.
+      let r2Key = null;
+      if (r2.isR2Configured()) {
+        try {
+          r2Key = await r2.uploadImage(Buffer.from(dataUrl.split(",")[1] || "", "base64"), contentType, "posts");
+        } catch (err) {
+          console.error("[r2] post-image upload failed, storing in DB:", String(err.message || err));
+        }
+      }
       await pool.query(
-        `INSERT INTO community_post_images (post_id, position, content_type, data_base64) VALUES ($1::uuid, $2, $3, $4)`,
-        [row.id, i, m ? m[1] : "image/jpeg", dataUrl.split(",")[1] || ""]
+        `INSERT INTO community_post_images (post_id, position, content_type, data_base64, r2_key) VALUES ($1::uuid, $2, $3, $4, $5)`,
+        [row.id, i, contentType, r2Key ? "" : (dataUrl.split(",")[1] || ""), r2Key]
       );
     }
     const poll = postType === "poll"
@@ -4701,12 +4736,21 @@ app.get("/api/community/posts/:postId/images/:position", requireAuth, async (req
   try {
     const pos = parseInt(req.params.position) || 0;
     const { rows } = await pool.query(
-      `SELECT content_type, data_base64 FROM community_post_images
+      `SELECT content_type, data_base64, r2_key FROM community_post_images
        WHERE post_id = $1::uuid AND position = $2 LIMIT 1`,
       [req.params.postId, pos]
     );
     if (!rows.length) return res.status(404).json({ error: "Image not found" });
-    const buf = Buffer.from(rows[0].data_base64, "base64");
+    // R2-stored image: sign a short-lived URL and redirect (auth already passed).
+    if (rows[0].r2_key && r2.isR2Configured()) {
+      try {
+        return res.redirect(302, await r2.signedImageUrl(rows[0].r2_key));
+      } catch (err) {
+        console.error("[r2] post-image sign failed:", String(err.message || err));
+      }
+    }
+    const buf = Buffer.from(rows[0].data_base64 || "", "base64");
+    if (!buf.length) return res.status(500).json({ error: "Image data unavailable." });
     res.setHeader("Content-Type", rows[0].content_type);
     res.setHeader("Cache-Control", "private, max-age=86400");
     return res.send(buf);
