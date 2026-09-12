@@ -260,7 +260,7 @@ object SessionManager {
     fun coachingLine(answers: QuestionnaireAnswers): String {
         val emotions = answers.emotionalStruggles.lowercase()
         if (emotions.contains("impatience")) {
-            return "Slow is smooth, smooth becomes fast. Your edge is in waiting for A-setups, not more trades."
+            return "Speed in trading is earned, not forced. Let the A-setups come to you — the waiting is where the edge lives."
         }
         if (emotions.contains("fear")) {
             return "Fear shrinks with a plan. Define your risk before you enter and the fear has nothing to grip."
@@ -269,11 +269,11 @@ object SessionManager {
             return "The market doesn't remember your last loss. Walk away, reset, come back with a plan."
         }
         if (answers.experience.equals("Beginner", ignoreCase = true)) {
-            return "Clarity beats speed. One A-setup repeated consistently is how discipline compounds."
+            return "Start with one setup and learn it deeply. Doing that same good trade on repeat is how discipline turns into skill."
         }
         if (answers.style.contains("Scalping", ignoreCase = true)) {
             return "Scalping rewards precision, not frequency. Protect your focus like it's capital."
         }
-        return "Consistency is a system: same checklist, same risk, same trigger—again and again."
+        return "Discipline is not a mood, it is a routine — your checklist, your risk, your trigger, run the same way every single time."
     }
 }

@@ -157,7 +157,7 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "Now imagine your next 12 trades",
+            text = "Picture the next 12 trades you take",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
@@ -298,13 +298,13 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChartLegendSwatch(color = AccentCyan, dashed = false, width = 14.dp, height = 3.dp)
                     Spacer(Modifier.width(5.dp))
-                    Text("With an edge", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = AccentCyan)
+                    Text("Trading your plan", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = AccentCyan)
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChartLegendSwatch(color = DriftGray, dashed = true, width = 14.dp, height = 2.dp)
                     Spacer(Modifier.width(5.dp))
-                    Text("Drifting without one", fontSize = 9.sp, color = CardStats)
+                    Text("Trading on feel", fontSize = 9.sp, color = CardStats)
                 }
             }
         }
@@ -461,7 +461,7 @@ private fun EquityLineChart(projection: ProjectionEngine.ProjectionResult, modif
             strokeWidth = 1.dp.toPx(),
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f))
         )
-        // "Drifting without one" comparison line + its fading end dot.
+        // "Trading on feel" comparison line + its fading end dot.
         drawPath(
             driftPath,
             color = driftColor,
