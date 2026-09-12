@@ -116,6 +116,22 @@ const AI_FREE_MODELS = (process.env.AI_FREE_MODELS !== undefined
   : "nex-agi/nex-n2.5-pro:free,dots-studio/dots-3-note-preview:free,google/gemma-4-26b-a4b-it:free"
 ).split(",").map((s) => s.trim()).filter(Boolean);
 
+// --- Fast-fail circuit breakers ---
+// When a provider is DEFINITIVELY dead (OpenAI quota exhausted, OpenRouter
+// paid credits gone), the first failed call stamps a "dead until" time.
+// Every call after that skips the provider instantly — no HTTP round trip,
+// no retry, no sleep — until the window expires (so topping up the account
+// recovers automatically within minutes). Without this, an analysis makes
+// 2-3 AI calls and EACH one re-attempted the dead provider from scratch.
+const BREAKER = {
+  openaiDeadUntil: 0,        // insufficient_quota 429s never clear mid-session
+  openrouterPaidDeadUntil: 0 // 402 = not enough credit for this request size
+};
+const OPENAI_DEAD_MS = 15 * 60 * 1000;  // re-probe OpenAI every 15 min
+const OPENROUTER_PAID_DEAD_MS = 5 * 60 * 1000; // re-probe paid tier every 5 min
+const AI_CALL_TIMEOUT_MS = 90 * 1000;  // hard cap — a hung provider socket
+                                       // used to stall an analysis forever
+
 /** Calls OpenRouter with one automatic retry for transient upstream failures
  *  (429 rate-limited, or a 5xx from the model provider) — these are common
  *  hiccups on a free-tier key/model, not real outages, and used to surface
@@ -135,7 +151,8 @@ async function callOpenRouter(payload, label) {
           Authorization: `Bearer ${OPENROUTER_API_KEY}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(AI_CALL_TIMEOUT_MS)
       });
     } catch (err) {
       lastStatus = 0;
@@ -148,6 +165,14 @@ async function callOpenRouter(payload, label) {
     lastStatus = response.status;
     lastDetail = (await response.text()).slice(0, 500);
     console.error(`[openrouter:${label}] HTTP ${lastStatus} (attempt ${attempt}):`, lastDetail);
+    // 402 = the account cannot afford THIS request. Definitive for the paid
+    // tier (retrying the same priced call cannot succeed) — stamp the breaker
+    // so the next call goes straight to free models with zero wasted time.
+    if (lastStatus === 402 && !(payload.model || "").endsWith(":free")) {
+      BREAKER.openrouterPaidDeadUntil = Date.now() + OPENROUTER_PAID_DEAD_MS;
+      console.error(`[openrouter:${label}] 402 — paid tier breaker OPEN for ${OPENROUTER_PAID_DEAD_MS / 60000} min`);
+      return { ok: false, status: lastStatus, detail: lastDetail };
+    }
     if (attempt === 1 && RETRYABLE.has(lastStatus)) {
       await new Promise(r => setTimeout(r, 1200));
       continue;
@@ -183,7 +208,8 @@ async function callOpenAI(payload, label) {
           Authorization: `Bearer ${OPENAI_API_KEY}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(AI_CALL_TIMEOUT_MS)
       });
     } catch (err) {
       lastStatus = 0;
@@ -197,6 +223,10 @@ async function callOpenAI(payload, label) {
     lastDetail = (await response.text()).slice(0, 500);
     console.error(`[openai:${label}] HTTP ${lastStatus} (attempt ${attempt}):`, lastDetail);
     const outOfCredits = lastStatus === 429 && /insufficient_quota|credit_balance_exhausted/.test(lastDetail);
+    if (outOfCredits) {
+      BREAKER.openaiDeadUntil = Date.now() + OPENAI_DEAD_MS;
+      console.error(`[openai:${label}] quota exhausted — OpenAI breaker OPEN for ${OPENAI_DEAD_MS / 60000} min`);
+    }
     if (lastStatus === 429) {
       console.error(`[openai:${label}] QUOTA/RATE LIMIT — check plan and billing at https://platform.openai.com/usage`);
     }
@@ -216,21 +246,29 @@ async function callOpenAI(payload, label) {
 /** Unified AI call: OpenAI first, OpenRouter as automatic fallback.
  *  Same { ok, response, status, detail } contract as callOpenRouter. */
 async function callAI(payload, label) {
-  if (OPENAI_API_KEY) {
+  const openaiDead = Date.now() < BREAKER.openaiDeadUntil;
+  const paidRouterDead = Date.now() < BREAKER.openrouterPaidDeadUntil;
+  if (OPENAI_API_KEY && !openaiDead) {
     const r = await callOpenAI(payload, label);
     if (r.ok) return r;
     console.error(
       `[ai:${label}] OpenAI attempt failed (HTTP ${r.status}) — falling back to OpenRouter:`,
       String(r.detail).slice(0, 200)
     );
+  } else if (openaiDead) {
+    console.log(`[ai:${label}] OpenAI skipped — quota breaker open`);
   }
   if (OPENROUTER_API_KEY) {
+    if (paidRouterDead) {
+      console.log(`[ai:${label}] OpenRouter paid tier skipped — credit breaker open, trying free models`);
+    } else {
     const r = await callOpenRouter(payload, label);
     if (r.ok) return r;
     console.error(
       `[ai:${label}] OpenRouter paid attempt failed (HTTP ${r.status}) — trying free tier:`,
       String(r.detail).slice(0, 200)
     );
+    }
     // Last resort: OpenRouter free models. Drop the paid-only knobs
     // (response_format/reasoning) — extractJson() handles raw text anyway.
     // Failover across models (they rate-limit independently upstream),
