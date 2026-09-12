@@ -382,7 +382,7 @@ fun SubscribeScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = TextMuted,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.padding(top = 4.dp, horizontal = 4.dp)
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 4.dp)
                         )
 
                         Spacer(Modifier.height(12.dp))
