@@ -55,11 +55,11 @@ object ProjectionEngine {
         val sty = style.lowercase()
         return when {
             sty.contains("scalp") || sty.contains("aggressive") ->
-                "Slow is smooth, smooth is fast — your edge comes from waiting for A+ setups, not more trades."
+                "Patience is the real accelerator — let the A+ setups come to you instead of forcing trades."
             exp.contains("beginner") ->
-                "Clarity beats speed. One high-quality setup, repeated with discipline, is how an edge compounds."
+                "You don't need many setups. One good one, executed the same way every time, is how an edge builds."
             else ->
-                "Consistency is a system: same checklist, same risk, same trigger — again and again."
+                "Repeatable beats brilliant — lock your checklist, your risk and your trigger, then run them on loop."
         }
     }
 
