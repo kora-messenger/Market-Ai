@@ -15,7 +15,11 @@ const DEFAULT_CONFIG = {
   latestVersionName: "1.5.0",
   updateMessage:
     "New version available. We strongly recommend installing the update before using the app. This release contains important improvements to functionality and stability.",
-  playStoreUrl: "https://play.google.com/store/apps/details?id=com.veltravia.marketscopeai"
+  playStoreUrl: "https://play.google.com/store/apps/details?id=com.veltravia.marketscopeai",
+  // App Store link for the iOS build — stays empty until the App Store
+  // listing is real. The admin sets it (PUT config) the moment an Apple
+  // app id exists; until then an iOS client has no honest link to open.
+  appStoreUrl: ""
 };
 
 let cachedConfig = null;

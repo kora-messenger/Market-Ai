@@ -1096,12 +1096,13 @@ object ApiClient {
      * Force-update gate — called BEFORE sign-in, at app launch. The admin
      * controls this server-side (no app release needed to start enforcing
      * a minimum version). No auth header: this must work even for a user
-     * who has never signed in yet.
-     * @return { updateRequired, minVersionName, latestVersionName, updateMessage, playStoreUrl }
+     * who has never signed in yet. The platform ("android"/"ios") makes the
+     * server pick the right store: Play Store link vs App Store link.
+     * @return { updateRequired, storeLabel, storeUrl, ... }
      */
-    suspend fun checkAppVersion(versionCode: Int): JSONObject = withContext(Dispatchers.IO) {
+    suspend fun checkAppVersion(versionCode: Int, platform: String = "android"): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("${ApiConfig.BASE_URL}/api/app-version/check?versionCode=$versionCode")
+            .url("${ApiConfig.BASE_URL}/api/app-version/check?versionCode=$versionCode&platform=$platform")
             .get()
             .build()
         request(request)

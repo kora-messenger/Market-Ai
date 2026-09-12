@@ -48,17 +48,19 @@ import com.veltravia.marketscopeai.ui.theme.TextSecondary
  * install is below the required minimum. There is no dismiss/back action:
  * the only way past this screen is to actually update.
  *
- * Layout follows the reference the owner sent (large app icon, bold two-line
- * headline, version caption, description, full-width CTA pinned near the
- * bottom) reworded/rebuilt in MarketScope AI's own violet-to-cyan brand
- * instead of the reference app's green. The icon floats gently in place,
- * matching the same idle motion added to the welcome screen's logo.
+ * The store button is platform-aware: the server decides from the client's
+ * platform whether the update lives on the Play Store ("Open Play Store",
+ * opened via the market:// app with a web fallback) or on the App Store
+ * ("Open App Store", opened via the itms-apps:// scheme with a web
+ * fallback). The icon floats gently in place, matching the same idle
+ * motion as the welcome screen's logo.
  */
 @Composable
 fun ForceUpdateScreen(
     latestVersionName: String,
     updateMessage: String,
-    playStoreUrl: String
+    storeUrl: String,
+    storeLabel: String
 ) {
     val context = LocalContext.current
 
@@ -130,28 +132,37 @@ fun ForceUpdateScreen(
             Spacer(Modifier.height(24.dp))
 
             GradientPrimaryButton(
-                text = "Open Play Store",
+                text = storeLabel,
                 enabled = true,
                 showArrow = false,
                 height = 56.dp,
                 shape = RoundedCornerShape(50),
-                onClick = {
-                    val marketIntent = Intent(
-                        Intent.ACTION_VIEW,
-                        Uri.parse("market://details?id=com.veltravia.marketscopeai")
-                    )
-                    try {
-                        context.startActivity(marketIntent)
-                    } catch (e: ActivityNotFoundException) {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(playStoreUrl))
-                        )
-                    }
-                },
+                onClick = { openStorePage(context, storeUrl, storeLabel) },
                 modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(Modifier.height(8.dp))
         }
+    }
+}
+
+/**
+ * Opens the store listing the server picked for this platform. Play Store
+ * links try the market:// app first (lands directly on the app's update
+ * page), App Store links try itms-apps://, and both fall back to the
+ * plain https listing when the native app/scheme is unavailable.
+ */
+private fun openStorePage(context: android.content.Context, storeUrl: String, storeLabel: String) {
+    val isPlayStore = !storeLabel.equals("Open App Store", ignoreCase = true)
+    val schemeUri = if (isPlayStore) {
+        "market://details?id=com.veltravia.marketscopeai"
+    } else {
+        // itms-apps:// lands on the app's App Store page; https works everywhere.
+        storeUrl.replace("https://", "itms-apps://")
+    }
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(schemeUri)))
+    } catch (e: ActivityNotFoundException) {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(storeUrl)))
     }
 }

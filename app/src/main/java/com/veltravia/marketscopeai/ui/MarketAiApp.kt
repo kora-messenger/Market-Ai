@@ -149,8 +149,12 @@ fun MarketAiApp() {
             latestVersionName = info?.optString("latestVersionName", "").takeUnless { it.isNullOrBlank() } ?: BuildConfig.VERSION_NAME,
             updateMessage = info?.optString("updateMessage", "").takeUnless { it.isNullOrBlank() }
                 ?: "New version available. We strongly recommend installing the update before using the app.",
-            playStoreUrl = info?.optString("playStoreUrl", "").takeUnless { it.isNullOrBlank() }
-                ?: "https://play.google.com/store/apps/details?id=com.veltravia.marketscopeai"
+            // Platform-aware: the server picks Play Store vs App Store from the
+            // platform the client reported. This build reports "android".
+            storeUrl = info?.optString("storeUrl", "").takeUnless { it.isNullOrBlank() }
+                ?: "https://play.google.com/store/apps/details?id=com.veltravia.marketscopeai",
+            storeLabel = info?.optString("storeLabel", "").takeUnless { it.isNullOrBlank() }
+                ?: "Open Play Store"
         )
         return
     }

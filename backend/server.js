@@ -1680,12 +1680,19 @@ app.get("/api/app-version/check", async (req, res) => {
     const cfg = await appVersion.getAppVersionConfig(pool);
     const versionCode = parseInt(req.query.versionCode, 10) || 0;
     const updateRequired = !!cfg.enforced && versionCode > 0 && versionCode < cfg.minVersionCode;
+    // Platform-aware store link: the client reports "android" or "ios" so
+    // the button says Open Play Store / Open App Store with the right URL.
+    const platform = String(req.query.platform || "android").toLowerCase() === "ios" ? "ios" : "android";
+    const isIos = platform === "ios" && !!cfg.appStoreUrl;
     res.json({
       updateRequired,
       minVersionName: cfg.minVersionName,
       latestVersionName: cfg.latestVersionName,
       updateMessage: cfg.updateMessage,
-      playStoreUrl: cfg.playStoreUrl
+      playStoreUrl: cfg.playStoreUrl,
+      appStoreUrl: cfg.appStoreUrl || null,
+      storeLabel: isIos ? "Open App Store" : "Open Play Store",
+      storeUrl: isIos ? cfg.appStoreUrl : cfg.playStoreUrl
     });
   } catch (err) {
     console.error("[app-version] check failed:", String(err.message || err));
