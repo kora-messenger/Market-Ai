@@ -331,6 +331,29 @@ async function sendPremiumActivatedEmail(user) {
   }
 }
 
+/** Premium: a subscription payment attempt failed (Paystack charge.failed). */
+async function sendPremiumPaymentFailedEmail(user, { reason } = {}) {
+  try {
+    if (!configured()) return { ok: false, reason: "Brevo is not configured" };
+    if (!user || !user.email) return { ok: false, reason: "no email address on account" };
+    const content = {
+      subject: "Your MarketScope AI Premium payment did not go through",
+      paragraphs: [
+        `Hello ${firstName(user.name)},`,
+        "We tried to process your MarketScope AI Premium subscription payment, but it did not go through.",
+        "No charge was made to your card. You can try again anytime from the Subscribe screen in your MarketScope AI profile — common causes are insufficient funds, an expired card, or your bank declining the transaction."
+      ].concat(reason ? [`Reason reported by the payment processor: ${reason}`] : []),
+      signoff: ["The MarketScope AI Team", "Veltravia Technologies"]
+    };
+    const messageId = await sendViaBrevo({ to: user.email, subject: content.subject, content });
+    console.log(`[mailer] premium-payment-failed email sent to ${user.email} (${messageId})`);
+    return { ok: true, messageId };
+  } catch (err) {
+    console.error(`[mailer] premium-payment-failed email failed: ${String(err.message || err)}`);
+    return { ok: false, reason: String(err.message || err) };
+  }
+}
+
 /** Premium: an administrator granted the user free Premium (lifetime / N months / N years). */
 async function sendPremiumGrantedEmail(user, { grantLabel, expiresText, reason }) {
   try {
@@ -452,4 +475,4 @@ async function sendStatsReportEmail(stats) {
   }
 }
 
-module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail, formatLagosTime, describeDevice };
+module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumPaymentFailedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail, formatLagosTime, describeDevice };

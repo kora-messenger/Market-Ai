@@ -18,6 +18,14 @@ class MainActivity : ComponentActivity() {
 
     private fun handlePushIntent(intent: Intent?) {
         val route = intent?.getStringExtra("route") ?: return
+        if (route == "notifications") {
+            // Billing push (payment succeeded/failed) — open the
+            // Notifications screen directly, scrolled to that exact message.
+            com.veltravia.marketscopeai.ui.PushRouter.pendingHighlightNotificationId =
+                intent.getStringExtra("notificationId")
+            com.veltravia.marketscopeai.ui.PushRouter.pendingOpenNotifications = true
+            return
+        }
         com.veltravia.marketscopeai.ui.PushRouter.pendingTab =
             com.veltravia.marketscopeai.ui.PushRouter.tabForRoute(route)
     }

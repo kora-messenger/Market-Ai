@@ -104,6 +104,15 @@ object PushRouter {
      */
     var pendingSubscribe by mutableStateOf(false)
 
+    /**
+     * A billing/subscription push (payment succeeded or failed) was tapped —
+     * the nav graph should open the Notifications screen directly, scrolled
+     * to the exact message (pendingHighlightNotificationId, if the payload
+     * carried one) rather than just landing on a tab.
+     */
+    var pendingOpenNotifications by mutableStateOf(false)
+    var pendingHighlightNotificationId by mutableStateOf<String?>(null)
+
     fun tabForRoute(route: String?): Int? = when (route) {
         "signals" -> 1
         "community" -> 2
@@ -217,6 +226,18 @@ fun MarketAiApp() {
         if (PushRouter.pendingSubscribe) {
             PushRouter.pendingSubscribe = false
             navController.navigate("subscribe")
+        }
+    }
+
+    // Billing push tapped (payment succeeded/failed) — open Notifications
+    // directly, scrolled straight to that message.
+    LaunchedEffect(PushRouter.pendingOpenNotifications) {
+        if (PushRouter.pendingOpenNotifications) {
+            PushRouter.pendingOpenNotifications = false
+            val highlightId = PushRouter.pendingHighlightNotificationId
+            PushRouter.pendingHighlightNotificationId = null
+            val encoded = highlightId?.let { java.net.URLEncoder.encode(it, "UTF-8") } ?: ""
+            navController.navigate("notifications?highlightId=$encoded")
         }
     }
 
@@ -356,8 +377,19 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
-        composable("notifications") {
-            NotificationsScreen(onBack = { navController.popBackStack() })
+        composable(
+            "notifications?highlightId={highlightId}",
+            arguments = listOf(
+                androidx.navigation.navArgument("highlightId") {
+                    type = androidx.navigation.NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { entry ->
+            NotificationsScreen(
+                onBack = { navController.popBackStack() },
+                highlightId = entry.arguments?.getString("highlightId")?.takeIf { it.isNotBlank() }
+            )
         }
         composable("leaderboard") {
             LeaderboardScreen(onBack = { navController.popBackStack() })

@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -62,10 +65,15 @@ private data class NotificationRow(
  * fire the FCM pushes. Empty state stays honest until events exist.
  */
 @Composable
-fun NotificationsScreen(onBack: () -> Unit) {
+fun NotificationsScreen(onBack: () -> Unit, highlightId: String? = null) {
     var rows by remember { mutableStateOf<List<NotificationRow>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var unread by remember { mutableStateOf(0) }
+    // A push tap can arrive with a specific notification id — once the feed
+    // loads, jump straight to that row and give it a brief highlight so the
+    // exact message the user was told about is unmistakable, then fade.
+    val listState = rememberLazyListState()
+    var highlightedId by remember(highlightId) { mutableStateOf(highlightId) }
     val context = androidx.compose.ui.platform.LocalContext.current
     // Android 13+ requires POST_NOTIFICATIONS; per the app's design the OS
     // dialog is only ever launched from an explicit button — here, so that
@@ -120,6 +128,16 @@ fun NotificationsScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { load() }
+
+    LaunchedEffect(rows, highlightId) {
+        val id = highlightId ?: return@LaunchedEffect
+        val index = rows.orEmpty().indexOfFirst { it.id == id }
+        if (index >= 0) {
+            listState.animateScrollToItem(index)
+            kotlinx.coroutines.delay(3000)
+            highlightedId = null
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(8.dp))
@@ -211,14 +229,21 @@ fun NotificationsScreen(onBack: () -> Unit) {
                     }
                 }
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(rows.orEmpty(), key = { it.id }) { n ->
+                        val isHighlighted = n.id == highlightedId
+                        val rowColor by animateColorAsState(
+                            targetValue = if (isHighlighted) AccentCyan.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant,
+                            animationSpec = tween(600),
+                            label = "notificationHighlight"
+                        )
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
+                                .background(rowColor, RoundedCornerShape(14.dp))
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {

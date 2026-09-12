@@ -10,7 +10,7 @@ const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
 const monetization = require("./src/monetization");
 const appVersion = require("./src/appVersion");
-const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
+const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumPaymentFailedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml, communityGuidelinesHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -78,17 +78,51 @@ app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" })
               [rows[0].id]
             );
             console.log(`[subscription] premium activated for google_sub ${googleSub} (ref ${data.reference})`);
-            // Confirmation the moment activation is real: email + in-app.
+            // Confirmation the moment activation is real: email + in-app +
+            // push. The push deep-links straight into the Notifications
+            // screen, scrolled to this exact message (via notificationId,
+            // attached automatically by notifyUser).
             if (!wasPremium) {
               sendPremiumActivatedEmail({ email: rows[0].email, name: rows[0].name }).catch(() => {});
               notifyUser(rows[0].id, {
                 title: "Premium activated \u2014 welcome to MarketScope AI Premium",
-                body: "Your activation for MarketScope AI Premium has been successful. Enjoy unlimited AI analysis and the full signal history. (via MarketScope AI)",
-                type: "signal",
-                data: { type: "signal", screen: "profile" }
+                body: "Your subscription payment was successful. You now have unlimited AI analysis, the full Daily Signals history and zero ads.",
+                type: "billing",
+                data: { type: "billing", route: "notifications" }
               }).catch(() => {});
             }
           }
+        }
+      }
+    } else if (event.event === "charge.failed" && event.data && event.data.reference) {
+      // A failed charge attempt — no re-verification needed (nothing to
+      // activate), but still confirm the signature-matched payload before
+      // acting on it, which the HMAC check above already did.
+      const data = event.data;
+      const googleSub = data.metadata && data.metadata.google_sub;
+      const amount = typeof data.amount === "number" ? data.amount : null;
+      const currency = data.currency || SUB_CURRENCY;
+      const failReason = data.gateway_response || "The payment was declined.";
+      if (pool && googleSub) {
+        const { rows } = await pool.query(
+          `SELECT id, email, name FROM users WHERE google_sub = $1`,
+          [googleSub]
+        );
+        if (rows.length) {
+          await pool.query(
+            `INSERT INTO subscription_payments (user_id, reference, amount, currency, status, paid_at)
+             VALUES ($1, $2, $3, $4, 'failed', now())
+             ON CONFLICT (reference) DO NOTHING`,
+            [rows[0].id, data.reference, amount, currency]
+          );
+          console.log(`[subscription] payment failed for google_sub ${googleSub} (ref ${data.reference}): ${failReason}`);
+          sendPremiumPaymentFailedEmail({ email: rows[0].email, name: rows[0].name }, { reason: failReason }).catch(() => {});
+          notifyUser(rows[0].id, {
+            title: "Payment failed \u2014 MarketScope AI Premium",
+            body: `Your subscription payment did not go through (${failReason}). No charge was made. You can try again from the Subscribe screen.`,
+            type: "billing",
+            data: { type: "billing", route: "notifications" }
+          }).catch(() => {});
         }
       }
     }
@@ -1979,20 +2013,44 @@ setTimeout(function(){
 });
 
 // --- Subscription: public plan info (single source of truth for the app) ---
-app.get("/api/subscription/plans", (_req, res) => {
+// Two real plans — Free (what every account has by default) and Premium
+// (what a subscription unlocks). Numbers are pulled live from the same
+// monetization config that actually enforces them, so this list can never
+// drift out of sync with what the app really does.
+app.get("/api/subscription/plans", async (_req, res) => {
+  const cfg = pool ? await monetization.getMonetizationConfig(pool) : monetization.DEFAULT_CONFIG;
+  const freeLimit = cfg.freeDailyAnalysisLimit;
+  const rewardBonus = cfg.rewarded?.bonusPerReward || 1;
   res.json({
     currency: SUB_CURRENCY,
     paymentsReady: Boolean(PAYSTACK_SECRET_KEY),
     plans: [
       {
-        id: "monthly",
-        name: "MarketScope AI Premium",
+        id: "free",
+        name: "Free",
+        price: 0,
+        period: null,
+        features: [
+          `${freeLimit} AI chart analyses per day`,
+          `Watch a video for +${rewardBonus} extra analysis (up to ${cfg.rewarded?.maxUnlocksPerDay || 3}/day)`,
+          "7-day full-access trial for new accounts",
+          "Daily AI & team trading signals",
+          "Full community access",
+          "Forex, crypto & stock analysis"
+        ]
+      },
+      {
+        id: "premium",
+        name: "Premium",
         price: SUB_PRICE,
         period: "month",
         features: [
-          "Unlimited AI chart analysis",
-          "Daily AI & team trading signals",
-          "Full community access"
+          "Unlimited AI chart & market analysis",
+          "Analysis runs on GPT-5, our strongest model",
+          "Zero ads, anywhere in the app",
+          "Full Daily Signals history",
+          "Full community access",
+          "Everything in Free"
         ]
       }
     ]
@@ -5057,14 +5115,16 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
  * Returns nothing; failures never break the caller.
  */
 async function addNotification({ userId, type, title, body, data }) {
-  if (!pool) return;
+  if (!pool) return null;
   try {
-    await pool.query(
-      `INSERT INTO notifications (user_id, type, title, body, data) VALUES ($1, $2, $3, $4, $5)`,
+    const { rows } = await pool.query(
+      `INSERT INTO notifications (user_id, type, title, body, data) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [userId, type, title, body, data ? JSON.stringify(data) : null]
     );
+    return rows[0]?.id || null;
   } catch (err) {
     console.error("addNotification failed:", String(err.message || err));
+    return null;
   }
 }
 
@@ -5084,14 +5144,18 @@ async function logPush(userId, token, status, title) {
 
 async function notifyUser(userId, { title, body, type, data }) {
   if (!pool || !userId) return;
-  await addNotification({ userId, type, title, body, data });
+  const notificationId = await addNotification({ userId, type, title, body, data });
+  // Every push carries its own notification's id so a tap can open the
+  // Notifications screen scrolled straight to that exact message, not just
+  // the general feed.
+  const pushData = notificationId ? { ...(data || {}), notificationId } : data;
   try {
     const { rows: tokens } = await pool.query(
       `SELECT token FROM push_tokens WHERE user_id = $1`,
       [userId]
     );
     for (const t of tokens) {
-      const result = await sendFcm(t.token, { title, body, data });
+      const result = await sendFcm(t.token, { title, body, data: pushData });
       await logPush(userId, t.token, result, title).catch(() => {});
       if (result === "invalid") {
         await pool.query(`DELETE FROM push_tokens WHERE token = $1`, [t.token]);
