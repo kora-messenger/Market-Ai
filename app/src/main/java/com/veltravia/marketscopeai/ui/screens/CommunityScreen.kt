@@ -1055,7 +1055,6 @@ private fun WeeklyCompetitionCard(onOpen: () -> Unit) {
 
 // --- composer ------------------------------------------------------------------------
 
-@Composable
 /** Shown instead of the composer to regular members: posting is a
  *  team/mentor privilege — reading, reacting and commenting stay open. */
 @Composable
