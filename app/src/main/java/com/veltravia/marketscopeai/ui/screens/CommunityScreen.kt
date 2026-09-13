@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -68,6 +69,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -1926,7 +1933,13 @@ private fun CommentsSheet(
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
-                    placeholder = { Text("Add a comment…", fontSize = 13.sp, color = TextMuted) },
+                    placeholder = {
+                        Text(
+                            if (replyTo != null) "Reply to ${replyTo?.authorName}…"
+                            else "Add a comment…",
+                            fontSize = 13.sp, color = TextMuted
+                        )
+                    },
                     shape = RoundedCornerShape(14.dp),
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1963,13 +1976,84 @@ private fun CommentRow(
     isReply: Boolean = false,
     onReply: () -> Unit
 ) {
-    Column(Modifier.padding(vertical = 5.dp)) {
-        Row(verticalAlignment = Alignment.Top) {
-            UserAvatar(
-                photoUrl = comment.authorPicture.takeIf { it.isNotBlank() },
-                size = if (isReply) 26.dp else 30.dp
+    // Swipe-right-to-reply: drag the comment right to reveal a reply arrow
+    // (WhatsApp-style). Past the trigger distance the gesture commits and
+    // the composer jumps into reply mode for this comment.
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val maxDragPx = with(density) { 72.dp.toPx() }
+    val triggerPx = with(density) { 46.dp.toPx() }
+    val offset = remember(comment.id) { Animatable(0f) }
+
+    Box(Modifier.fillMaxWidth()) {
+        // Reply arrow revealed behind the row as it slides right.
+        Box(
+            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier
+                .matchParentSize()
+                .padding(start = 10.dp)
+                .graphicsLayer {
+                    alpha = (offset.value / triggerPx).coerceIn(0f, 1f)
+                }
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.Reply,
+                contentDescription = "Swipe to reply",
+                tint = AccentCyan,
+                modifier = Modifier.size(20.dp)
             )
-            Spacer(Modifier.width(8.dp))
+        }
+        Column(
+            Modifier
+                .graphicsLayer { translationX = offset.value }
+                .then(
+                    if (comment.pending) Modifier
+                    else Modifier.pointerInput(comment.id) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, amount ->
+                                change.consume()
+                                scope.launch {
+                                    offset.snapTo(
+                                        (offset.value + amount).coerceIn(0f, maxDragPx)
+                                    )
+                                }
+                            },
+                            onDragEnd = {
+                                if (offset.value >= triggerPx) {
+                                    onReply()
+                                }
+                                scope.launch {
+                                    offset.animateTo(
+                                        0f,
+                                        spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMedium
+                                        )
+                                    )
+                                }
+                            },
+                            onDragCancel = {
+                                scope.launch {
+                                    offset.animateTo(
+                                        0f,
+                                        spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMedium
+                                        )
+                                    )
+                                }
+                            }
+                        )
+                    }
+                )
+                .padding(vertical = 5.dp)
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                UserAvatar(
+                    photoUrl = comment.authorPicture.takeIf { it.isNotBlank() },
+                    size = if (isReply) 26.dp else 30.dp
+                )
+                Spacer(Modifier.width(8.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(comment.authorName, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
@@ -1995,6 +2079,7 @@ private fun CommentRow(
                         Text("Reply", fontSize = 10.5.sp, fontWeight = FontWeight.Medium, color = AccentCyan, modifier = Modifier.padding(top = 1.dp))
                     }
                 }
+            }
             }
         }
     }
