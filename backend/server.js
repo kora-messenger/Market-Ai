@@ -2151,30 +2151,31 @@ app.post("/api/admin/members/:id/role", requireAuth, async (req, res) => {
  *  Requires an explicit confirm string in the body so it can never fire by
  *  accident. */
 /** Internal: one-shot database schema diagnostic for the owner's agent.
- *  Guarded by the CRON_SECRET header — no session can reach it. Reports the
- *  real column lists of the community/signal tables so schema regressions
- *  (missing late-added columns) can be diagnosed without DB shell access. */
+ *  Guarded by the CRON_SECRET header — no session can reach it. Runs the
+ *  exact queries the community endpoints run, with per-step error capture,
+ *  plus search_path / cross-schema shadow detection so a schema regression
+ *  can be pinned down without DB shell access. */
 app.get("/api/admin/db-diag", (req, res) => {
   if (!isCronRequest(req)) return res.status(404).json({ error: "Not found" });
   if (!pool) return res.status(503).json({ error: "No DB" });
   (async () => {
-    const { rows } = await pool.query(
-      `SELECT table_name, column_name, data_type
-       FROM information_schema.columns
-       WHERE table_schema = 'public'
-         AND table_name IN ('community_posts','post_comments','signal_comments','signal_updates','post_reactions','signal_comment_reactions','users')
-       ORDER BY table_name, ordinal_position`
-    );
-    const { rows: counts } = await pool.query(
-      `SELECT 'community_posts' AS t, COUNT(*)::int AS c FROM community_posts
-       UNION ALL SELECT 'post_comments', COUNT(*)::int FROM post_comments
-       UNION ALL SELECT 'signal_comments', COUNT(*)::int FROM signal_comments
-       UNION ALL SELECT 'signal_updates', COUNT(*)::int FROM signal_updates`
-    );
-    const { rows: sample } = await pool.query(
-      `SELECT id, author_name, author_email, created_at FROM community_posts ORDER BY created_at DESC LIMIT 5`
-    ).catch(() => ({ rows: [] }));
-    return res.json({ columns: rows, counts, sample });
+    const out = {};
+    const step = async (name, sql, params) => {
+      try {
+        const r = await pool.query(sql, params);
+        out[name] = { ok: true, rows: r.rows.slice(0, 3), rowCount: r.rowCount };
+      } catch (err) {
+        out[name] = { ok: false, error: String(err && err.message), position: err && err.position, where: String(err && err.where || "").slice(0, 200) };
+      }
+    };
+    await step("search_path", "SHOW search_path");
+    await step("schemas_with_tables", "SELECT table_schema, table_name FROM information_schema.tables WHERE table_name IN ('community_posts','post_comments') ORDER BY table_schema");
+    await step("cp_author_email", "SELECT author_email FROM community_posts LIMIT 1");
+    await step("pc_author_email", "SELECT author_email FROM post_comments LIMIT 1");
+    await step("weekly_union", "SELECT author_email, author_name FROM community_posts UNION ALL SELECT author_email, author_name FROM post_comments");
+    await step("weekly_scores_call", "SELECT author_email AS email, author_name AS name FROM (SELECT DISTINCT author_email AS email, MAX(author_name) AS author_name FROM (SELECT author_email, author_name FROM community_posts UNION ALL SELECT author_email, author_name FROM post_comments) a WHERE author_email <> '' GROUP BY author_email) e LIMIT 5");
+    await step("pc_cols_raw", "SELECT column_name FROM information_schema.columns WHERE table_name = 'post_comments' ORDER BY ordinal_position");
+    return res.json(out);
   })().catch((err) => res.status(500).json({ error: "diag failed", detail: String(err && err.message) }));
 });
 
