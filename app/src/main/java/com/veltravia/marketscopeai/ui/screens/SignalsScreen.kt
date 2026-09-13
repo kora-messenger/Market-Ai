@@ -1233,6 +1233,49 @@ fun DailySignalDetailScreen(
                 }
                 Spacer(Modifier.height(10.dp))
                 SignalStatusPill(status, outcome)
+                // Settled-trade banner: a closed signal carries its outcome
+                // onto the detail screen the same way the feed card's ribbon
+                // does - color, verdict and exit price in one glance.
+                val outcomeTint: Color? = when {
+                    status != "closed" -> null
+                    outcome == "successful" -> BullGreen
+                    outcome == "invalidated_sl" -> BearRed
+                    outcome == "expired_partial" || outcome == "breakeven" -> GoldAmber
+                    else -> null
+                }
+                if (outcomeTint != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(outcomeTint.copy(alpha = 0.10f))
+                            .border(1.dp, outcomeTint.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val outcomeIcon = when (outcome) {
+                            "successful" -> Icons.Filled.Check
+                            "invalidated_sl" -> Icons.Filled.Close
+                            else -> Icons.Filled.HorizontalRule
+                        }
+                        val outcomeLabel = when (outcome) {
+                            "successful" -> "Take profit hit"
+                            "invalidated_sl" -> "Stop loss hit"
+                            "expired_partial" -> "Closed in partial"
+                            "breakeven" -> "Closed at breakeven"
+                            else -> "Trade closed"
+                        }
+                        Icon(outcomeIcon, contentDescription = null, tint = outcomeTint, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(outcomeLabel, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = outcomeTint)
+                            if (!exitPrice.isNaN()) {
+                                Text("Exit " + fmt(exitPrice), fontSize = 11.5.sp, color = TextSecondary)
+                            }
+                        }
+                    }
+                }
                 Spacer(Modifier.height(18.dp))
 
                 Text("SNAPSHOT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
