@@ -48,6 +48,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.veltravia.marketscopeai.billing.PlayBillingHelper
 import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.monetization.planDisplay
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
@@ -104,6 +105,12 @@ fun SubscribeScreen(
     // Live account state.
     var isPremium by remember { mutableStateOf(SessionManager.isPremium(context)) }
     var trialDaysRemaining by remember { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
+    // True Premium access — paid subscription OR an admin grant (the raw
+    // isPremium flag above only reflects a PAID subscription, so an
+    // admin-granted Lifetime/Premium user would otherwise still see the
+    // buy button as if they had nothing).
+    var effectivePremium by remember { mutableStateOf(SessionManager.effectivePremium(context)) }
+    var planTrailingLabel by remember { mutableStateOf(SessionManager.planLabel(context) ?: "Premium") }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
 
@@ -124,14 +131,18 @@ fun SubscribeScreen(
         val token = sessionToken ?: return
         scope.launch {
             try {
-                val status = ApiClient.fetchSubscriptionStatus(token)
+                val status = ApiClient.fetchTrialStatus(token)
                 val premium = status.optBoolean("isPremium", isPremium)
                 val days = status.optInt("trialDaysRemaining", trialDaysRemaining)
                 val active = status.optBoolean("trialActive", premium)
                 isPremium = premium
                 trialDaysRemaining = days
+                val display = planDisplay(status)
+                effectivePremium = display.effectivePremium
+                planTrailingLabel = display.trailingLabel
                 SessionManager.updateTrialState(context, active, days, premium)
-                if (premium) {
+                SessionManager.updatePlan(context, display.plan, display.trailingLabel)
+                if (display.effectivePremium) {
                     statusMessage = "Premium is now active on your account. Enjoy unlimited access!"
                     selectedTab = 1
                 }
@@ -160,6 +171,7 @@ fun SubscribeScreen(
                             // doesn't auto-refund the purchase.
                             billingHelperRef?.acknowledge(purchaseToken)
                             isPremium = true
+                            effectivePremium = true
                             statusMessage = "Premium is now active on your account. Enjoy unlimited access!"
                             refreshStatus()
                         } else {
@@ -447,8 +459,17 @@ fun SubscribeScreen(
                 }
 
                 when {
-                    isPremium && selectedTab == 1 -> {
-                        InfoBox("Premium is already active on your account. Enjoy unlimited access!")
+                    effectivePremium && selectedTab == 1 -> {
+                        InfoBox("You're on the $planTrailingLabel plan. Enjoy unlimited access!")
+                        Spacer(Modifier.height(16.dp))
+                        GradientPrimaryButton(
+                            text = "Subscribed",
+                            enabled = false,
+                            loading = false,
+                            showArrow = false,
+                            height = 54.dp,
+                            onClick = {}
+                        )
                     }
                     selectedTab == 0 -> {
                         // Free tab: nothing to buy — a nudge toward Premium instead.

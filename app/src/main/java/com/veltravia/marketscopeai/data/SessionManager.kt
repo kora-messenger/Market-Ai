@@ -87,6 +87,8 @@ object SessionManager {
     private const val KEY_TRIAL_ACTIVE = "trial_active"
     private const val KEY_TRIAL_DAYS_REMAINING = "trial_days_remaining"
     private const val KEY_IS_PREMIUM = "is_premium"
+    private const val KEY_PLAN = "plan"
+    private const val KEY_PLAN_LABEL = "plan_label"
     private const val KEY_QUESTIONNAIRE = "questionnaire_json"
     private const val KEY_QUESTIONNAIRE_DONE = "questionnaire_done"
     private const val KEY_QUESTIONNAIRE_PROGRESS = "questionnaire_progress"
@@ -122,6 +124,35 @@ object SessionManager {
     fun trialDaysRemaining(context: Context): Int = prefs(context).getInt(KEY_TRIAL_DAYS_REMAINING, 7)
 
     fun isPremium(context: Context): Boolean = prefs(context).getBoolean(KEY_IS_PREMIUM, false)
+
+    /**
+     * Persist the server's full plan verdict (free/trial/premium/lifetime)
+     * plus a short display label for it (e.g. "Monthly", "Lifetime",
+     * "3 Months"), from a /api/trial/status response.
+     */
+    fun updatePlan(context: Context, plan: String, planLabel: String?) {
+        prefs(context).edit()
+            .putString(KEY_PLAN, plan)
+            .putString(KEY_PLAN_LABEL, planLabel)
+            .apply()
+    }
+
+    fun plan(context: Context): String = prefs(context).getString(KEY_PLAN, "free") ?: "free"
+
+    fun planLabel(context: Context): String? = prefs(context).getString(KEY_PLAN_LABEL, null)
+
+    /**
+     * True Premium access — a paid subscription OR an admin grant
+     * (monthly/yearly/lifetime). Unlike [isPremium] (which only reflects a
+     * PAID subscription), this is what every screen should use to decide
+     * "does this person already have Premium" — otherwise an admin-granted
+     * Lifetime user still sees Upgrade/Subscribe prompts as if they had
+     * nothing.
+     */
+    fun effectivePremium(context: Context): Boolean {
+        val p = plan(context)
+        return isPremium(context) || p == "premium" || p == "lifetime"
+    }
 
     fun currentUser(context: Context): GoogleUser? {
         val name = prefs(context).getString(KEY_NAME, null) ?: return null

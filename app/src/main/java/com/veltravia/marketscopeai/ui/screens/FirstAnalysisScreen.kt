@@ -89,14 +89,14 @@ fun FirstAnalysisScreen(
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(
-                        if (SessionManager.isPremium(context)) "Premium is active — enjoy full access."
+                        if (SessionManager.effectivePremium(context)) "Premium is active — enjoy full access."
                         else if (daysLeft > 1) "Your first $daysLeft days are on us!"
                         else "Your last free day — every analysis included!",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        if (SessionManager.isPremium(context)) "No limits on instruments, modes or charts."
+                        if (SessionManager.effectivePremium(context)) "No limits on instruments, modes or charts."
                         else "7 days of full access. No card required.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary

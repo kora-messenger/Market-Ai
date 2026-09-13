@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.PersonAddAlt
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -64,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.monetization.planDisplay
 import com.veltravia.marketscopeai.data.ApiConfig
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
@@ -110,6 +112,10 @@ fun ProfileScreen(
     var trialDaysRemaining by remember { mutableStateOf(0) }
     var isPremium by remember { mutableStateOf(false) }
     var plan by remember { mutableStateOf("free") } // free | trial | premium | lifetime
+    // Server-derived plan display (handles admin grants correctly, unlike
+    // the raw isPremium flag which only reflects a PAID subscription).
+    var planEffectivePremium by remember { mutableStateOf(false) }
+    var planTrailingLabel by remember { mutableStateOf("Free") }
     var deletionRequestedAt by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleteBusy by remember { mutableStateOf(false) }
@@ -128,6 +134,10 @@ fun ProfileScreen(
             trialDaysRemaining = trial.optInt("trialDaysRemaining", 0)
             isPremium = trial.optBoolean("isPremium", false)
             plan = trial.optString("plan", "free")
+            val display = planDisplay(trial)
+            planEffectivePremium = display.effectivePremium
+            planTrailingLabel = display.trailingLabel
+            SessionManager.updatePlan(context, display.plan, display.trailingLabel)
             com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(trial)
         } catch (_: Exception) {
             // Leave defaults — the plan chip just won't show until this loads.
@@ -164,6 +174,7 @@ fun ProfileScreen(
             trialDaysRemaining = trialDaysRemaining,
             savedPlanCount = savedPlanCount,
             plan = plan,
+            isVerified = planEffectivePremium,
             onUpgrade = onOpenSubscribe
         )
 
@@ -225,13 +236,8 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.WorkspacePremium,
                 tint = GoldAmber,
-                label = if (isPremium || plan == "premium" || plan == "lifetime") "Manage plan" else "Upgrade to Premium",
-                trailingText = when {
-                    plan == "lifetime" -> "Lifetime"
-                    isPremium || plan == "premium" -> "Premium"
-                    trialActive -> "Trial: ${trialDaysRemaining}d left"
-                    else -> "Free"
-                },
+                label = if (planEffectivePremium) "Subscribed" else "Upgrade to Premium",
+                trailingText = planTrailingLabel,
                 onClick = onOpenSubscribe
             )
             SettingsRow(
@@ -460,6 +466,7 @@ private fun AccountSummaryCard(
     trialDaysRemaining: Int,
     savedPlanCount: Int?,
     plan: String,
+    isVerified: Boolean = false,
     onUpgrade: () -> Unit
 ) {
     Column(
@@ -476,7 +483,18 @@ private fun AccountSummaryCard(
             )
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    if (isVerified) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.Verified,
+                            contentDescription = "Premium verified",
+                            tint = GoldAmber,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
                 if (email.isNotBlank()) {
                     Text(email, style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 }

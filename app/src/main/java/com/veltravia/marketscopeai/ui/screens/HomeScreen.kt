@@ -125,7 +125,7 @@ fun HomeScreen(
     var memberCount by remember { mutableStateOf<Int?>(null) }
     var onlineCount by remember { mutableStateOf<Int?>(null) }
     var trialDaysRemaining by remember { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
-    var isPremium by remember { mutableStateOf(SessionManager.isPremium(context)) }
+    var isPremium by remember { mutableStateOf(SessionManager.effectivePremium(context)) }
     // Free-tier allowance after the trial lapses: 3 chart analyses per day.
     var analysesLeftToday by remember { mutableStateOf<Int?>(null) }
     val communityJoined = remember { SessionManager.communityJoined(context) }
@@ -149,11 +149,14 @@ fun HomeScreen(
                 val active = status.optBoolean("trialActive", true)
                 val days = status.optInt("trialDaysRemaining", trialDaysRemaining)
                 val premium = status.optBoolean("isPremium", isPremium)
+                val granted = status.optString("plan", "") == "premium" || status.optString("plan", "") == "lifetime"
                 SessionManager.updateTrialState(context, active, days, premium)
+                val display = com.veltravia.marketscopeai.monetization.planDisplay(status)
+                SessionManager.updatePlan(context, display.plan, display.trailingLabel)
                 // Feed the ad/monetization system the server's ad-eligibility verdict.
                 com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(status)
                 trialDaysRemaining = days
-                isPremium = premium
+                isPremium = premium || granted
                 // Real remaining allowance from the server (only for lapsed
                 // free users — premium/trial responses report unlimited).
                 val usage = status.optJSONObject("analysisUsage")
