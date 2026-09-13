@@ -220,6 +220,45 @@ object ApiClient {
         request(request)
     }
 
+    /**
+     * News Outlook — AI directional implication for one economic-calendar
+     * event. Returns the implication string, or throws with the server's
+     * honest error message if the AI is unavailable.
+     */
+    suspend fun fetchDirectionalImplication(
+        sessionToken: String,
+        title: String,
+        country: String?,
+        currency: String?,
+        impact: String?,
+        forecast: String?,
+        previous: String?,
+        actual: String?,
+        timestampIso: String?
+    ): String = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("title", title)
+        country?.let { payload.put("country", it) }
+        currency?.let { payload.put("currency", it) }
+        impact?.let { payload.put("impact", it) }
+        forecast?.let { payload.put("forecast", it) }
+        previous?.let { payload.put("previous", it) }
+        actual?.let { payload.put("actual", it) }
+        timestampIso?.let { payload.put("timestamp", it) }
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/calendar/directional-implication")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Could not generate an implication (${response.code})"))
+            }
+            json.optString("implication")
+        }
+    }
+
     /** Learning Hub pattern library: { categories: [...], patterns: [...] }. */
     suspend fun fetchLearningPatterns(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

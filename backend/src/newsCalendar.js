@@ -56,6 +56,16 @@ function tvImportanceToLabel(n) {
   return "Low";
 }
 
+// Country -> currency, so the app can offer a "filter by currency" list
+// (USD/EUR/GBP/...) instead of raw ISO country codes.
+const COUNTRY_TO_CURRENCY = {
+  US: "USD", GB: "GBP", EU: "EUR", DE: "EUR", FR: "EUR", IT: "EUR", ES: "EUR",
+  JP: "JPY", AU: "AUD", CA: "CAD", CN: "CNY", CH: "CHF", NZ: "NZD"
+};
+function currencyForCountry(country) {
+  return COUNTRY_TO_CURRENCY[String(country || "").toUpperCase()] || null;
+}
+
 async function fetchFromTradingView() {
   const from = new Date(Date.now() - 24 * 3600_000).toISOString();
   const to = new Date(Date.now() + 8 * 24 * 3600_000).toISOString();
@@ -74,6 +84,7 @@ async function fetchFromTradingView() {
         title: String(e.title),
         country: e.country || "",
         impact: tvImportanceToLabel(Number(e.importance)),
+        currency: currencyForCountry(e.country),
         forecast: e.forecast != null ? String(e.forecast) + (e.unit || "") : null,
         previous: e.previous != null ? String(e.previous) + (e.unit || "") : null,
         actual: e.actual != null ? String(e.actual) + (e.unit || "") : null,
@@ -94,6 +105,7 @@ async function fetchFromForexFactory() {
         title: String(e.title),
         country: e.country || "",
         impact: ["High", "Medium", "Low", "Holiday"].includes(e.impact) ? e.impact : "Low",
+        currency: currencyForCountry(e.country),
         forecast: e.forecast || null,
         previous: e.previous || null,
         actual: e.actual || null,

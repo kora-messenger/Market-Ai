@@ -116,6 +116,7 @@ fun HomeScreen(
     onCreateTradePlan: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenLearningHub: () -> Unit,
+    onOpenNewsOutlook: () -> Unit,
     onOpenMarket: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -229,7 +230,7 @@ fun HomeScreen(
     // Prioritize real, working features in the collapsed row; the three
     // not-yet-built tools only appear once the user explicitly expands.
     val primaryActions = listOf(
-        QuickAction("News Outlook", Icons.AutoMirrored.Filled.Article) { comingSoon("News Outlook") },
+        QuickAction("News Outlook", Icons.AutoMirrored.Filled.Article, onOpenNewsOutlook),
         QuickAction("Risk calculator", Icons.Filled.Calculate, onOpenRiskCalculator),
         QuickAction("Community", Icons.Filled.Groups) { onSwitchTab(2) },
         QuickAction("Signals", Icons.AutoMirrored.Filled.ShowChart) { onSwitchTab(1) },

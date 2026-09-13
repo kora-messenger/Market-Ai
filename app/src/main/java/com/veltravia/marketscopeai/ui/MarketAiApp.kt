@@ -70,6 +70,7 @@ import com.veltravia.marketscopeai.ui.screens.BrokerSetupIntroScreen
 import com.veltravia.marketscopeai.ui.screens.CommunityScreen
 import com.veltravia.marketscopeai.ui.screens.LeaderboardScreen
 import com.veltravia.marketscopeai.ui.screens.LearningHubScreen
+import com.veltravia.marketscopeai.ui.screens.NewsOutlookScreen
 import com.veltravia.marketscopeai.ui.screens.LearningPatternScreen
 import com.veltravia.marketscopeai.ui.screens.HomeScreen
 import com.veltravia.marketscopeai.ui.screens.CalendarScreen
@@ -365,6 +366,9 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable("news_outlook") {
+            NewsOutlookScreen(onBack = { navController.popBackStack() })
+        }
         composable("learning_hub") {
             LearningHubScreen(
                 onBack = { navController.popBackStack() },
@@ -506,6 +510,7 @@ private fun MainTabs(navController: NavHostController) {
                     onCreateTradePlan = { navController.navigate("create_trade_plan") },
                     onOpenCalendar = { navController.navigate("calendar") },
                     onOpenLearningHub = { navController.navigate("learning_hub") },
+                    onOpenNewsOutlook = { navController.navigate("news_outlook") },
                     onOpenMarket = { id -> navController.navigate("market/$id") }
                 )
                 1 -> SignalsScreen(

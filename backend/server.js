@@ -1383,6 +1383,71 @@ app.get("/api/calendar/economic", async (_req, res) => {
   }
 });
 
+/**
+ * News Outlook — AI directional implication for one specific economic
+ * calendar event. Requires auth (costs an AI call). Runs on the OpenRouter
+ * tier (same as trial/free chart analysis) — this is a lightweight utility,
+ * not a paid premium pass, so it never touches the OpenAI budget.
+ */
+app.post("/api/calendar/directional-implication", requireAuth, async (req, res) => {
+  const { title, country, currency, impact, forecast, previous, actual, timestamp } = req.body || {};
+  if (!title) {
+    return res.status(400).json({ error: "title is required" });
+  }
+  const hasActual = actual != null && String(actual).trim() !== "";
+  const eventIsFuture = timestamp ? new Date(timestamp).getTime() > Date.now() : false;
+  const factLines = [
+    `Event: ${title}`,
+    country ? `Country: ${country}` : null,
+    currency ? `Currency: ${currency}` : null,
+    impact ? `Impact level: ${impact}` : null,
+    forecast != null ? `Forecast: ${forecast}` : null,
+    previous != null ? `Previous: ${previous}` : null,
+    hasActual ? `Actual (already released): ${actual}` : "Actual: not released yet",
+    eventIsFuture ? "This event has not happened yet." : "This event has already occurred or is in progress."
+  ].filter(Boolean).join("\n");
+
+  try {
+    const result = await callAI({
+      model: ANALYSIS_MODEL,
+      max_tokens: 260,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a concise market-education assistant inside a trading app. Given one economic-calendar " +
+            "event, write a short, neutral 'directional implication' explaining how the reading could move its " +
+            "currency. If the actual reading has already been released, compare it to the forecast/previous and " +
+            "state the likely near-term bias for that currency (stronger-than-forecast = typically supportive; " +
+            "weaker-than-forecast = typically a headwind), always noting this is a general tendency, not a " +
+            "guarantee. If the event hasn't happened yet, explain what a beat vs a miss vs an in-line print would " +
+            "each likely mean for the currency. Keep it to 2-3 sentences, plain language, no financial advice " +
+            'disclaimers beyond a short closing caveat. Reply with strict JSON: {"implication": "..."}.'
+        },
+        { role: "user", content: factLines }
+      ]
+    }, "calendar-directional-implication");
+
+    if (!result.ok) {
+      return res.status(502).json({ error: "AI is temporarily unavailable — try again shortly." });
+    }
+    const data = await result.response.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    let implication = null;
+    try {
+      const parsed = extractJson(text);
+      implication = typeof parsed.implication === "string" ? parsed.implication.trim() : null;
+    } catch (_e) { /* fall through */ }
+    if (!implication) {
+      return res.status(502).json({ error: "Could not read the AI's response — try again." });
+    }
+    res.json({ implication });
+  } catch (err) {
+    res.status(502).json({ error: "Could not generate a directional implication right now.", detail: String(err.message || err) });
+  }
+});
+
 /** Public, real aggregated Forex/Crypto/Stocks news (Investing.com, Cointelegraph, Yahoo Finance). */
 app.get("/api/calendar/news", async (req, res) => {
   try {
