@@ -454,6 +454,12 @@ fun MarketAiApp() {
                 onUpgradeRequired = { navController.navigate("subscribe") }
             )
         }
+        composable("daily_signal/{id}") { entry ->
+            DailySignalDetailScreen(
+                signalId = entry.arguments?.getString("id") ?: "",
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("signal/{analysisId}") { entry ->
             val adContext = androidx.compose.ui.platform.LocalContext.current
             SignalCardScreen(
@@ -518,7 +524,8 @@ private fun MainTabs(navController: NavHostController) {
                 )
                 1 -> SignalsScreen(
                     onOpenAdmin = { navController.navigate("signals_admin") },
-                    onOpenWall = { navController.navigate("wall_of_wins") }
+                    onOpenWall = { navController.navigate("wall_of_wins") },
+                    onOpenSignal = { id -> navController.navigate("daily_signal/$id") }
                 )
                 2 -> CommunityScreen(
                     onOpenLeaderboard = { navController.navigate("leaderboard") }
@@ -527,7 +534,8 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenAnalysis = { id ->
                         navController.navigate("signal/${id}")
                     },
-                    onCreateTradePlan = { navController.navigate("create_trade_plan") }
+                    onCreateTradePlan = { navController.navigate("create_trade_plan") },
+                    onOpenSignal = { id -> navController.navigate("daily_signal/$id") }
                 )
                 else -> ProfileScreen(
                     onSignOut = {

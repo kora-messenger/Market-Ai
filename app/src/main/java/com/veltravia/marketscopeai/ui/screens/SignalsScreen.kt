@@ -59,6 +59,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingUp
 import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
@@ -93,7 +98,8 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun SignalsScreen(
     onOpenAdmin: () -> Unit,
-    onOpenWall: () -> Unit = {}
+    onOpenWall: () -> Unit = {},
+    onOpenSignal: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     var range by remember { mutableStateOf("month") }
@@ -255,7 +261,7 @@ fun SignalsScreen(
                         for (i in 0 until feed.length()) {
                             val item = feed.optJSONObject(i) ?: continue
                             androidx.compose.runtime.key(item.optString("id", "$i")) {
-                                DailySignalCard(item, isAdmin = isAdmin)
+                                DailySignalCard(item, isAdmin = isAdmin, onOpenDetails = onOpenSignal)
                             }
                             Spacer(Modifier.height(14.dp))
                         }
@@ -440,7 +446,7 @@ private fun StatChip(label: String, value: String, modifier: Modifier = Modifier
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
+private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false, onOpenDetails: (String) -> Unit = {}) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -485,7 +491,6 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
     var saving by remember(id) { mutableStateOf(false) }
     var commentCount by remember(id) { mutableStateOf(item.optInt("commentCount", 0)) }
     var showComments by remember(id) { mutableStateOf(false) }
-    var detailsExpanded by remember(id) { mutableStateOf(false) }
 
     // "Share your win" + "I took this signal" — only exist on closed, won signals.
     val isWon = status == "closed" && outcome == "successful"
@@ -625,6 +630,7 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = id.isNotEmpty()) { onOpenDetails(id) }
     ) {
         Column(
             modifier = Modifier
@@ -743,11 +749,11 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
                 Text("Reshare", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             }
             Text(
-                if (detailsExpanded) "Hide Details" else "View Details",
+                "View Details",
                 color = AccentCyan,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
-                modifier = Modifier.clickable { detailsExpanded = !detailsExpanded }
+                modifier = Modifier.clickable(enabled = id.isNotEmpty()) { onOpenDetails(id) }
             )
         }
 
@@ -797,26 +803,6 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false) {
             }
         }
 
-        if (detailsExpanded) {
-            Spacer(Modifier.height(12.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BorderSubtleColor()))
-            Spacer(Modifier.height(12.dp))
-            Row {
-                Text(authorLabel, fontSize = 11.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(8.dp))
-                Text("·", fontSize = 11.sp, color = TextMuted)
-                Spacer(Modifier.width(8.dp))
-                Text(if (isLong) "LONG" else "SHORT", fontSize = 11.sp, color = dirColor, fontWeight = FontWeight.SemiBold)
-            }
-            if (thesis.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
-                Text(thesis, style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = TextSecondary)
-            }
-            if (!lastPrice.isNaN()) {
-                Spacer(Modifier.height(8.dp))
-                Text("Live price: ${fmt(lastPrice)}", fontSize = 11.sp, color = TextMuted)
-            }
-        }
         }
 
         // Folded-corner ribbon for a settled trade — "TAKE PROFIT HIT" (win),
@@ -1102,4 +1088,353 @@ private fun ErrorNote(message: String) {
 private fun fmt(v: Double): String {
     return if (v >= 100) String.format(java.util.Locale.US, "%.2f", v)
     else String.format(java.util.Locale.US, "%.4f", v).trimEnd('0').trimEnd('.')
+}
+
+/**
+ * Full-screen breakdown of one daily signal - opened from "View Details" (or
+ * by tapping the signal card itself) instead of the old inline expand. Fetches
+ * fresh by id so it works from any entry point (feed, Saved bookmarks, a
+ * future push-notification deep link). Every value is real: entry/SL/TPs,
+ * risk:reward, conviction, live price and the AI/team's own thesis text.
+ */
+@Composable
+fun DailySignalDetailScreen(
+    signalId: String,
+    onBack: () -> Unit,
+    isAdmin: Boolean = false
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val token = remember { SessionManager.sessionToken(context) }
+
+    var signal by remember { mutableStateOf<JSONObject?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var showComments by remember { mutableStateOf(false) }
+
+    LaunchedEffect(signalId) {
+        if (token == null) {
+            error = "Not signed in"
+            return@LaunchedEffect
+        }
+        try {
+            val resp = ApiClient.fetchDailySignalById(token, signalId)
+            signal = resp.optJSONObject("signal")
+            error = null
+        } catch (e: Exception) {
+            error = e.message ?: "Could not load this signal"
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+    ) {
+        Spacer(Modifier.height(8.dp))
+        Box(modifier = Modifier.fillMaxWidth()) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+            }
+            Text(
+                "Trade Analysis",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        when {
+            error != null -> {
+                Spacer(Modifier.height(40.dp))
+                Text(error ?: "", color = androidx.compose.material3.MaterialTheme.colorScheme.error, modifier = Modifier.align(Alignment.CenterHorizontally))
+            }
+            signal == null -> {
+                Spacer(Modifier.height(80.dp))
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = AccentCyan)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Loading signal...", color = TextMuted)
+                }
+            }
+            else -> {
+                val item = signal!!
+                val id = item.optString("id", signalId)
+                val instrument = item.optString("instrument", "")
+                val direction = item.optString("direction", "long")
+                val isLong = direction.equals("long", ignoreCase = true)
+                val dirColor = if (isLong) BullGreen else BearRed
+                val mode = item.optString("mode", "").takeIf { it.isNotBlank() }
+                val entry = item.optDouble("entry", Double.NaN)
+                val sl = item.optDouble("stopLoss", Double.NaN)
+                val tps = item.optJSONArray("takeProfits")
+                val firstTp = if (tps != null && tps.length() > 0) tps.optDouble(0) else Double.NaN
+                val finalTp = if (tps != null && tps.length() > 0) tps.optDouble(tps.length() - 1) else Double.NaN
+                val rr = item.optDouble("riskReward", Double.NaN)
+                val thesis = item.optString("thesis", "")
+                val strength = item.optString("strength", "moderate")
+                val status = item.optString("status", "live")
+                val outcome = item.optString("outcome", "")
+                val exitPrice = item.optDouble("exitPrice", Double.NaN)
+                val lastPrice = item.optDouble("lastPrice", Double.NaN)
+                val author = item.optString("author", "owner")
+                val authorLabel = if (author == "ai") "AI-Generated" else "MarketScope AI Team"
+                val publishedAt = item.optString("publishedAt", "")
+                var saved by remember(id) { mutableStateOf(item.optBoolean("saved", false)) }
+                var saving by remember(id) { mutableStateOf(false) }
+                var commentCount by remember(id) { mutableStateOf(item.optInt("commentCount", 0)) }
+
+                fun toggleSave() {
+                    if (token == null || saving) return
+                    saving = true
+                    val prev = saved
+                    saved = !saved
+                    scope.launch {
+                        try {
+                            val resp = ApiClient.toggleSavedSignal(token, id)
+                            saved = resp.optBoolean("saved", saved)
+                        } catch (_: Exception) {
+                            saved = prev
+                            android.widget.Toast.makeText(context, "Could not update saved state", android.widget.Toast.LENGTH_SHORT).show()
+                        } finally {
+                            saving = false
+                        }
+                    }
+                }
+
+                fun buildSignalShareText(): String {
+                    val dirWord = if (isLong) "LONG" else "SHORT"
+                    val arrow = if (isLong) "📈" else "📉"
+                    val sb = StringBuilder()
+                    sb.append(arrow).append(" MarketScope AI Signal - ").append(instrument)
+                        .append(" (").append(dirWord).append(")").append("\n")
+                    if (!entry.isNaN()) sb.append("Entry: ").append(fmt(entry)).append("\n")
+                    if (!sl.isNaN()) sb.append("Stop loss: ").append(fmt(sl)).append("\n")
+                    if (!firstTp.isNaN()) sb.append("Initial TP: ").append(fmt(firstTp)).append("\n")
+                    if (!rr.isNaN()) sb.append("R:R 1:").append("%.2f".format(rr)).append("\n")
+                    sb.append("Conviction: ").append(strength.replaceFirstChar { it.uppercase() }).append("\n")
+                    if (thesis.isNotBlank()) {
+                        val t = thesis.trim()
+                        sb.append("\n").append(if (t.length > 220) t.take(220) + "…" else t).append("\n")
+                    }
+                    sb.append("\n").append("via MarketScope AI")
+                    return sb.toString()
+                }
+
+                // --- Pair / mode / time chips ---
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DetailChip("PAIR", instrument)
+                    if (mode != null) DetailChip("MODE", mode.replaceFirstChar { it.uppercase() })
+                    DetailChip("TIME", dateTimeLine(publishedAt).substringAfter("· ").ifBlank { "—" })
+                }
+                Spacer(Modifier.height(10.dp))
+                SignalStatusPill(status, outcome)
+                Spacer(Modifier.height(18.dp))
+
+                Text("SNAPSHOT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
+                Spacer(Modifier.height(10.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SnapshotTile(
+                        icon = if (isLong) Icons.Filled.TrendingUp else Icons.Filled.TrendingDown,
+                        label = "TREND",
+                        value = if (isLong) "Bullish" else "Bearish",
+                        tint = dirColor,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SnapshotTile(
+                        icon = Icons.Filled.Check,
+                        label = "TRADE IDEA",
+                        value = if (isLong) "Buy" else "Sell",
+                        tint = dirColor,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SnapshotTile(icon = null, label = "ENTRY", value = if (!entry.isNaN()) fmt(entry) else "—", tint = AccentCyan, modifier = Modifier.weight(1f))
+                    SnapshotTile(icon = null, label = "SL", value = if (!sl.isNaN()) fmt(sl) else "—", tint = BearRed, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SnapshotTile(icon = null, label = "INITIAL TP", value = if (!firstTp.isNaN()) fmt(firstTp) else "—", tint = BullGreen, modifier = Modifier.weight(1f))
+                    SnapshotTile(icon = null, label = "FINAL TP", value = if (!finalTp.isNaN()) fmt(finalTp) else "—", tint = BullGreen, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SnapshotTile(icon = null, label = "R:R RATIO", value = if (!rr.isNaN()) "1:${"%.2f".format(rr)}" else "—", tint = GoldAmber, modifier = Modifier.weight(1f))
+                    SnapshotTile(icon = null, label = "STRENGTH", value = strength.replaceFirstChar { it.uppercase() }, tint = AccentViolet, modifier = Modifier.weight(1f))
+                }
+                if (!lastPrice.isNaN() || (status == "closed" && !exitPrice.isNaN())) {
+                    Spacer(Modifier.height(10.dp))
+                    SnapshotTile(
+                        icon = null,
+                        label = if (status == "closed") "EXIT PRICE" else "LIVE PRICE",
+                        value = if (status == "closed" && !exitPrice.isNaN()) fmt(exitPrice) else fmt(lastPrice),
+                        tint = AccentCyan,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(Modifier.height(22.dp))
+                Row {
+                    Text(authorLabel, fontSize = 11.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(8.dp))
+                    Text("·", fontSize = 11.sp, color = TextMuted)
+                    Spacer(Modifier.width(8.dp))
+                    Text(dateTimeLine(publishedAt), fontSize = 11.sp, color = TextMuted)
+                }
+                if (thesis.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("EXPLANATION", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(com.veltravia.marketscopeai.ui.theme.SurfaceDark)
+                            .padding(16.dp)
+                    ) {
+                        Text(thesis, style = MaterialTheme.typography.bodyMedium, color = Color.White, lineHeight = 20.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White)
+                            .border(1.dp, BorderSubtleColor(), RoundedCornerShape(14.dp))
+                            .clickable(enabled = !saving) { toggleSave() }
+                            .padding(vertical = 13.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = null,
+                            tint = if (saved) AccentCyan else TextSecondary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (saving) "Saving..." else if (saved) "Saved" else "Save",
+                            color = if (saved) AccentCyan else TextSecondary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White)
+                            .border(1.dp, BorderSubtleColor(), RoundedCornerShape(14.dp))
+                            .combinedClickable(
+                                onClick = {
+                                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_TEXT, buildSignalShareText())
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(send, "Reshare signal"))
+                                },
+                                onLongClick = {
+                                    clipboardManager.setText(AnnotatedString(buildSignalShareText()))
+                                    android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            .padding(vertical = 13.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Share, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Reshare", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    }
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White)
+                            .border(1.dp, BorderSubtleColor(), RoundedCornerShape(14.dp))
+                            .clickable { showComments = true }
+                            .padding(vertical = 13.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("$commentCount", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    }
+                }
+
+                if (showComments) {
+                    SignalCommentsSheet(
+                        signalId = id,
+                        isAdmin = isAdmin,
+                        instrument = instrument,
+                        isWin = status == "closed" && outcome == "successful",
+                        onDismiss = { showComments = false },
+                        onCountChange = { commentCount = it }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "MarketScope AI provides AI-generated signals for educational purposes only and is not financial advice. Trade at your own risk.",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted,
+            modifier = Modifier.padding(vertical = 16.dp)
+        )
+    }
+}
+
+/** A small labeled chip used at the top of the detail screen ("PAIR / GBP-USD" style). */
+@Composable
+private fun DetailChip(label: String, value: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(SurfaceLight)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Column {
+            Text(label, fontSize = 9.5.sp, color = TextMuted, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+            Text(value, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/** A snapshot stat tile: icon + label + value, tinted per field (entry cyan, SL red, TP green). */
+@Composable
+private fun SnapshotTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    label: String,
+    value: String,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(tint.copy(alpha = 0.08f))
+            .border(1.dp, tint.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(label, fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold, letterSpacing = 0.3.sp)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(value, fontSize = 18.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
+    }
 }

@@ -860,6 +860,16 @@ object ApiClient {
             request(request)
         }
 
+    /** A single daily signal by id — powers the full-screen detail view. */
+    suspend fun fetchDailySignalById(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/daily-signals/$id")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** The signed-in user's bookmarked daily signals (Signals tab save button),
      *  newest saves first — powers the Saved screen section. */
     suspend fun fetchSavedDailySignals(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {

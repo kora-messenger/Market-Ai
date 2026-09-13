@@ -80,7 +80,8 @@ private enum class SignalFilter(val label: String) { ALL("All signals"), SCALP("
 @Composable
 fun SavedScreen(
     onOpenAnalysis: (String) -> Unit,
-    onCreateTradePlan: () -> Unit
+    onCreateTradePlan: () -> Unit,
+    onOpenSignal: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -180,7 +181,7 @@ fun SavedScreen(
                 (0 until savedDaily!!.length()).mapNotNull { savedDaily!!.optJSONObject(it) },
                 key = { it.optString("id") }
             ) { signal ->
-                SavedDailySignalRow(signal) { id ->
+                SavedDailySignalRow(signal, onOpen = { onOpenSignal(it) }) { id ->
                     // Unsave straight from this list — same toggle endpoint
                     // the Signals tab uses. Optimistic remove + refresh on error.
                     val removed = savedDaily
@@ -500,7 +501,7 @@ private fun SavedDailySignalsSkeleton() {
 /** A bookmarked daily signal (from the Signals tab), listed on the Saved
  *  screen with its real levels and a one-tap unsave. */
 @Composable
-private fun SavedDailySignalRow(signal: JSONObject, onRemove: (String) -> Unit) {
+private fun SavedDailySignalRow(signal: JSONObject, onOpen: (String) -> Unit, onRemove: (String) -> Unit) {
     val id = signal.optString("id", "")
     val isLong = signal.optString("direction", "long").equals("long", ignoreCase = true)
     val tps = signal.optJSONArray("takeProfits")
@@ -517,6 +518,7 @@ private fun SavedDailySignalRow(signal: JSONObject, onRemove: (String) -> Unit) 
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceLight)
+            .clickable(enabled = id.isNotEmpty()) { onOpen(id) }
     ) {
         Row(
             modifier = Modifier

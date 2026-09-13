@@ -4836,6 +4836,23 @@ app.post("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
   }
 });
 
+/** A single daily signal by id — powers the full-screen signal detail view
+ *  (tapping "View Details" or the card itself opens this, instead of the old
+ *  inline expand). Same shape + social extras as the feed list. */
+app.get("/api/daily-signals/:id", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!SIGNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Signal not found" });
+  try {
+    const me = await currentUser(req);
+    const { rows } = await pool.query(`SELECT * FROM daily_signals WHERE id = $1::uuid`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: "Signal not found" });
+    const extras = await signalSocialExtras([rows[0].id], me ? me.id : null);
+    res.json({ signal: signalToApi(rows[0], extras[rows[0].id]) });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load signal", detail: String(err.message || err) });
+  }
+});
+
 /** Admin: list pending (unapproved) signal-comment screenshots awaiting review. */
 app.get("/api/admin/signal-comments/pending", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
