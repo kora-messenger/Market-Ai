@@ -1,5 +1,6 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -37,7 +39,8 @@ import com.veltravia.marketscopeai.ui.theme.TextSecondary
 @Composable
 fun FirstAnalysisScreen(
     onAnalysisComplete: (String) -> Unit,
-    onTrialExpired: () -> Unit = {}
+    onTrialExpired: () -> Unit = {},
+    onSkip: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -52,7 +55,25 @@ fun FirstAnalysisScreen(
             .fillMaxSize()
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(12.dp))
+
+        // Users who aren't ready to run their first analysis right now can
+        // skip it — onboarding is already marked complete by the previous
+        // screen, so skipping just drops them straight into the main app
+        // (same destination as finishing an analysis and tapping Continue).
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = onSkip) {
+                Text(
+                    "Skip",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextSecondary
+                )
+            }
+        }
 
         // Personalized greeting, same energy as the reference recording.
         Text(

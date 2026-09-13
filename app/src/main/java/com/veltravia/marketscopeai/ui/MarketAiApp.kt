@@ -322,6 +322,15 @@ fun MarketAiApp() {
                     // 402 from the backend: the 7-day trial is over — take the
                     // user straight to the real Subscribe screen.
                     navController.navigate("subscribe")
+                },
+                onSkip = {
+                    // Onboarding is already marked complete by the previous
+                    // screen (screenshot guide) — skipping the first analysis
+                    // just drops the user straight into the main app, same
+                    // as finishing an analysis and tapping Continue.
+                    navController.navigate("main") {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             )
         }
