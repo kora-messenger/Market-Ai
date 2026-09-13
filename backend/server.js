@@ -4392,6 +4392,11 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
       `SELECT t.id, t.comment, t.created_at, t.author_name, t.author_email,
               t.signal_id, s.instrument_id, s.instrument_display, s.direction, s.take_profits, s.exit_price,
               EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              COALESCE(u.is_premium OR EXISTS (
+                SELECT 1 FROM premium_grants g
+                WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                  AND (g.expires_at IS NULL OR g.expires_at > now())
+              ), false) AS author_is_premium,
               u.avatar_url
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
@@ -4407,6 +4412,7 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
         comment: r.comment,
         createdAt: r.created_at,
         authorName: r.author_name,
+        authorIsPremium: r.author_is_premium || false,
         avatarUrl: r.avatar_url || null,
         hasImage: r.has_image,
         instrument: r.instrument_display,
@@ -4433,6 +4439,11 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
       `SELECT t.id, t.comment, t.created_at, t.author_name, t.signal_id,
               s.instrument_display, s.instrument_id, s.direction, s.exit_price,
               EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              COALESCE(u.is_premium OR EXISTS (
+                SELECT 1 FROM premium_grants g
+                WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                  AND (g.expires_at IS NULL OR g.expires_at > now())
+              ), false) AS author_is_premium,
               u.avatar_url
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
@@ -4456,6 +4467,7 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
         comment: r.comment,
         createdAt: r.created_at,
         authorName: r.author_name,
+        authorIsPremium: r.author_is_premium || false,
         avatarUrl: r.avatar_url || null,
         hasImage: r.has_image,
         instrument: r.instrument_display,
@@ -4840,7 +4852,14 @@ async function weeklyScores(from, to) {
             (SELECT COUNT(*)::int FROM post_comments c WHERE c.author_email = e.email AND c.created_at >= $1 AND c.created_at < $2) AS comments,
             (SELECT COUNT(*)::int FROM post_reactions r JOIN community_posts p ON p.id = r.post_id WHERE r.created_at >= $1 AND r.created_at < $2 AND p.author_email = e.email) AS reactionsReceived,
             (SELECT COUNT(*)::int FROM post_reactions r WHERE r.created_at >= $1 AND r.created_at < $2 AND r.user_id IN (SELECT id FROM users WHERE email = e.email)) AS reactionsGiven,
-            (SELECT COUNT(*)::int FROM post_poll_votes v WHERE v.created_at >= $1 AND v.created_at < $2 AND v.user_id IN (SELECT id FROM users WHERE email = e.email)) AS pollVotes
+            (SELECT COUNT(*)::int FROM post_poll_votes v WHERE v.created_at >= $1 AND v.created_at < $2 AND v.user_id IN (SELECT id FROM users WHERE email = e.email)) AS pollVotes,
+            COALESCE((
+              SELECT (u.is_premium OR EXISTS (
+                SELECT 1 FROM premium_grants g
+                WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                  AND (g.expires_at IS NULL OR g.expires_at > now())
+              )) FROM users u WHERE lower(u.email) = lower(e.email) LIMIT 1
+            ), false) AS is_premium
      FROM (SELECT DISTINCT author_email AS email, MAX(author_name) AS author_name
            FROM (
              SELECT author_email, author_name FROM community_posts
@@ -5217,7 +5236,14 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
     const { rows: proofRows } = await pool.query(
       `SELECT p.id, p.author_name, p.body, p.outcome_tag,
               (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
-              (SELECT COUNT(*)::int FROM post_reactions r WHERE r.post_id = p.id AND r.created_at >= $1 AND r.created_at < $2) AS week_reactions
+              (SELECT COUNT(*)::int FROM post_reactions r WHERE r.post_id = p.id AND r.created_at >= $1 AND r.created_at < $2) AS week_reactions,
+              COALESCE((
+                SELECT (u.is_premium OR EXISTS (
+                  SELECT 1 FROM premium_grants g
+                  WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                    AND (g.expires_at IS NULL OR g.expires_at > now())
+                )) FROM users u WHERE lower(u.email) = lower(p.author_email) LIMIT 1
+              ), false) AS author_is_premium
        FROM community_posts p
        WHERE p.created_at >= $1 AND p.created_at < $2
          AND EXISTS (SELECT 1 FROM community_post_images i WHERE i.post_id = p.id)
@@ -5227,10 +5253,12 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
     const topProofs = proofRows.map((r) => ({
       postId: r.id, authorName: r.author_name, body: r.body,
       outcomeTag: r.outcome_tag || null,
+      authorIsPremium: r.author_is_premium || false,
       imageCount: r.image_count, weekReactions: r.week_reactions
     }));
     const proof = topProofs.length
       ? { postId: topProofs[0].postId, authorName: topProofs[0].authorName, body: topProofs[0].body,
+          authorIsPremium: topProofs[0].authorIsPremium,
           imageCount: topProofs[0].imageCount, weekReactions: topProofs[0].weekReactions }
       : null;
 
@@ -5248,7 +5276,8 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
         comments: r.comments,
         reactionsReceived: r.reactionsReceived,
         reactionsGiven: r.reactionsGiven,
-        pollVotes: r.pollVotes
+        pollVotes: r.pollVotes,
+        isPremium: r.is_premium || false
       })),
       myRank,
       myScore,
@@ -5257,6 +5286,7 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
         name: r.name,
         email: r.email,
         score: r.score,
+        isPremium: r.is_premium || false,
         badge: true
       }))
     });

@@ -154,6 +154,7 @@ data class PinnedPost(
 data class ProofPost(
     val postId: String,
     val authorName: String,
+    val authorIsPremium: Boolean = false,
     val body: String,
     val imageCount: Int,
     val outcomeTag: String?,
@@ -284,6 +285,7 @@ private fun parseTopProofs(leaderboard: JSONObject): List<ProofPost> {
         ProofPost(
             postId = o.optString("postId"),
             authorName = o.optString("authorName").ifBlank { "Trader" },
+            authorIsPremium = o.optBoolean("authorIsPremium", false),
             body = o.optString("body"),
             imageCount = o.optInt("imageCount", 0),
             outcomeTag = o.optString("outcomeTag").takeIf { it.isNotBlank() && it != "null" },
@@ -952,6 +954,10 @@ private fun FeaturedProofRow(proofs: List<ProofPost>) {
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
+                                if (proof.authorIsPremium) {
+                                    Spacer(Modifier.width(3.dp))
+                                    Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(12.dp))
+                                }
                             }
                             if (proof.outcomeTag != null) {
                                 Spacer(Modifier.height(4.dp))

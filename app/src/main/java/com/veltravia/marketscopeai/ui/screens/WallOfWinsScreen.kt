@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +63,7 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
+import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
@@ -286,6 +288,10 @@ private fun WallWinCard(w: JSONObject, onClick: () -> Unit) {
             UserAvatar(photoUrl = w.optString("avatarUrl", "").ifBlank { null }, size = 18.dp)
             Spacer(Modifier.width(6.dp))
             Text(w.optString("authorName", "Trader"), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            if (w.optBoolean("authorIsPremium", false)) {
+                Spacer(Modifier.width(3.dp))
+                Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(11.dp))
+            }
             Spacer(Modifier.width(4.dp))
             Text(winDate(w.optString("createdAt", "")), fontSize = 9.sp, color = TextMuted)
         }
@@ -310,7 +316,13 @@ private fun WinDetailSheet(win: JSONObject, onReshare: () -> Unit, onCopy: () ->
             UserAvatar(photoUrl = win.optString("avatarUrl", "").ifBlank { null }, size = 34.dp)
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(win.optString("authorName", "Trader"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(win.optString("authorName", "Trader"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    if (win.optBoolean("authorIsPremium", false)) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(14.dp))
+                    }
+                }
                 Text(win.optString("instrument", "") + " · " + (if (isLong) "LONG" else "SHORT"), fontSize = 11.sp, color = if (isLong) BullGreen else BearRed, fontWeight = FontWeight.SemiBold)
             }
         }

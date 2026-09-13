@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,6 +48,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
+import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -63,7 +65,8 @@ data class StandingsEntry(
     val comments: Int,
     val reactionsReceived: Int,
     val reactionsGiven: Int,
-    val pollVotes: Int
+    val pollVotes: Int,
+    val isPremium: Boolean = false
 )
 
 private fun parseStandings(json: JSONObject): List<StandingsEntry> {
@@ -79,7 +82,8 @@ private fun parseStandings(json: JSONObject): List<StandingsEntry> {
             comments = o.optInt("comments"),
             reactionsReceived = o.optInt("reactionsReceived"),
             reactionsGiven = o.optInt("reactionsGiven"),
-            pollVotes = o.optInt("pollVotes")
+            pollVotes = o.optInt("pollVotes"),
+            isPremium = o.optBoolean("isPremium", false)
         )
     }
 }
@@ -126,6 +130,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                         name = o.optString("name").ifBlank { "Trader" },
                         email = o.optString("email"),
                         score = o.optInt("score"),
+                        isPremium = o.optBoolean("isPremium", false),
                         posts = 0, comments = 0, reactionsReceived = 0, reactionsGiven = 0, pollVotes = 0
                     )
                 }
@@ -314,6 +319,10 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onBackground,
                                 modifier = Modifier.weight(1f)
                             )
+                            if (w.isPremium) {
+                                Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                            }
                             Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("${w.score} pts", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
@@ -399,6 +408,10 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onBackground
                                         )
+                                        if (e.isPremium) {
+                                            Spacer(Modifier.width(4.dp))
+                                            Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(13.dp))
+                                        }
                                     }
                                     Text(
                                         "${e.posts} posts · ${e.comments} comments · ${e.reactionsReceived} reactions received",
