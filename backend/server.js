@@ -813,7 +813,7 @@ function requireAuth(req, res, next) {
     // app — fire-and-forget, never blocks or breaks the request.
     if (pool) {
       pool
-        .query(`UPDATE users SET last_seen_at = now() WHERE id = $1`, [req.session.sub])
+        .query(`UPDATE users SET last_seen_at = now() WHERE google_sub = $1`, [req.session.sub])
         .catch(() => {});
     }
     next();
@@ -1795,8 +1795,8 @@ app.post("/api/admin/premium/grant", requireAuth, async (req, res) => {
     notifyUser(before.id, {
       title: `Congratulations \\u2014 you've been given free ${grantLabel}`,
       body: `The MarketScope AI team granted you ${grantLabel}. Expires: ${expiresText}.${reason ? ` Reason: ${reason}` : ""} (via MarketScope AI)`,
-      type: "signal",
-      data: { type: "signal", screen: "profile" }
+      type: "premium_gift",
+      data: { type: "premium_gift", route: "notifications" }
     }).catch(() => {});
 
     console.log(`[admin-premium] ${req.session.email} granted ${grantLabel} to ${before.email}`);
@@ -1858,8 +1858,8 @@ app.post("/api/admin/premium/revoke", requireAuth, async (req, res) => {
       body: stillPremium
         ? "Your admin-granted Premium was removed, but your paid subscription keeps your Premium access active. (via MarketScope AI)"
         : "Your admin-granted Premium was removed. Subscribe anytime to regain Premium access. (via MarketScope AI)",
-      type: "signal",
-      data: { type: "signal", screen: "profile" }
+      type: "premium_gift",
+      data: { type: "premium_gift", route: "notifications" }
     }).catch(() => {});
 
     console.log(`[admin-premium] ${req.session.email} revoked ${premiumGrantLabel(grant)} from ${before.email}`);
@@ -2594,7 +2594,7 @@ app.post("/api/cron/stock-monitor", async (req, res) => {
           title: `${m.ticker}: AI advises SELL — stop level reached`,
           body: `${m.company} fell to ${fmt(price, m.currency)}${m.stop_loss != null ? ` (stop ${fmt(m.stop_loss, m.currency)})` : ""}${moveFromEntry != null ? `, ${moveFromEntry.toFixed(1)}% from your entry ${fmt(m.entry_price, m.currency)}` : ""}. The original plan is invalidated — AI recommends selling your shares now.`,
           type: "signal",
-          data: { type: "signal", screen: "signals", symbol: m.symbol }
+          data: { type: "signal", route: "signals", symbol: m.symbol }
         });
         await pool.query(
           `UPDATE stock_monitors SET last_notified_price=$1, last_notified_at=now(), status='closed', close_reason='stop_loss' WHERE id=$2`,
@@ -2617,7 +2617,7 @@ app.post("/api/cron/stock-monitor", async (req, res) => {
             ? `${m.company} reached ${fmt(price, m.currency)} — your final AI target${moveFromEntry != null ? ` (${moveFromEntry.toFixed(1)}% above entry)` : ""}. AI recommends taking your profit now.`
             : `${m.company} is at ${fmt(price, m.currency)}${moveFromEntry != null ? `, up ${moveFromEntry.toFixed(1)}% from entry` : ""}. AI advises KEEPING your shares — target ${tpLevel + 1} of ${tps.length} reached.`,
           type: "signal",
-          data: { type: "signal", screen: "signals", symbol: m.symbol }
+          data: { type: "signal", route: "signals", symbol: m.symbol }
         });
         const flagCol = `tp${tpLevel + 1}_notified`;
         await markNotified(`, ${flagCol} = true`);
@@ -2676,7 +2676,7 @@ app.post("/api/cron/stock-monitor", async (req, res) => {
           `${m.company} is now ${fmt(price, m.currency)}, ${movePct >= 0 ? "+" : ""}${movePct.toFixed(1)}% since the last update. AI advises ${advice === "keep" ? "keeping your shares" : "selling"}.`) +
           ` (via MarketScope AI)`,
         type: "signal",
-        data: { type: "signal", screen: "signals", symbol: m.symbol }
+        data: { type: "signal", route: "signals", symbol: m.symbol }
       });
       await markNotified();
       alerts++;
@@ -5688,11 +5688,13 @@ app.post("/api/push/register", requireAuth, async (req, res) => {
   if (!token || token.length > 512) return res.status(400).json({ error: "A valid FCM token is required." });
   const platform = ["android", "ios", "web"].includes(req.body.platform) ? req.body.platform : "android";
   try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
     await pool.query(
       `INSERT INTO push_tokens (user_id, token, platform)
        VALUES ($1, $2, $3)
        ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, last_seen_at = now()`,
-      [req.session.userId, token, platform]
+      [me.id, token, platform]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -5704,7 +5706,9 @@ app.delete("/api/push/register", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   const token = String(req.body.token || "").trim();
   try {
-    await pool.query(`DELETE FROM push_tokens WHERE user_id = $1 AND token = $2`, [req.session.userId, token]);
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    await pool.query(`DELETE FROM push_tokens WHERE user_id = $1 AND token = $2`, [me.id, token]);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Could not remove the push token", detail: String(err.message || err) });
@@ -5832,11 +5836,13 @@ app.get("/api/market-alerts/holiday-today", async (_req, res) => {
 app.get("/api/notifications", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
     const { rows } = await pool.query(
       `SELECT id, type, title, body, data, created_at, read_at
        FROM notifications WHERE user_id = $1
        ORDER BY created_at DESC LIMIT 50`,
-      [req.session.userId]
+      [me.id]
     );
     const unread = rows.filter((r) => !r.read_at).length;
     res.json({ notifications: rows, unread });
@@ -5848,9 +5854,11 @@ app.get("/api/notifications", requireAuth, async (req, res) => {
 app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
     await pool.query(
       `UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL`,
-      [req.session.userId]
+      [me.id]
     );
     res.json({ ok: true });
   } catch (err) {
