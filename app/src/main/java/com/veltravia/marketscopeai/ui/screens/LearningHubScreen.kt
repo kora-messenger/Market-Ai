@@ -792,7 +792,8 @@ private fun CheatRow(label: String, value: String) {
 @Composable
 private fun PatternDiagram(diagram: LearningDiagram, accent: Color) {
     val labelPaint = remember {
-        android.graphics.Paint(android.graphics.ANTI_ALIAS_FLAG).apply {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
             color = android.graphics.Color.parseColor("#475569")
             textAlign = android.graphics.Paint.Align.CENTER
         }
