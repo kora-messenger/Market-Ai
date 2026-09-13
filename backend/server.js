@@ -2150,6 +2150,34 @@ app.post("/api/admin/members/:id/role", requireAuth, async (req, res) => {
  *  account (ADMIN_EMAIL, or the first account ever created) is never deleted.
  *  Requires an explicit confirm string in the body so it can never fire by
  *  accident. */
+/** Internal: one-shot database schema diagnostic for the owner's agent.
+ *  Guarded by the CRON_SECRET header — no session can reach it. Reports the
+ *  real column lists of the community/signal tables so schema regressions
+ *  (missing late-added columns) can be diagnosed without DB shell access. */
+app.get("/api/admin/db-diag", (req, res) => {
+  if (!isCronRequest(req)) return res.status(404).json({ error: "Not found" });
+  if (!pool) return res.status(503).json({ error: "No DB" });
+  (async () => {
+    const { rows } = await pool.query(
+      `SELECT table_name, column_name, data_type
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name IN ('community_posts','post_comments','signal_comments','signal_updates','post_reactions','signal_comment_reactions','users')
+       ORDER BY table_name, ordinal_position`
+    );
+    const { rows: counts } = await pool.query(
+      `SELECT 'community_posts' AS t, COUNT(*)::int AS c FROM community_posts
+       UNION ALL SELECT 'post_comments', COUNT(*)::int FROM post_comments
+       UNION ALL SELECT 'signal_comments', COUNT(*)::int FROM signal_comments
+       UNION ALL SELECT 'signal_updates', COUNT(*)::int FROM signal_updates`
+    );
+    const { rows: sample } = await pool.query(
+      `SELECT id, author_name, author_email, created_at FROM community_posts ORDER BY created_at DESC LIMIT 5`
+    ).catch(() => ({ rows: [] }));
+    return res.json({ columns: rows, counts, sample });
+  })().catch((err) => res.status(500).json({ error: "diag failed", detail: String(err && err.message) }));
+});
+
 app.post("/api/admin/users/purge", async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!((await isAdminRequest(req)) || isCronRequest(req))) {
