@@ -11,6 +11,7 @@ import com.android.billingclient.api.ProductDetailsResult
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
+import com.android.billingclient.api.queryProductDetails
 
 /**
  * Thin wrapper around Google Play Billing for the Premium subscription.
@@ -78,7 +79,7 @@ class PlayBillingHelper(
                 listOf(
                     QueryProductDetailsParams.Product.newBuilder()
                         .setProductId(productId)
-                        .setProductType(QueryProductDetailsParams.ProductType.SUBS)
+                        .setProductType(QueryProductDetailsParams.Product.ProductType.SUBS)
                         .build()
                 )
             )
