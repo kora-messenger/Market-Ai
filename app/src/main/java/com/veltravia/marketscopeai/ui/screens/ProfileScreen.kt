@@ -83,6 +83,7 @@ import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -137,14 +138,26 @@ fun ProfileScreen(
 
     androidx.compose.runtime.LaunchedEffect(token) {
         if (token == null) return@LaunchedEffect
-        try {
-            val plans = ApiClient.fetchTradePlans(token)
-            savedPlanCount = plans.length()
-        } catch (_: Exception) {
-            savedPlanCount = 0
+        // Fire all three profile calls concurrently instead of one after
+        // another — the screen used to render in three visible waves (trade
+        // count, then plan badge, then avatar/username) because each await
+        // blocked the next request from even starting. Now the total wait is
+        // bounded by the SLOWEST single call, not the sum of all three.
+        val plansDeferred = async {
+            try { ApiClient.fetchTradePlans(token) } catch (_: Exception) { null }
         }
-        try {
-            val trial = ApiClient.fetchTrialStatus(token)
+        val trialDeferred = async {
+            try { ApiClient.fetchTrialStatus(token) } catch (_: Exception) { null }
+        }
+        val statusDeferred = async {
+            try { ApiClient.fetchAccountStatus(token) } catch (_: Exception) { null }
+        }
+
+        val plans = plansDeferred.await()
+        savedPlanCount = plans?.length() ?: 0
+
+        val trial = trialDeferred.await()
+        if (trial != null) {
             trialActive = trial.optBoolean("trialActive", false)
             trialDaysRemaining = trial.optInt("trialDaysRemaining", 0)
             isPremium = trial.optBoolean("isPremium", false)
@@ -154,19 +167,18 @@ fun ProfileScreen(
             planTrailingLabel = display.trailingLabel
             SessionManager.updatePlan(context, display.plan, display.trailingLabel)
             com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(trial)
-        } catch (_: Exception) {
-            // Leave defaults — the plan chip just won't show until this loads.
         }
-        try {
-            val status = ApiClient.fetchAccountStatus(token)
+        // Leave defaults if trial is null — the plan chip just won't show until this loads.
+
+        val status = statusDeferred.await()
+        if (status != null) {
             deletionRequestedAt = if (status.isNull("deletionRequestedAt")) null else status.optString("deletionRequestedAt")
             username = if (status.isNull("username")) null else status.optString("username")
             myAvatarUrl = ApiClient.resolveAvatarUrl(if (status.isNull("avatar")) null else status.optString("avatar"))
             if (status.has("analysesCount")) analysesCount = status.optInt("analysesCount")
             if (status.has("savedTradesCount")) savedTradesCount = status.optInt("savedTradesCount")
-        } catch (_: Exception) {
-            // Non-fatal — Danger Zone just shows the request option.
         }
+        // Non-fatal if status is null — Danger Zone just shows the request option.
     }
 
     val pickAvatar = androidx.activity.compose.rememberLauncherForActivityResult(
