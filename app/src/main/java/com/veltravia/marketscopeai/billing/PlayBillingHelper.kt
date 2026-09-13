@@ -79,7 +79,7 @@ class PlayBillingHelper(
                 listOf(
                     QueryProductDetailsParams.Product.newBuilder()
                         .setProductId(productId)
-                        .setProductType(QueryProductDetailsParams.Product.ProductType.SUBS)
+                        .setProductType(BillingClient.ProductType.SUBS)
                         .build()
                 )
             )
