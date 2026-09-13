@@ -285,7 +285,7 @@ private fun WallWinCard(w: JSONObject, onClick: () -> Unit) {
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            UserAvatar(photoUrl = w.optString("avatarUrl", "").ifBlank { null }, size = 18.dp)
+            UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(w.optString("avatarUrl", "")), size = 18.dp)
             Spacer(Modifier.width(6.dp))
             Text(w.optString("authorName", "Trader"), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             if (w.optBoolean("authorIsPremium", false)) {
@@ -313,7 +313,7 @@ private fun WinDetailSheet(win: JSONObject, onReshare: () -> Unit, onCopy: () ->
             .padding(bottom = 28.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            UserAvatar(photoUrl = win.optString("avatarUrl", "").ifBlank { null }, size = 34.dp)
+            UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(win.optString("avatarUrl", "")), size = 34.dp)
             Spacer(Modifier.width(10.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {

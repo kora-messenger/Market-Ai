@@ -197,6 +197,40 @@ object ApiClient {
     fun communityImageUrl(postId: String, position: Int): String =
         "${ApiConfig.BASE_URL}/api/community/posts/$postId/images/$position"
 
+    /**
+     * Backend payloads mark avatars as "avatar:<userId>" (custom R2-backed
+     * image served through /api/profile/avatar). Resolve the marker to a
+     * full authed URL; any other value (e.g. a Google picture URL) passes
+     * through untouched. Blank/null -> null (caller shows default avatar).
+     */
+    fun resolveAvatarUrl(raw: String?): String? = when {
+        raw.isNullOrBlank() -> null
+        raw.startsWith("avatar:") -> "${ApiConfig.BASE_URL}/api/profile/avatar/${raw.removePrefix("avatar:")}"
+        else -> raw
+    }
+
+    /** Upload a custom avatar (png/jpeg/webp data URL). Returns { avatar: "avatar:<id>" }. */
+    suspend fun uploadProfileAvatar(sessionToken: String, imageDataUrl: String): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("image", imageDataUrl)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/profile/avatar")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Set or change the public @handle. Returns { username }. */
+    suspend fun updateUsername(sessionToken: String, username: String): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("username", username)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/profile/username")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Publish a poll: 2-6 options with labels. Returns { post: {...} }. */
     suspend fun createCommunityPoll(
         sessionToken: String,

@@ -452,6 +452,13 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Unique lowercase handles. Runs after the column migration above; a
+  // failure (e.g. unexpected duplicates) must never break startup.
+  try {
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_unique ON users (lower(username))`);
+  } catch (e) {
+    console.warn("[db] username unique index skipped:", String(e.message || e));
+  }
   await monetization.ensureMonetizationTables(pool);
   await appVersion.ensureAppVersionTable(pool);
   if (introducingQuestionnaire) {
@@ -480,6 +487,8 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_key TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
     CREATE TABLE IF NOT EXISTS daily_signals (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       author TEXT NOT NULL DEFAULT 'owner',
@@ -1128,19 +1137,109 @@ app.post("/api/community/join", requireAuth, async (req, res) => {
 // Requesting sets a real timestamp the user can see and cancel; permanent
 // erasure is handled by support within 30 days, same model FxLens itself
 // (and most consumer apps) use for account deletion.
+// --- Profile: avatar + username (FxLens-style editable profile) --------
+const USERNAME_RE = /^[a-z0-9._]{3,20}$/;
+const AVATAR_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Upload a custom avatar (data URL) -> R2 -> users.avatar_key. */
+app.post("/api/profile/avatar", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const imageDataUrl = (req.body || {}).image ? String(req.body.image) : null;
+  if (!imageDataUrl) return res.status(400).json({ error: "image (data URL) is required." });
+  const m = imageDataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,/);
+  if (!m) return res.status(400).json({ error: "Images must be png/jpeg/webp data URLs." });
+  const b64 = imageDataUrl.split(",")[1] || "";
+  if (b64.length > 2_000_000) return res.status(400).json({ error: "The image must be under 1.5MB." });
+  if (!r2.isR2Configured()) {
+    return res.status(503).json({ error: "Image storage is not configured yet." });
+  }
+  try {
+    const key = await r2.uploadImage(Buffer.from(b64, "base64"), m[1], "avatars");
+    const { rows } = await pool.query(
+      `UPDATE users SET avatar_key = $1 WHERE google_sub = $2 RETURNING id`,
+      [key, req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found." });
+    return res.json({ avatar: `avatar:${rows[0].id}` });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not save the avatar.", detail: String(err.message || err) });
+  }
+});
+
+/** Serve any member's avatar: custom (R2, signed redirect) or Google picture. */
+app.get("/api/profile/avatar/:userId", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!AVATAR_UUID_RE.test(req.params.userId)) return res.status(404).json({ error: "Avatar not found" });
+  try {
+    const { rows } = await pool.query(
+      `SELECT avatar_key, picture FROM users WHERE id = $1`,
+      [req.params.userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Avatar not found" });
+    const row = rows[0];
+    if (row.avatar_key) {
+      return res.redirect(302, await r2.signedImageUrl(row.avatar_key));
+    }
+    if (row.picture) {
+      return res.redirect(302, row.picture);
+    }
+    return res.status(404).json({ error: "Avatar not found" });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load the avatar.", detail: String(err.message || err) });
+  }
+});
+
+/** Set or change the public @username handle. */
+app.post("/api/profile/username", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const raw = String((req.body || {}).username || "").trim().toLowerCase();
+  if (!USERNAME_RE.test(raw)) {
+    return res.status(400).json({
+      error: "Handles are 3-20 characters: lowercase letters, numbers, dots or underscores."
+    });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id FROM users WHERE lower(username) = $1 AND google_sub <> $2 LIMIT 1`,
+      [raw, req.session.sub]
+    );
+    if (rows.length) {
+      return res.status(409).json({ error: "That handle is already taken." });
+    }
+    const { rows: updated } = await pool.query(
+      `UPDATE users SET username = $1 WHERE google_sub = $2 RETURNING username`,
+      [raw, req.session.sub]
+    );
+    if (!updated.length) return res.status(404).json({ error: "User not found." });
+    return res.json({ username: updated[0].username });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not save the handle.", detail: String(err.message || err) });
+  }
+});
+
 app.get("/api/account/status", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
   }
   try {
     const { rows } = await pool.query(
-      `SELECT deletion_requested_at FROM users WHERE google_sub = $1`,
+      `SELECT u.deletion_requested_at, u.username, u.avatar_key, u.id,
+              (SELECT COUNT(*)::int FROM analyses a WHERE a.user_id = u.id) AS analyses_count,
+              (SELECT COUNT(*)::int FROM trade_plans t WHERE t.user_id = u.id) AS saved_count
+       FROM users u WHERE u.google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
       return res.status(404).json({ error: "User not found" });
     }
-    return res.json({ deletionRequestedAt: rows[0].deletion_requested_at });
+    const r = rows[0];
+    return res.json({
+      deletionRequestedAt: r.deletion_requested_at,
+      username: r.username || null,
+      avatar: r.avatar_key ? `avatar:${r.id}` : null,
+      analysesCount: r.analyses_count,
+      savedTradesCount: r.saved_count
+    });
   } catch (err) {
     return res.status(500).json({ error: "Could not load account status", detail: String(err.message || err) });
   }
@@ -4065,8 +4164,8 @@ app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, c.user_id, c.author_name, c.body, c.approved, c.created_at,
               EXISTS(SELECT 1 FROM signal_comment_images i WHERE i.comment_id = c.id) AS has_image,
-              NULLIF((SELECT u.picture FROM users u
-                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
+              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+                      WHERE lower(u.email) = lower(c.author_email) LIMIT 1), '') AS author_picture,
               COALESCE((SELECT u.role FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role
        FROM signal_comments c
@@ -4248,7 +4347,7 @@ app.get("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) => 
       `SELECT t.id, t.author_name, t.author_email, t.comment, t.status, t.created_at,
               (t.user_id = $2::uuid) AS is_mine,
               EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
-              u.avatar_url, u.role
+              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END) AS avatar_url, u.role
        FROM signal_testimonials t
        LEFT JOIN users u ON u.id = t.user_id
        WHERE t.signal_id = $1::uuid AND (t.status = 'approved' OR t.user_id = $2::uuid OR $3)
@@ -4397,7 +4496,7 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
                 WHERE g.user_id = u.id AND g.revoked_at IS NULL
                   AND (g.expires_at IS NULL OR g.expires_at > now())
               ), false) AS author_is_premium,
-              u.avatar_url
+              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END) AS avatar_url
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
        LEFT JOIN users u ON u.id = t.user_id
@@ -4444,7 +4543,7 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
                 WHERE g.user_id = u.id AND g.revoked_at IS NULL
                   AND (g.expires_at IS NULL OR g.expires_at > now())
               ), false) AS author_is_premium,
-              u.avatar_url
+              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END) AS avatar_url
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
        LEFT JOIN users u ON u.id = t.user_id
@@ -4580,10 +4679,10 @@ app.get("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT s.id, s.parent_id, s.author_name, s.body, s.created_at,
               COALESCE(
-                NULLIF((SELECT u.picture FROM users u
-                        WHERE lower(u.email) = lower(s.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), ''),
-                NULLIF((SELECT u2.picture FROM users u2
-                        WHERE COALESCE(u2.picture, '') <> '' ORDER BY u2.created_at ASC LIMIT 1), '')
+                NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+                        WHERE lower(u.email) = lower(s.author_email) LIMIT 1), ''),
+                NULLIF((SELECT CASE WHEN u2.avatar_key IS NOT NULL THEN 'avatar:' || u2.id ELSE u2.picture END FROM users u2
+                        ORDER BY u2.created_at ASC LIMIT 1), '')
               ) AS author_picture
        FROM signal_updates s
        WHERE s.signal_id = $1::uuid ORDER BY s.created_at ASC LIMIT 200`,
@@ -4884,8 +4983,8 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
     const { rows: posts } = await pool.query(
       `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
               (SELECT COUNT(*)::int FROM post_views v WHERE v.post_id = p.id) AS view_count,
-              NULLIF((SELECT u.picture FROM users u
-                      WHERE lower(u.email) = lower(p.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
+              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+                      WHERE lower(u.email) = lower(p.author_email) LIMIT 1), '') AS author_picture,
               COALESCE((SELECT u.role FROM users u
                       WHERE lower(u.email) = lower(p.author_email) LIMIT 1), 'user') AS author_role,
               COALESCE((
@@ -5333,8 +5432,8 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.author_name, c.author_email, c.body, c.parent_id, c.created_at,
-              NULLIF((SELECT u.picture FROM users u
-                      WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
+              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+                      WHERE lower(u.email) = lower(c.author_email) LIMIT 1), '') AS author_picture,
               COALESCE((SELECT u.role FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role,
               COALESCE((

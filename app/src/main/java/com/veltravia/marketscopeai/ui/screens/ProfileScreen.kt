@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Gavel
@@ -59,7 +60,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -68,6 +71,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.monetization.planDisplay
 import com.veltravia.marketscopeai.data.ApiConfig
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
@@ -120,6 +124,17 @@ fun ProfileScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleteBusy by remember { mutableStateOf(false) }
 
+    // Profile card (FxLens-style): public handle + custom avatar + real stats.
+    var username by remember { mutableStateOf<String?>(null) }
+    var myAvatarUrl by remember { mutableStateOf<String?>(null) }
+    var analysesCount by remember { mutableStateOf<Int?>(null) }
+    var savedTradesCount by remember { mutableStateOf<Int?>(null) }
+    var avatarUploading by remember { mutableStateOf(false) }
+    var showHandleDialog by remember { mutableStateOf(false) }
+    var handleInput by remember { mutableStateOf("") }
+    var handleBusy by remember { mutableStateOf(false) }
+    var profileError by remember { mutableStateOf<String?>(null) }
+
     androidx.compose.runtime.LaunchedEffect(token) {
         if (token == null) return@LaunchedEffect
         try {
@@ -145,8 +160,33 @@ fun ProfileScreen(
         try {
             val status = ApiClient.fetchAccountStatus(token)
             deletionRequestedAt = if (status.isNull("deletionRequestedAt")) null else status.optString("deletionRequestedAt")
+            username = if (status.isNull("username")) null else status.optString("username")
+            myAvatarUrl = ApiClient.resolveAvatarUrl(if (status.isNull("avatar")) null else status.optString("avatar"))
+            if (status.has("analysesCount")) analysesCount = status.optInt("analysesCount")
+            if (status.has("savedTradesCount")) savedTradesCount = status.optInt("savedTradesCount")
         } catch (_: Exception) {
             // Non-fatal — Danger Zone just shows the request option.
+        }
+    }
+
+    val pickAvatar = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val t = token
+        if (uri != null && t != null && !avatarUploading) {
+            avatarUploading = true
+            profileError = null
+            scope.launch {
+                try {
+                    val dataUrl = ApiClient.prepareChartImage(context, uri)
+                    val res = ApiClient.uploadProfileAvatar(t, dataUrl)
+                    myAvatarUrl = ApiClient.resolveAvatarUrl(res.optString("avatar"))
+                } catch (e: Exception) {
+                    profileError = e.message ?: "Could not update the photo"
+                } finally {
+                    avatarUploading = false
+                }
+            }
         }
     }
 
@@ -168,13 +208,39 @@ fun ProfileScreen(
         AccountSummaryCard(
             name = user?.name ?: "Trader",
             email = user?.email ?: "",
-            picture = user?.picture ?: "",
+            avatarUrl = myAvatarUrl ?: ApiClient.resolveAvatarUrl(user?.picture),
+            username = username,
             isPremium = isPremium,
             trialActive = trialActive,
             trialDaysRemaining = trialDaysRemaining,
-            savedPlanCount = savedPlanCount,
+            analysesCount = analysesCount,
+            savedPlanCount = savedPlanCount ?: savedTradesCount,
             plan = plan,
             isVerified = planEffectivePremium,
+            avatarUploading = avatarUploading,
+            profileError = profileError,
+            onPickAvatar = {
+                pickAvatar.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
+            onEditHandle = {
+                handleInput = username ?: ""
+                profileError = null
+                showHandleDialog = true
+            },
+            onInvite = {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(
+                        Intent.EXTRA_TEXT,
+                        "I'm using MarketScope AI to analyze my trades with AI — check it out: ${ApiConfig.BASE_URL}"
+                    )
+                }
+                context.startActivity(Intent.createChooser(send, "Invite friends to MarketScope AI"))
+            },
             onUpgrade = onOpenSubscribe
         )
 
@@ -238,22 +304,7 @@ fun ProfileScreen(
                 tint = GoldAmber,
                 label = if (planEffectivePremium) "Subscribed" else "Upgrade to Premium",
                 trailingText = planTrailingLabel,
-                onClick = onOpenSubscribe
-            )
-            SettingsRow(
-                icon = Icons.Filled.PersonAddAlt,
-                tint = AccentViolet,
-                label = "Invite friends",
-                onClick = {
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(
-                            Intent.EXTRA_TEXT,
-                            "I'm using MarketScope AI to analyze my trades with AI — check it out: ${ApiConfig.BASE_URL}"
-                        )
-                    }
-                    context.startActivity(Intent.createChooser(send, "Invite friends to MarketScope AI"))
-                },
+                onClick = onOpenSubscribe,
                 showDivider = false
             )
         }
@@ -313,6 +364,35 @@ fun ProfileScreen(
         }
 
         Spacer(Modifier.height(100.dp))
+    }
+
+    if (showHandleDialog) {
+        HandleEditDialog(
+            current = username,
+            input = handleInput,
+            busy = handleBusy,
+            onInput = { raw ->
+                handleInput = raw.lowercase().filter { it.isLetterOrDigit() || it == '.' || it == '_' }
+            },
+            onDismiss = { if (!handleBusy) showHandleDialog = false },
+            onSave = {
+                val t = token ?: return@HandleEditDialog
+                if (handleBusy) return@HandleEditDialog
+                handleBusy = true
+                profileError = null
+                scope.launch {
+                    try {
+                        val res = ApiClient.updateUsername(t, handleInput)
+                        username = res.optString("username")
+                        showHandleDialog = false
+                    } catch (e: Exception) {
+                        profileError = e.message ?: "Could not save the handle"
+                    } finally {
+                        handleBusy = false
+                    }
+                }
+            }
+        )
     }
 
     if (showDeleteConfirm) {
@@ -460,13 +540,20 @@ private fun DeleteAccountSheet(
 private fun AccountSummaryCard(
     name: String,
     email: String,
-    picture: String,
+    avatarUrl: String?,
+    username: String?,
     isPremium: Boolean,
     trialActive: Boolean,
     trialDaysRemaining: Int,
+    analysesCount: Int?,
     savedPlanCount: Int?,
     plan: String,
-    isVerified: Boolean = false,
+    isVerified: Boolean,
+    avatarUploading: Boolean,
+    profileError: String?,
+    onPickAvatar: () -> Unit,
+    onEditHandle: () -> Unit,
+    onInvite: () -> Unit,
     onUpgrade: () -> Unit
 ) {
     Column(
@@ -477,29 +564,107 @@ private fun AccountSummaryCard(
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            UserAvatar(
-                photoUrl = picture.takeIf { it.isNotBlank() },
-                size = 56.dp
-            )
+            // Avatar with a camera badge — tap to upload a custom photo.
+            Box {
+                UserAvatar(
+                    photoUrl = avatarUrl,
+                    size = 64.dp,
+                    modifier = Modifier.clickable(enabled = !avatarUploading) { onPickAvatar() }
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(listOf(AccentViolet, AccentCyan))
+                        )
+                        .border(1.5.dp, Color.White, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (avatarUploading) {
+                        CircularProgressIndicator(
+                            strokeWidth = 1.5.dp,
+                            color = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    } else {
+                        Icon(
+                            Icons.Filled.CameraAlt,
+                            contentDescription = "Change photo",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
                     if (isVerified) {
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(5.dp))
                         Icon(
                             Icons.Filled.Verified,
                             contentDescription = "Premium verified",
                             tint = GoldAmber,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
+                    Spacer(Modifier.width(8.dp))
+                    PlanChip(
+                        isPremium = isPremium,
+                        trialActive = trialActive,
+                        trialDaysRemaining = trialDaysRemaining,
+                        plan = plan,
+                        onClick = onUpgrade
+                    )
+                }
+                Spacer(Modifier.height(3.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onEditHandle() }
+                        .padding(vertical = 1.dp)
+                ) {
+                    Text(
+                        if (username.isNullOrBlank()) "Add a handle" else "@$username",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (username.isNullOrBlank()) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (username.isNullOrBlank()) AccentCyan else TextMuted
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "Edit handle",
+                        tint = TextMuted,
+                        modifier = Modifier.size(13.dp)
+                    )
                 }
                 if (email.isNotBlank()) {
-                    Text(email, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    Text(
+                        email,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-            PlanChip(isPremium = isPremium, trialActive = trialActive, trialDaysRemaining = trialDaysRemaining, plan = plan, onClick = onUpgrade)
+        }
+
+        if (profileError != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(profileError, style = MaterialTheme.typography.bodySmall, color = BearRed)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -510,19 +675,94 @@ private fun AccountSummaryCard(
         ) {
             StatTile(
                 modifier = Modifier.weight(1f),
-                label = "Saved trade plans",
-                value = savedPlanCount?.toString() ?: "—"
+                label = "Analyses run",
+                value = analysesCount?.toString() ?: "—"
             )
             StatTile(
                 modifier = Modifier.weight(1f),
-                label = "Plan status",
-                value = when {
-                    plan == "lifetime" -> "Lifetime"
-                    isPremium || plan == "premium" -> "Premium"
-                    trialActive -> "Trial"
-                    else -> "Free"
-                }
+                label = "Saved trades",
+                value = savedPlanCount?.toString() ?: "—"
             )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        GradientPrimaryButton(
+            text = "Invite friends",
+            enabled = true,
+            onClick = onInvite,
+            modifier = Modifier.fillMaxWidth(),
+            height = 46.dp,
+            leadingIcon = Icons.Filled.PersonAddAlt
+        )
+    }
+}
+
+/**
+ * Small centered editor for the public @handle. Client-side validation
+ * mirrors the backend rule (3-20 chars, lowercase letters/numbers/./_),
+ * and the backend re-validates + enforces uniqueness on save.
+ */
+@Composable
+private fun HandleEditDialog(
+    current: String?,
+    input: String,
+    busy: Boolean,
+    onInput: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(20.dp)
+        ) {
+            Text(
+                "Your handle",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(
+                value = input,
+                onValueChange = onInput,
+                singleLine = true,
+                placeholder = { Text("e.g. euro.trader") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (!current.isNullOrBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text("Current: @$current", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = onSave,
+                    enabled = !busy && input.matches(Regex("^[a-z0-9._]{3,20}$")),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentViolet)
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(strokeWidth = 1.5.dp, color = Color.White, modifier = Modifier.size(14.dp))
+                    } else {
+                        Text("Save")
+                    }
+                }
+            }
         }
     }
 }
