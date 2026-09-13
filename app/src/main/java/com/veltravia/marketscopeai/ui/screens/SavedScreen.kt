@@ -23,6 +23,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Bookmark
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,16 +83,19 @@ fun SavedScreen(
     onCreateTradePlan: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val token = remember { SessionManager.sessionToken(context) }
 
     var analyses by remember { mutableStateOf<JSONArray?>(null) }
     var analysesError by remember { mutableStateOf<String?>(null) }
+    var savedDaily by remember { mutableStateOf<JSONArray?>(null) }
+    var savedDailyError by remember { mutableStateOf<String?>(null) }
     var plans by remember { mutableStateOf<JSONArray?>(null) }
     var plansError by remember { mutableStateOf<String?>(null) }
     var filter by remember { mutableStateOf(SignalFilter.ALL) }
     var reloadKey by remember { mutableStateOf(0) }
 
     LaunchedEffect(reloadKey) {
-        val token = SessionManager.sessionToken(context)
         if (token == null) {
             analysesError = "Not signed in"
             plansError = "Not signed in"
@@ -99,6 +106,13 @@ fun SavedScreen(
             analysesError = null
         } catch (e: Exception) {
             analysesError = e.message ?: "Could not load history"
+        }
+        try {
+            savedDaily = ApiClient.fetchSavedDailySignals(token).optJSONArray("signals") ?: JSONArray()
+            savedDailyError = null
+        } catch (e: Exception) {
+            savedDaily = JSONArray()
+            savedDailyError = e.message ?: "Could not load saved signals"
         }
         try {
             plans = ApiClient.fetchTradePlans(token)
@@ -147,6 +161,49 @@ fun SavedScreen(
                     .background(com.veltravia.marketscopeai.ui.theme.BorderSubtle)
             )
             Spacer(Modifier.height(24.dp))
+        }
+
+        // --- Saved daily signals (Signals tab bookmark) ---
+        if (savedDaily == null) {
+            item {
+                Text("Saved daily signals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(Modifier.height(12.dp))
+                SavedDailySignalsSkeleton()
+                Spacer(Modifier.height(20.dp))
+            }
+        } else if (savedDaily!!.length() > 0) {
+            item {
+                Text("Saved daily signals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(Modifier.height(12.dp))
+            }
+            items(
+                (0 until savedDaily!!.length()).mapNotNull { savedDaily!!.optJSONObject(it) },
+                key = { it.optString("id") }
+            ) { signal ->
+                SavedDailySignalRow(signal) { id ->
+                    // Unsave straight from this list — same toggle endpoint
+                    // the Signals tab uses. Optimistic remove + refresh on error.
+                    val removed = savedDaily
+                    savedDaily = JSONArray().apply {
+                        for (i in 0 until (removed?.length() ?: 0)) {
+                            val o = removed!!.optJSONObject(i) ?: continue
+                            if (o.optString("id") != id) put(o)
+                        }
+                    }
+                    val t = token
+                    if (t != null) {
+                        scope.launch {
+                            try {
+                                ApiClient.toggleSavedSignal(t, id)
+                            } catch (_: Exception) {
+                                reloadKey++ // restore on failure
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+            item { Spacer(Modifier.height(20.dp)) }
         }
 
         // --- Trade Plans ---
@@ -424,6 +481,108 @@ private fun formatLevel(value: Double): String {
 }
 
 /** Parses the backend's ISO-8601 timestamp and formats it like "Sun, Sep 6, 2026" + "7:15 PM" in the device's local timezone. */
+/** Placeholder shimmer row while the bookmarked daily signals load. */
+@Composable
+private fun SavedDailySignalsSkeleton() {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        repeat(2) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(SurfaceLight)
+            )
+        }
+    }
+}
+
+/** A bookmarked daily signal (from the Signals tab), listed on the Saved
+ *  screen with its real levels and a one-tap unsave. */
+@Composable
+private fun SavedDailySignalRow(signal: JSONObject, onRemove: (String) -> Unit) {
+    val id = signal.optString("id", "")
+    val isLong = signal.optString("direction", "long").equals("long", ignoreCase = true)
+    val tps = signal.optJSONArray("takeProfits")
+    val tpLabel = if (tps != null && tps.length() > 0) {
+        (0 until tps.length()).joinToString(" / ") { i ->
+            trimNum(tps.optDouble(i, Double.NaN))
+        }
+    } else "—"
+    val (dateLabel, timeLabel) = formatAnalyzedAt(signal.optString("publishedAt", ""))
+    val status = signal.optString("status", "").lowercase()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceLight)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        signal.optString("instrument", signal.optString("instrumentId", "").uppercase()),
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (isLong) "BUY" else "SELL",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isLong) BullGreen else BearRed,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isLong) BullGreen.copy(alpha = 0.12f) else BearRed.copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                    if (status.isNotBlank() && status != "active") {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            status.replaceFirstChar { it.uppercase() },
+                            fontSize = 10.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Entry ${trimNum(signal.optDouble("entry", Double.NaN))}  ·  SL ${trimNum(signal.optDouble("stopLoss", Double.NaN))}  ·  TP $tpLabel",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+                if (dateLabel.isNotBlank()) {
+                    Text("$dateLabel · $timeLabel", fontSize = 10.sp, color = TextMuted)
+                }
+            }
+            IconButton(onClick = { onRemove(id) }, modifier = Modifier.size(34.dp)) {
+                Icon(
+                    Icons.Filled.Bookmark,
+                    contentDescription = "Remove from saved",
+                    tint = AccentCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+/** Formats a number without trailing ".0"-style noise; NaN -> "—". */
+private fun trimNum(v: Double): String =
+    if (v.isNaN()) "—" else if (v == v.toLong().toDouble()) v.toLong().toString() else trimDecimals(v)
+
+private fun trimDecimals(v: Double): String {
+    val s = String.format(java.util.Locale.US, "%.4f", v).trimEnd('0').trimEnd('.')
+    return if (s.isBlank()) "—" else s
+}
+
 private fun formatAnalyzedAt(iso: String): Pair<String, String> {
     if (iso.isBlank()) return "" to ""
     return try {

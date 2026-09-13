@@ -4227,6 +4227,30 @@ app.post("/api/daily-signals/:id/save", requireAuth, async (req, res) => {
   }
 });
 
+/** The signed-in user's bookmarked daily signals (the Signals tab save button)
+ *  — the Saved screen fetches this so a saved signal actually shows up there. */
+app.get("/api/daily-signals/saved", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found." });
+    const { rows } = await pool.query(
+      `SELECT d.*, sv.created_at AS saved_at
+       FROM signal_saves sv
+       JOIN daily_signals d ON d.id = sv.signal_id
+       WHERE sv.user_id = $1::uuid
+       ORDER BY sv.created_at DESC
+       LIMIT 100`,
+      [me.id]
+    );
+    const ids = rows.map((r) => r.id);
+    const extras = await signalSocialExtras(ids, me.id);
+    res.json({ signals: rows.map((r) => signalToApi(r, { ...(extras[r.id] || {}), saved: true })) });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load saved signals", detail: String(err.message || err) });
+  }
+});
+
 // Reaction set for signal comments — separate from the 5 signal-level
 // reactions above; these sit under each individual trader comment.
 const SIGNAL_COMMENT_REACTION_EMOJIS = ["\u2764\uFE0F", "\u{1F602}", "\u{1F680}", "\u{1F44D}"]; // ❤️ 😂 🚀 👍

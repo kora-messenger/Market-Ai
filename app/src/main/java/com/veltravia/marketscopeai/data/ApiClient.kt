@@ -860,6 +860,17 @@ object ApiClient {
             request(request)
         }
 
+    /** The signed-in user's bookmarked daily signals (Signals tab save button),
+     *  newest saves first — powers the Saved screen section. */
+    suspend fun fetchSavedDailySignals(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/daily-signals/saved")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Flat, oldest-first comment list on a daily signal. */
     suspend fun fetchSignalComments(sessionToken: String, signalId: String): JSONArray =
         withContext(Dispatchers.IO) {
