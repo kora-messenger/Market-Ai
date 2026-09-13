@@ -127,7 +127,20 @@ class MainActivity : ComponentActivity() {
         // below it. The white status-bar color comes from themes.xml
         // (app_window_background) and the dark status icons from the
         // insets-controller SideEffect below.
-        setContent {
+        // Safe content install: on a minority of devices (seen on Samsung
+        // One UI cold starts) the window's content container is not yet
+        // attached when the activity launches, and Compose's setContent
+        // throws "Window couldn't find content container view". Retrying on
+        // the next main-loop passes lets the window finish attaching — the
+        // app starts normally instead of crash-looping.
+        installAppContent()
+    }
+
+    private var contentInstallAttempts = 0
+
+    private fun installAppContent() {
+        try {
+            setContent {
             MarketAiTheme {
                 // The app is always white/light, so status & nav bar icons are
                 // always dark-on-light regardless of the device's dark mode.
@@ -147,6 +160,16 @@ class MainActivity : ComponentActivity() {
                 ) {
                     MarketAiApp()
                 }
+            }
+            }
+        } catch (t: Throwable) {
+            contentInstallAttempts++
+            if (contentInstallAttempts <= 3) {
+                android.os.Handler(mainLooper).postDelayed({ installAppContent() }, 120L)
+            } else {
+                // Out of retries — surface through the debug crash reporter
+                // (or rethrow on release so the system handles it).
+                throw t
             }
         }
     }

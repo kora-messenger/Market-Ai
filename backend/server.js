@@ -4367,6 +4367,11 @@ app.post("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
     res.status(201).json({
       comment: {
         id: c.id, authorName: c.author_name, body: c.body, createdAt: c.created_at,
+        authorPicture: (await pool.query(
+          `SELECT CASE WHEN avatar_key IS NOT NULL THEN 'avatar:' || id ELSE picture END AS p FROM users WHERE id = $1`,
+          [me.id]
+        )).rows[0]?.p || "",
+        authorRole: me.role || "user",
         hasImage: !!imageDataUrl, pendingReview: !c.approved, isMine: true,
         reactions: SIGNAL_COMMENT_REACTION_EMOJIS.map((emoji) => ({ emoji, count: 0, mine: false }))
       }
@@ -5873,6 +5878,12 @@ app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
       [req.params.id, me.id, me.name || "Trader", me.email || "", body, parentId]
     );
     rows[0].author_role = me.role || "user";
+    // Same avatar resolution as the comment list so the author immediately
+    // sees their current profile picture, never a stale Google photo.
+    rows[0].author_picture = (await pool.query(
+      `SELECT CASE WHEN avatar_key IS NOT NULL THEN 'avatar:' || id ELSE picture END AS p FROM users WHERE id = $1`,
+      [me.id]
+    )).rows[0]?.p || "";
     // Same entitlement rule as the feed: paid sub or an active admin grant.
     rows[0].author_is_premium = (await hasActivePremiumGrant(me.id)) ||
       (await pool.query(`SELECT is_premium FROM users WHERE id = $1`, [me.id])).rows[0]?.is_premium || false;
