@@ -437,8 +437,8 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
 
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StrengthChip("Long", direction == "long", BullGreen) { direction = "long" }
-            StrengthChip("Short", direction == "short", BearRed) { direction = "short" }
+            StrengthChip("Buy", direction == "long", BullGreen) { direction = "long" }
+            StrengthChip("Sell", direction == "short", BearRed) { direction = "short" }
         }
 
         Spacer(Modifier.height(14.dp))
