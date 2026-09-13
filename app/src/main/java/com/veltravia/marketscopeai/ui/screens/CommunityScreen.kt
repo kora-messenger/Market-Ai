@@ -581,28 +581,73 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                 }
             }
 
+            val postComposerBlock: @Composable () -> Unit = {
+                PostComposer(
+                    mode = composerMode,
+                    onModeChange = { composerMode = it },
+                    text = composerText,
+                    onTextChange = { composerText = it },
+                    pollOptions = pollOptions,
+                    allowComments = allowComments,
+                    onAllowCommentsChange = { allowComments = it },
+                    pickedImages = pickedImages,
+                    imageProcessing = imageProcessing,
+                    outcomeTag = composerOutcomeTag,
+                    onOutcomeTagChange = { composerOutcomeTag = it },
+                    onPickImage = {
+                        pickImage.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                            )
+                        )
+                    },
+                    onRemoveImage = { index ->
+                        if (index in pickedImages.indices) pickedImages.removeAt(index)
+                    },
+                    publishing = publishing,
+                    onPublish = { publish() }
+                )
+            }
+
             when {
                 loading && posts.isEmpty() -> CommunityFeedSkeleton()
                 loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = AccentCyan)
                 }
-                posts.isEmpty() && error == null -> Column(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Filled.Groups, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(48.dp))
-                    Spacer(Modifier.height(14.dp))
-                    Text("No posts yet", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        if (SessionManager.communityJoined(context))
-                            "Be the first to share a win, a setup, or a thought."
-                        else "Posts from traders will appear here.",
-                        fontSize = 13.sp, color = TextMuted
-                    )
+                posts.isEmpty() && error == null -> {
+                    val joined = SessionManager.communityJoined(context)
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (joined) {
+                            item {
+                                WeeklyCompetitionCard(onOpen = onOpenLeaderboard)
+                            }
+                            item {
+                                postComposerBlock()
+                            }
+                        }
+                        item {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = if (joined) 24.dp else 80.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Filled.Groups, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(48.dp))
+                                Spacer(Modifier.height(14.dp))
+                                Text("No posts yet", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    if (joined) "Be the first to share a win, a setup, or a thought."
+                                    else "Posts from traders will appear here.",
+                                    fontSize = 13.sp, color = TextMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
                 }
                 else -> {
                     val listState = rememberLazyListState()
@@ -656,31 +701,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                             WeeklyCompetitionCard(onOpen = onOpenLeaderboard)
                         }
                         item {
-                            PostComposer(
-                                mode = composerMode,
-                                onModeChange = { composerMode = it },
-                                text = composerText,
-                                onTextChange = { composerText = it },
-                                pollOptions = pollOptions,
-                                allowComments = allowComments,
-                                onAllowCommentsChange = { allowComments = it },
-                                pickedImages = pickedImages,
-                                imageProcessing = imageProcessing,
-                                outcomeTag = composerOutcomeTag,
-                                onOutcomeTagChange = { composerOutcomeTag = it },
-                                onPickImage = {
-                                    pickImage.launch(
-                                        androidx.activity.result.PickVisualMediaRequest(
-                                            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
-                                        )
-                                    )
-                                },
-                                onRemoveImage = { index ->
-                                    if (index in pickedImages.indices) pickedImages.removeAt(index)
-                                },
-                                publishing = publishing,
-                                onPublish = { publish() }
-                            )
+                            postComposerBlock()
                         }
                         items(posts, key = { it.id }) { post ->
                             PostCard(
