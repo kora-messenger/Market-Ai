@@ -220,6 +220,16 @@ object ApiClient {
         request(request)
     }
 
+    /** Learning Hub pattern library: { categories: [...], patterns: [...] }. */
+    suspend fun fetchLearningPatterns(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/learning/patterns")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Set or change the public @handle. Returns { username }. */
     suspend fun updateUsername(sessionToken: String, username: String): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject().put("username", username)

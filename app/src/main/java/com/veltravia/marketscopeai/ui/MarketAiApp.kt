@@ -69,6 +69,8 @@ import com.veltravia.marketscopeai.ui.screens.ProjectionIntroScreen
 import com.veltravia.marketscopeai.ui.screens.BrokerSetupIntroScreen
 import com.veltravia.marketscopeai.ui.screens.CommunityScreen
 import com.veltravia.marketscopeai.ui.screens.LeaderboardScreen
+import com.veltravia.marketscopeai.ui.screens.LearningHubScreen
+import com.veltravia.marketscopeai.ui.screens.LearningPatternScreen
 import com.veltravia.marketscopeai.ui.screens.HomeScreen
 import com.veltravia.marketscopeai.ui.screens.CalendarScreen
 import com.veltravia.marketscopeai.ui.screens.WallOfWinsScreen
@@ -363,6 +365,18 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable("learning_hub") {
+            LearningHubScreen(
+                onBack = { navController.popBackStack() },
+                onOpenPattern = { slug -> navController.navigate("learning_pattern/$slug") }
+            )
+        }
+        composable("learning_pattern/{slug}") { entry ->
+            LearningPatternScreen(
+                slug = entry.arguments?.getString("slug") ?: "",
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("risk_calculator") {
             RiskCalculatorScreen(onBack = { navController.popBackStack() })
         }
@@ -491,6 +505,7 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenNotifications = { navController.navigate("notifications") },
                     onCreateTradePlan = { navController.navigate("create_trade_plan") },
                     onOpenCalendar = { navController.navigate("calendar") },
+                    onOpenLearningHub = { navController.navigate("learning_hub") },
                     onOpenMarket = { id -> navController.navigate("market/$id") }
                 )
                 1 -> SignalsScreen(

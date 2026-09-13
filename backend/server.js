@@ -1217,6 +1217,15 @@ app.post("/api/profile/username", requireAuth, async (req, res) => {
   }
 });
 
+// --- Learning Hub: pattern library (original educational content) --------
+const learningContent = require("./src/learningContent");
+app.get("/api/learning/patterns", requireAuth, (req, res) => {
+  res.json({
+    categories: learningContent.categoriesPayload(),
+    patterns: learningContent.fullPayload()
+  });
+});
+
 app.get("/api/account/status", requireAuth, async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });

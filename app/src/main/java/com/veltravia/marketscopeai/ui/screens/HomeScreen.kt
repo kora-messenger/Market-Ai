@@ -115,6 +115,7 @@ fun HomeScreen(
     onOpenNotifications: () -> Unit,
     onCreateTradePlan: () -> Unit,
     onOpenCalendar: () -> Unit,
+    onOpenLearningHub: () -> Unit,
     onOpenMarket: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -242,7 +243,7 @@ fun HomeScreen(
         }
     )
     val moreActions = listOf(
-        QuickAction("Learning hub", Icons.Filled.School) { comingSoon("Learning hub") },
+        QuickAction("Learning hub", Icons.Filled.School, onOpenLearningHub),
         QuickAction("Trade Plan", Icons.Filled.Assignment, onCreateTradePlan),
         QuickAction("Calendar", Icons.Filled.CalendarMonth) { onOpenCalendar() }
     )
