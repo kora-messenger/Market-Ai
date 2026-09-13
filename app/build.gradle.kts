@@ -122,6 +122,9 @@ dependencies {
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
+    // --- Google Play Billing (Play-Store-native subscription checkout) ---
+    implementation("com.android.billingclient:billing-ktx:7.1.1")
+
     // --- Advertising (official SDKs only — no fake ads anywhere) ---
     // Google AdMob: primary network, loaded through the mediation abstraction.
     implementation("com.google.android.gms:play-services-ads:23.6.0")

@@ -457,6 +457,25 @@ object ApiClient {
         request(request)
     }
 
+    /** Verify a Google Play subscription purchase against our backend (which
+     * re-verifies it with Google's Play Developer API). Returns
+     * { active: Boolean, premiumUntil: String|null }. */
+    suspend fun verifyGooglePlayPurchase(
+        sessionToken: String,
+        productId: String,
+        purchaseToken: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("productId", productId)
+            .put("purchaseToken", purchaseToken)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/subscription/google-play/verify")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Start a Premium checkout. Returns { authorizationUrl, reference } on success;
      *  throws MarketAiException with the server's honest message if payments are not live yet. */
     suspend fun startSubscriptionCheckout(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {

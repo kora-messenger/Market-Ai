@@ -4,7 +4,7 @@
  */
 const express = require("express");
 const crypto = require("crypto");
-const { OAuth2Client } = require("google-auth-library");
+const { OAuth2Client, GoogleAuth } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
@@ -31,6 +31,15 @@ const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
 const SUBSCRIBE_URL = process.env.SUBSCRIBE_URL || "https://market-ai-api-jwfb.onrender.com/subscribe";
 const SUB_CURRENCY = (process.env.SUB_CURRENCY || "USD").toUpperCase();
 const SUB_PRICE = Number(process.env.SUB_PRICE || "9.99"); // price per month, 2 decimals
+
+// --- Google Play Billing (the Play-Store-native way to subscribe) ---
+// Requires a Google Play service account key + the app's package name, and
+// the matching subscription product must exist in Play Console.
+const GOOGLE_PLAY_PACKAGE_NAME = process.env.GOOGLE_PLAY_PACKAGE_NAME || "";
+const GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || "";
+const GOOGLE_PLAY_SUBSCRIPTION_IDS = String(process.env.GOOGLE_PLAY_SUBSCRIPTION_IDS || "premium-monthly")
+  .split(",").map(s => s.trim()).filter(Boolean);
+const googlePlayBillingReady = Boolean(GOOGLE_PLAY_PACKAGE_NAME) && Boolean(GOOGLE_PLAY_SERVICE_ACCOUNT_JSON);
 
 app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" }), async (req, res) => {
   if (!PAYSTACK_SECRET_KEY) {
@@ -462,6 +471,11 @@ async function initDb() {
       paid_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_started_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_platform TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_product_id TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_purchase_token TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ;
@@ -701,10 +715,23 @@ async function analysisUsage(userId) {
   return monetization.analysisAllowance(pool, userId, cfg);
 }
 
+/**
+ * A paid subscription only counts while it hasn't lapsed. Paystack
+ * subscriptions (and legacy accounts) have no expiry — sticky forever, as
+ * before. Google Play subscriptions carry the Play-provided renewal date in
+ * premium_expires_at and lapse when it passes (Play bills the renewal, and
+ * the app re-verifies the purchase on resume).
+ */
+function paidPremiumActive(row) {
+  if (!row || !row.is_premium) return false;
+  const exp = row.premium_expires_at;
+  return !exp || new Date(exp).getTime() > Date.now();
+}
+
 function trialInfo(row) {
   const startedAt = new Date(row.trial_started_at);
   const endsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-  const isPremium = Boolean(row.is_premium);
+  const isPremium = paidPremiumActive(row);
   const active = isPremium || Date.now() < endsAt.getTime();
   const daysRemaining = Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
   return {
@@ -1390,7 +1417,7 @@ app.post("/api/presence/ping", requireAuth, async (req, res) => {
 /** Shared: build a user's full premium status snapshot for the admin UI. */
 async function premiumStatusSnapshot(userId) {
   const { rows } = await pool.query(
-    `SELECT id, google_sub, email, name, picture, is_premium, trial_started_at, created_at
+    `SELECT id, google_sub, email, name, picture, is_premium, premium_expires_at, premium_platform, trial_started_at, created_at
      FROM users WHERE id = $1`,
     [userId]
   );
@@ -1407,9 +1434,9 @@ async function premiumStatusSnapshot(userId) {
      FROM premium_grants WHERE user_id = $1 ORDER BY granted_at DESC LIMIT 10`,
     [u.id]
   );
-  const paid = Boolean(u.is_premium);
+  const paid = paidPremiumActive(u);
   const sources = [];
-  if (paid) sources.push("Paid Subscription");
+  if (paid) sources.push(u.premium_platform === "google_play" ? "Google Play Subscription" : "Paid Subscription");
   if (grant) sources.push(grant.duration_type === "lifetime" ? "Lifetime Admin Grant" : premiumGrantLabel(grant) + " (Admin Grant)");
   if (trial.trialActive && !paid && !grant) sources.push("Free Trial");
   return {
@@ -1708,13 +1735,13 @@ app.post("/api/monetization/rewarded-unlock", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
     const trial = trialInfo(rows[0]);
     const grant = await getActivePremiumGrant(rows[0].id);
-    const effectivePremium = Boolean(rows[0].is_premium) || !!grant || trial.trialActive;
+    const effectivePremium = paidPremiumActive(rows[0]) || !!grant || trial.trialActive;
     try {
       const result = await monetization.grantRewardedUnlock(pool, rows[0].id, {
         isPremium: effectivePremium,
@@ -2024,6 +2051,16 @@ app.get("/api/subscription/plans", async (_req, res) => {
   res.json({
     currency: SUB_CURRENCY,
     paymentsReady: Boolean(PAYSTACK_SECRET_KEY),
+    // How this account can actually pay, so the app can offer exactly what
+    // works right now — Google Play Billing (Play-Store-native) and/or
+    // Paystack (card/bank/USSD in the browser).
+    paymentMethods: {
+      paystack: Boolean(PAYSTACK_SECRET_KEY),
+      googlePlay: {
+        enabled: googlePlayBillingReady,
+        productIds: GOOGLE_PLAY_SUBSCRIPTION_IDS
+      }
+    },
     plans: [
       {
         id: "free",
@@ -2106,6 +2143,126 @@ app.post("/api/subscription/checkout", requireAuth, async (req, res) => {
   }
 });
 
+// --- Google Play Billing: verify a Play Store subscription purchase and
+// activate Premium. The app sends the purchase token straight from the
+// Billing Library; the server verifies it against Google's Play Developer
+// API with the service account — the client is never the authority, exactly
+// like the Paystack webhook path.
+app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) => {
+  if (!googlePlayBillingReady) {
+    return res.status(503).json({
+      error: "Google Play subscriptions are being activated right now. You can subscribe with Paystack in the meantime \u2014 thank you for your patience!"
+    });
+  }
+  if (!pool) {
+    return res.status(503).json({ error: "Database is not configured." });
+  }
+  const purchaseToken = String((req.body && req.body.purchaseToken) || "").trim();
+  const productId = String((req.body && req.body.productId) || "").trim();
+  if (!purchaseToken || !productId) {
+    return res.status(400).json({ error: "Missing purchase details from Google Play." });
+  }
+  if (!GOOGLE_PLAY_SUBSCRIPTION_IDS.includes(productId)) {
+    return res.status(400).json({ error: "Unknown subscription product." });
+  }
+  try {
+    const { rows: usersRows } = await pool.query(
+      `SELECT id, email, name, is_premium FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!usersRows.length) return res.status(404).json({ error: "User not found" });
+    const user = usersRows[0];
+
+    // Mint a service-account access token for the Play Developer API.
+    const auth = new GoogleAuth({
+      credentials: JSON.parse(GOOGLE_PLAY_SERVICE_ACCOUNT_JSON),
+      scopes: ["https://www.googleapis.com/auth/androidpublisher"]
+    });
+    const client = await auth.getClient();
+    const { token: accessToken } = await client.getAccessToken();
+
+    // subscriptionsv2 is Google's current purchase-state API.
+    const gpRes = await fetch(
+      `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(GOOGLE_PLAY_PACKAGE_NAME)}/purchases/subscriptionsv2/${encodeURIComponent(purchaseToken)}`,
+      { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }, signal: AbortSignal.timeout(15_000) }
+    );
+    const gpBody = await gpRes.json().catch(() => ({}));
+    if (!gpRes.ok) {
+      const reason = gpBody && gpBody.error && gpBody.error.message ? gpBody.error.message : "Google rejected this purchase verification.";
+      return res.status(502).json({ error: "Could not verify this purchase with Google right now. Please try again shortly.", detail: reason });
+    }
+
+    const state = gpBody.subscriptionState;
+    // Active or in grace = keep premium until the current period's expiry.
+    const activeNow = state === "SUBSCRIPTION_STATE_ACTIVE" || state === "SUBSCRIPTION_STATE_IN_GRACE";
+    // Latest period's expiry — lineItems are ordered, last line item's
+    // expiryTime is the end of the currently paid period.
+    let premiumUntil = null;
+    const items = Array.isArray(gpBody.lineItems) ? gpBody.lineItems : [];
+    for (const item of items) {
+      if (item.expiryTime) premiumUntil = new Date(item.expiryTime);
+    }
+
+    if (!activeNow || !premiumUntil) {
+      // Purchase exists but isn't active (expired, canceled, pending).
+      // If this user's premium came from this Google subscription, lapse it
+      // honestly; never touch Paystack/admin-granted premium.
+      if (user.is_premium) {
+        const { rows: cur } = await pool.query(
+          `SELECT premium_platform, premium_purchase_token FROM users WHERE id = $1`,
+          [user.id]
+        );
+        if (cur.length && cur[0].premium_platform === "google_play" && cur[0].premium_purchase_token === purchaseToken) {
+          await pool.query(
+            `UPDATE users SET is_premium = false, premium_expires_at = NULL WHERE id = $1`,
+            [user.id]
+          );
+          notifyUser(user.id, {
+            title: "Your Google Play subscription ended",
+            body: "Your MarketScope AI Premium subscription is no longer active on Google Play. You can re-subscribe anytime from the Subscribe screen.",
+            type: "billing",
+            data: { type: "billing", route: "notifications" }
+          }).catch(() => {});
+        }
+      }
+      return res.json({ active: false, premiumUntil: null });
+    }
+
+    // Verified active subscription — record the payment and activate.
+    await pool.query(
+      `INSERT INTO subscription_payments (user_id, reference, amount, currency, status, paid_at)
+       VALUES ($1, $2, $3, $4, 'success', now())
+       ON CONFLICT (reference) DO NOTHING`,
+      [user.id, purchaseToken, Math.round(SUB_PRICE * 100), SUB_CURRENCY]
+    );
+    const wasPremium = Boolean(user.is_premium);
+    await pool.query(
+      `UPDATE users
+         SET is_premium = true,
+             premium_platform = 'google_play',
+             premium_product_id = $2,
+             premium_purchase_token = $3,
+             premium_expires_at = $4,
+             premium_started_at = COALESCE(premium_started_at, now())
+       WHERE id = $1`,
+      [user.id, productId, purchaseToken, premiumUntil.toISOString()]
+    );
+    console.log(`[subscription] Google Play premium activated for google_sub ${req.session.sub} (product ${productId}, until ${premiumUntil.toISOString()})`);
+    if (!wasPremium) {
+      sendPremiumActivatedEmail({ email: user.email, name: user.name }).catch(() => {});
+      notifyUser(user.id, {
+        title: "Premium activated \u2014 welcome to MarketScope AI Premium",
+        body: "Your Google Play subscription was successful. You now have unlimited AI analysis, the full Daily Signals history and zero ads.",
+        type: "billing",
+        data: { type: "billing", route: "notifications" }
+      }).catch(() => {});
+    }
+    return res.json({ active: true, premiumUntil: premiumUntil.toISOString() });
+  } catch (err) {
+    return res.status(502).json({ error: "Could not verify this purchase right now. Please try again shortly.", detail: String(err.message || err) });
+  }
+});
+
 // --- Subscription: current premium state for the signed-in user ---
 app.get("/api/subscription/status", requireAuth, async (req, res) => {
   if (!pool) {
@@ -2113,7 +2270,7 @@ app.get("/api/subscription/status", requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT is_premium, trial_started_at, trial_expired_email_sent_at FROM users WHERE google_sub = $1`,
+      `SELECT is_premium, premium_expires_at, trial_started_at, trial_expired_email_sent_at FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
@@ -2367,22 +2524,39 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, premium_expires_at, premium_platform, premium_purchase_token FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
       return res.status(404).json({ error: "User not found" });
     }
+    // Google Play subscriptions lapse when their renewal date passes — the
+    // moment any request sees an expired one, drop it so the user gets the
+    // honest free tier until they renew. (Paystack rows have no expiry and
+    // stay sticky as before.)
+    if (
+      rows[0].is_premium &&
+      rows[0].premium_platform === "google_play" &&
+      rows[0].premium_expires_at &&
+      new Date(rows[0].premium_expires_at).getTime() <= Date.now()
+    ) {
+      await pool.query(
+        `UPDATE users SET is_premium = false, premium_expires_at = NULL WHERE id = $1`,
+        [rows[0].id]
+      ).catch(() => {});
+      rows[0].is_premium = false;
+      rows[0].premium_expires_at = null;
+    }
     const trial = trialInfo(rows[0]);
     const grant = await getActivePremiumGrant(rows[0].id);
     // Paid subscription is sticky forever once activated (existing behavior);
     // an admin grant covers the rest. The plan label tells the app the truth.
-    const plan = Boolean(rows[0].is_premium)
+    const plan = paidPremiumActive(rows[0])
       ? "premium"
       : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium")
       : trial.trialActive ? "trial"
       : "free";
-    const effectivePremium = Boolean(rows[0].is_premium) || !!grant || trial.trialActive;
+    const effectivePremium = paidPremiumActive(rows[0]) || !!grant || trial.trialActive;
     const mcfg = await monetization.getMonetizationConfig(pool);
     const adState = monetization.adEligibility(mcfg, effectivePremium);
     if (effectivePremium) {
@@ -2490,7 +2664,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   let userRow;
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium, questionnaire FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, premium_expires_at, questionnaire FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
@@ -2503,7 +2677,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
 
   const traderProfile = profilePromptText(userRow.questionnaire);
   const trial = trialInfo(userRow);
-  const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
+  const premium = paidPremiumActive(userRow) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
     // Trial lapsed without a subscription: the free tier keeps the core
     // feature alive at 3 analyses per rolling 24h — the upgrade pressure
@@ -2718,7 +2892,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   let userRow;
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium, questionnaire FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, premium_expires_at, questionnaire FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
@@ -2729,7 +2903,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
 
   const traderProfile = profilePromptText(userRow.questionnaire);
   const trial = trialInfo(userRow);
-  const premium = Boolean(userRow.is_premium) || Boolean(await getActivePremiumGrant(userRow.id));
+  const premium = paidPremiumActive(userRow) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
     const usage = await analysisUsage(userRow.id);
     if (usage.used >= usage.limit) {
@@ -3254,15 +3428,16 @@ app.get("/api/daily-signals/access", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
     const trial = trialInfo(rows[0]);
     const isAdmin = await isAdminRequest(req);
     const grant = await getActivePremiumGrant(rows[0].id);
-    const entitled = trial.trialActive || rows[0].is_premium || isAdmin || !!grant;
-    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: Boolean(rows[0].is_premium) || !!grant, plan: rows[0].is_premium ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free") });
+    const paid = paidPremiumActive(rows[0]);
+    const entitled = trial.trialActive || paid || isAdmin || !!grant;
+    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: paid || !!grant, plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free") });
   } catch (err) {
     res.status(500).json({ error: "Could not check access", detail: String(err.message || err) });
   }

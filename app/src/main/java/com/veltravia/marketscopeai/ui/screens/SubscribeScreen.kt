@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.veltravia.marketscopeai.billing.PlayBillingHelper
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
@@ -106,6 +107,19 @@ fun SubscribeScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
 
+    // Which payment methods the backend actually has configured — the screen
+    // offers exactly what works right now: Google Play Billing (Play-native,
+    // requires the app to be installed from the Play Store) and/or Paystack
+    // (card/bank/USSD in the browser).
+    var paystackReady by remember { mutableStateOf(false) }
+    var googlePlayEnabled by remember { mutableStateOf(false) }
+    var googlePlayProductId by remember { mutableStateOf<String?>(null) }
+    var googleBusy by remember { mutableStateOf(false) }
+
+    // Google Play Billing wrapper — one instance for this screen's lifetime.
+    // The token Google hands back is verified by OUR backend before Premium
+    // activates; the client is never the authority.
+
     fun refreshStatus() {
         val token = sessionToken ?: return
         scope.launch {
@@ -126,12 +140,103 @@ fun SubscribeScreen(
             }
         }
     }
+    val billingHelper = remember {
+        PlayBillingHelper(
+            context = context,
+            onPurchase = { productId, purchaseToken ->
+                scope.launch {
+                    try {
+                        val result = ApiClient.verifyGooglePlayPurchase(sessionToken, productId, purchaseToken)
+                        if (result.optBoolean("active", false)) {
+                            // Verified server-side — now acknowledge so Google
+                            // doesn't auto-refund the purchase.
+                            billingHelper.acknowledge(purchaseToken)
+                            isPremium = true
+                            statusMessage = "Premium is now active on your account. Enjoy unlimited access!"
+                            refreshStatus()
+                        } else {
+                            statusMessage = "Google hasn't activated this subscription yet. If you were just charged, it will activate automatically once Google confirms the payment."
+                        }
+                    } catch (e: Exception) {
+                        statusMessage = e.message ?: "Could not confirm this purchase with our server. Please try again shortly."
+                    } finally {
+                        googleBusy = false
+                    }
+                }
+            },
+            onError = { message ->
+                statusMessage = message
+                googleBusy = false
+            }
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose { billingHelper.close() }
+    }
+
+    // --- Google Play checkout: connect → find the product → Play sheet ---
+    fun startGooglePlayCheckout() {
+        val productId = googlePlayProductId ?: return
+        val activity = context as? android.app.Activity ?: return
+        googleBusy = true
+        statusMessage = null
+        billingHelper.connect { ready ->
+            if (!ready) {
+                googleBusy = false
+                statusMessage = "Google Play billing isn't available on this device or installation. You can pay with Paystack instead."
+                return@connect
+            }
+            scope.launch {
+                val details = billingHelper.querySubscription(productId)
+                if (details == null) {
+                    googleBusy = false
+                    statusMessage = "The Premium subscription isn't available to you on Google Play yet (it can take a while to appear if the app wasn't installed from the Play Store). You can pay with Paystack instead."
+                } else {
+                    // googleBusy stays true until the sheet closes and the
+                    // purchase is verified (or the user cancels).
+                    billingHelper.launchPurchase(activity, details)
+                }
+            }
+        }
+    }
+
+    // --- Paystack checkout: browser page (card, bank transfer or USSD) ---
+    fun startPaystackCheckout() {
+        busy = true
+        statusMessage = null
+        scope.launch {
+            try {
+                val checkout = ApiClient.startSubscriptionCheckout(sessionToken)
+                val url = checkout.optString("authorizationUrl", "")
+                busy = false
+                if (url.isNotBlank()) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } else {
+                    statusMessage = "Checkout could not start. Please try again."
+                }
+            } catch (e: Exception) {
+                busy = false
+                // The server's honest message (e.g. payments not live yet).
+                statusMessage = e.message ?: "Checkout could not start. Please try again."
+            }
+        }
+    }
 
     // Load both plans once.
     LaunchedEffect(Unit) {
         try {
             val plans = ApiClient.fetchSubscriptionPlans()
             planCurrency = plans.optString("currency", planCurrency).uppercase()
+            val methods = plans.optJSONObject("paymentMethods")
+            paystackReady = methods?.optBoolean("paystack", false) ?: false
+            methods?.optJSONObject("googlePlay")?.let { gp ->
+                googlePlayEnabled = gp.optBoolean("enabled", false)
+                val ids = gp.optJSONArray("productIds")
+                val first = ids?.let { arr ->
+                    (0 until arr.length()).map { arr.optString(it) }.firstOrNull { it.isNotBlank() && it != "null" }
+                }
+                googlePlayProductId = if (googlePlayEnabled) first else null
+            }
             val arr = plans.optJSONArray("plans") ?: org.json.JSONArray()
             for (i in 0 until arr.length()) {
                 val p = arr.optJSONObject(i) ?: continue
@@ -345,40 +450,42 @@ fun SubscribeScreen(
                         )
                     }
                     else -> {
-                        GradientPrimaryButton(
-                            text = "Subscribe & pay",
-                            enabled = !busy,
-                            loading = busy,
-                            height = 54.dp,
-                            onClick = {
-                                busy = true
-                                statusMessage = null
-                                scope.launch {
-                                    try {
-                                        val checkout = ApiClient.startSubscriptionCheckout(sessionToken)
-                                        val url = checkout.optString("authorizationUrl", "")
-                                        busy = false
-                                        if (url.isNotBlank()) {
-                                            // Open the real Paystack checkout page in the browser.
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            )
-                                        } else {
-                                            statusMessage = "Checkout could not start. Please try again."
-                                        }
-                                    } catch (e: Exception) {
-                                        busy = false
-                                        // The server's honest message (e.g. payments not live yet).
-                                        statusMessage = e.message ?: "Checkout could not start. Please try again."
-                                    }
-                                }
+                        // Both methods configured: Google Play as the primary
+                        // (Play-Store-native, billed to the Google account),
+                        // Paystack as the alternative (card/bank/USSD).
+                        if (googlePlayEnabled && googlePlayProductId != null) {
+                            GradientPrimaryButton(
+                                text = "Subscribe with Google Play",
+                                enabled = !googleBusy && !busy,
+                                loading = googleBusy,
+                                height = 54.dp,
+                                onClick = { startGooglePlayCheckout() }
+                            )
+                            if (paystackReady) {
+                                Spacer(Modifier.height(10.dp))
+                                PremiumSecondaryButton(
+                                    text = "Pay with Paystack (card, bank or USSD)",
+                                    onClick = { startPaystackCheckout() },
+                                    height = 48.dp
+                                )
                             }
-                        )
+                        } else {
+                            // Google Play not configured on the backend yet —
+                            // the Paystack path (with the server's honest
+                            // message if payments aren't live either).
+                            GradientPrimaryButton(
+                                text = "Subscribe & pay",
+                                enabled = !busy,
+                                loading = busy,
+                                height = 54.dp,
+                                onClick = { startPaystackCheckout() }
+                            )
+                        }
 
                         Spacer(Modifier.height(10.dp))
 
                         Text(
-                            "By subscribing, you agree to our Purchaser Terms, and that subscriptions auto-renew until you cancel. Cancel anytime, at least 24 hours before renewal to avoid additional charges. You'll get an email and an in-app notification the moment your payment succeeds or fails.",
+                            "By subscribing, you agree to our Purchaser Terms. Google Play subscriptions renew through your Google account until you cancel in Play Store settings; Paystack subscriptions renew until you cancel. Cancel at least 24 hours before renewal to avoid additional charges. You'll get an email and an in-app notification the moment your payment succeeds or fails.",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextMuted,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
