@@ -413,7 +413,10 @@ fun MarketAiApp() {
             LeaderboardScreen(onBack = { navController.popBackStack() })
         }
         composable("signals_admin") {
-            AdminSignalsScreen(onBack = { navController.popBackStack() })
+            AdminSignalsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenPremium = { navController.navigate("premium_admin") }
+            )
         }
         composable("premium_admin") {
             AdminPremiumScreen(onBack = { navController.popBackStack() })
