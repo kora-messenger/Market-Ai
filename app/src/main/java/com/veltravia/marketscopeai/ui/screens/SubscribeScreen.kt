@@ -140,17 +140,25 @@ fun SubscribeScreen(
             }
         }
     }
+    // Kotlin won't let the helper's own callbacks capture the val while it's
+    // being initialized — so acknowledge() goes through a nullable ref that
+    // is assigned the moment the helper exists (the callback only fires
+    // long after composition).
+    var billingHelperRef: PlayBillingHelper? = null
     val billingHelper = remember {
         PlayBillingHelper(
             context = context,
             onPurchase = { productId, purchaseToken ->
                 scope.launch {
+                    // Billing buttons only render when signed in — guarded
+                    // anyway so the type is a plain String below.
+                    val token = sessionToken ?: return@launch
                     try {
-                        val result = ApiClient.verifyGooglePlayPurchase(sessionToken, productId, purchaseToken)
+                        val result = ApiClient.verifyGooglePlayPurchase(token, productId, purchaseToken)
                         if (result.optBoolean("active", false)) {
                             // Verified server-side — now acknowledge so Google
                             // doesn't auto-refund the purchase.
-                            billingHelper.acknowledge(purchaseToken)
+                            billingHelperRef?.acknowledge(purchaseToken)
                             isPremium = true
                             statusMessage = "Premium is now active on your account. Enjoy unlimited access!"
                             refreshStatus()
@@ -168,7 +176,7 @@ fun SubscribeScreen(
                 statusMessage = message
                 googleBusy = false
             }
-        )
+        ).also { billingHelperRef = it }
     }
     DisposableEffect(Unit) {
         onDispose { billingHelper.close() }
@@ -202,11 +210,12 @@ fun SubscribeScreen(
 
     // --- Paystack checkout: browser page (card, bank transfer or USSD) ---
     fun startPaystackCheckout() {
+        val token = sessionToken ?: return
         busy = true
         statusMessage = null
         scope.launch {
             try {
-                val checkout = ApiClient.startSubscriptionCheckout(sessionToken)
+                val checkout = ApiClient.startSubscriptionCheckout(token)
                 val url = checkout.optString("authorizationUrl", "")
                 busy = false
                 if (url.isNotBlank()) {

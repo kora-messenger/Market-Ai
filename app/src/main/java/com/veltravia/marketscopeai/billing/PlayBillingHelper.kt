@@ -6,8 +6,6 @@ import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingFlowParams
 import com.android.billingclient.api.BillingResult
-import com.android.billingclient.api.PendingPurchasesParams
-import com.android.billingclient.api.Product
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.ProductDetailsResult
 import com.android.billingclient.api.Purchase
@@ -36,12 +34,9 @@ class PlayBillingHelper(
 
     private val client: BillingClient = BillingClient.newBuilder(appContext)
         .setListener(this)
-        // Required from Billing 7 onwards. Subscriptions support pending
-        // purchases by default; this enables them for one-time products too
-        // so connection never fails on the newest Play services.
-        .enablePendingPurchases(
-            PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
-        )
+        // Required so purchases stuck in PENDING (e.g. cash at a store)
+        // don't kill the connection.
+        .enablePendingPurchases()
         .build()
 
     /** True once the billing connection is ready to query/launch. */
@@ -81,9 +76,9 @@ class PlayBillingHelper(
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(
                 listOf(
-                    Product.newBuilder()
+                    QueryProductDetailsParams.Product.newBuilder()
                         .setProductId(productId)
-                        .setProductType(Product.ProductType.SUBS)
+                        .setProductType(QueryProductDetailsParams.ProductType.SUBS)
                         .build()
                 )
             )
