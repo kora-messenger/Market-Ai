@@ -99,6 +99,7 @@ import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.TextMuted
+import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -324,6 +325,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
     var viewerPost by remember { mutableStateOf<CommunityPost?>(null) }
     var viewerIndex by remember { mutableStateOf(0) }
     var isAdmin by remember { mutableStateOf(false) }
+    var canCompose by remember { mutableStateOf(false) }
     var composerOutcomeTag by remember { mutableStateOf<String?>(null) }
 
     var pinnedPosts by remember { mutableStateOf<List<PinnedPost>>(emptyList()) }
@@ -402,6 +404,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                 try {
                     val access = ApiClient.fetchSignalAccess(token)
                     isAdmin = access.optBoolean("isAdmin", false)
+                    canCompose = access.optBoolean("canCompose", false)
                 } catch (_: Exception) { }
                 try {
                     pinnedPosts = parsePinned(ApiClient.fetchPinnedPosts(token))
@@ -582,7 +585,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
             }
 
             val postComposerBlock: @Composable () -> Unit = {
-                PostComposer(
+                if (canCompose) PostComposer(
                     mode = composerMode,
                     onModeChange = { composerMode = it },
                     text = composerText,
@@ -607,6 +610,7 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                     publishing = publishing,
                     onPublish = { publish() }
                 )
+                else MemberComposerNote()
             }
 
             when {
@@ -1052,6 +1056,34 @@ private fun WeeklyCompetitionCard(onOpen: () -> Unit) {
 // --- composer ------------------------------------------------------------------------
 
 @Composable
+/** Shown instead of the composer to regular members: posting is a
+ *  team/mentor privilege — reading, reacting and commenting stay open. */
+@Composable
+private fun MemberComposerNote() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceLight)
+            .padding(horizontal = 14.dp, vertical = 14.dp)
+    ) {
+        Icon(
+            Icons.Filled.Groups,
+            contentDescription = null,
+            tint = TextMuted,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Posting is reserved for the MarketScope AI team and mentors. You can still react and join the conversation in the comments.",
+            fontSize = 12.sp,
+            color = TextMuted,
+            lineHeight = 17.sp
+        )
+    }
+}
+
 private fun PostComposer(
     mode: String,
     onModeChange: (String) -> Unit,

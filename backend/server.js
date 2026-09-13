@@ -1448,6 +1448,13 @@ app.post("/api/calendar/directional-implication", requireAuth, async (req, res) 
   }
 });
 
+// Community composer rights: posting is reserved for the MarketScope AI team
+// (admins, moderators) and mentors. Everyone else can read, react and comment.
+const COMPOSER_ROLES = new Set(["admin", "moderator", "mentor"]);
+function canComposeCommunity(role) {
+  return COMPOSER_ROLES.has(String(role || "").toLowerCase());
+}
+
 /** Public, real aggregated Forex/Crypto/Stocks news (Investing.com, Cointelegraph, Yahoo Finance). */
 app.get("/api/calendar/news", async (req, res) => {
   try {
@@ -3624,16 +3631,18 @@ app.get("/api/daily-signals/access", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
+      `SELECT id, role, trial_started_at, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
     const trial = trialInfo(rows[0]);
     const isAdmin = await isAdminRequest(req);
+    const communityRole = rows[0].role || "member";
+    const canCompose = isAdmin || canComposeCommunity(communityRole);
     const grant = await getActivePremiumGrant(rows[0].id);
     const paid = paidPremiumActive(rows[0]);
     const entitled = trial.trialActive || paid || isAdmin || !!grant;
-    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: paid || !!grant, plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free") });
+    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: paid || !!grant, plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free"), communityRole, canCompose });
   } catch (err) {
     res.status(500).json({ error: "Could not check access", detail: String(err.message || err) });
   }
@@ -5147,6 +5156,17 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
 // Create a text post or a poll. Posts by the admin email are flagged as team posts.
 app.post("/api/community/posts", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  // Posting is reserved for the MarketScope AI team and mentors. Everyone
+  // else can read, react and comment — enforced here, not just in the app.
+  const { rows: authorRows } = await pool.query(
+    `SELECT role FROM users WHERE google_sub = $1`,
+    [req.session.sub]
+  );
+  const authorRole = authorRows.length ? (authorRows[0].role || "member") : "member";
+  const admin = await isAdminRequest(req);
+  if (!admin && !canComposeCommunity(authorRole)) {
+    return res.status(403).json({ error: "Posting is currently reserved for the MarketScope AI team and mentors. You can still react and comment on posts." });
+  }
   const body = String(req.body.body || "").trim();
   const postType = req.body.postType === "poll" ? "poll" : "text";
   if (!body) return res.status(400).json({ error: postType === "poll" ? "Write the poll question first." : "Write something first." });
