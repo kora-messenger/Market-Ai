@@ -4796,6 +4796,7 @@ function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor,
     authorEmail: row.author_email,
     authorPicture: row.author_picture || "",
     authorRole: row.author_role || "user",
+    authorIsPremium: row.author_is_premium || false,
     isTeam: row.is_team,
     isTopContributor: isTopContributor || false,
     body: row.body,
@@ -4867,7 +4868,15 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
               NULLIF((SELECT u.picture FROM users u
                       WHERE lower(u.email) = lower(p.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
               COALESCE((SELECT u.role FROM users u
-                      WHERE lower(u.email) = lower(p.author_email) LIMIT 1), 'user') AS author_role
+                      WHERE lower(u.email) = lower(p.author_email) LIMIT 1), 'user') AS author_role,
+              COALESCE((
+                SELECT (u.is_premium OR EXISTS (
+                  SELECT 1 FROM premium_grants g
+                  WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                    AND (g.expires_at IS NULL OR g.expires_at > now())
+                )) FROM users u
+                WHERE lower(u.email) = lower(p.author_email) LIMIT 1
+              ), false) AS author_is_premium
        FROM community_posts p
        ORDER BY p.is_pinned DESC, p.created_at DESC
        LIMIT $1 OFFSET $2`,
@@ -5297,12 +5306,20 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
               NULLIF((SELECT u.picture FROM users u
                       WHERE lower(u.email) = lower(c.author_email) AND COALESCE(u.picture, '') <> '' LIMIT 1), '') AS author_picture,
               COALESCE((SELECT u.role FROM users u
-                      WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role
+                      WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role,
+              COALESCE((
+                SELECT (u.is_premium OR EXISTS (
+                  SELECT 1 FROM premium_grants g
+                  WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                    AND (g.expires_at IS NULL OR g.expires_at > now())
+                )) FROM users u
+                WHERE lower(u.email) = lower(c.author_email) LIMIT 1
+              ), false) AS author_is_premium
        FROM post_comments c WHERE c.post_id = $1::uuid
        ORDER BY c.created_at ASC LIMIT 300`,
       [req.params.id]
     );
-    return res.json({ comments: rows.map((r) => ({ ...r, author_picture: r.author_picture || "", author_role: r.author_role || "user" })) });
+    return res.json({ comments: rows.map((r) => ({ ...r, author_picture: r.author_picture || "", author_role: r.author_role || "user", authorIsPremium: r.author_is_premium || false })) });
   } catch (err) {
     return res.status(500).json({ error: "Could not load comments", detail: String(err.message || err) });
   }
@@ -5582,6 +5599,9 @@ app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
       [req.params.id, me.id, me.name || "Trader", me.email || "", body, parentId]
     );
     rows[0].author_role = me.role || "user";
+    // Same entitlement rule as the feed: paid sub or an active admin grant.
+    rows[0].author_is_premium = (await hasActivePremiumGrant(me.id)) ||
+      (await pool.query(`SELECT is_premium FROM users WHERE id = $1`, [me.id])).rows[0]?.is_premium || false;
     const { rows: post } = await pool.query(
       `SELECT user_id, author_name FROM community_posts WHERE id = $1::uuid`,
       [req.params.id]

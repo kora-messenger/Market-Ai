@@ -587,7 +587,7 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
             Text("Members & roles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Tap a member's role to change it. Mentor gets the violet Mentor badge everywhere; Admin and Moderator get the "MarketScope AI Team" tag and can send official messages in the Community screen. The platform owner's account is locked.",
+                "Tap a member's role to change it. Mentor gets the violet Mentor badge everywhere; Admin and Moderator get the 'MarketScope AI Team' tag and can send official messages in the Community screen. The platform owner's account is locked.",
                 style = MaterialTheme.typography.bodySmall, color = TextMuted
             )
             Spacer(Modifier.height(10.dp))

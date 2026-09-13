@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HowToVote
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
@@ -93,6 +94,7 @@ import com.veltravia.marketscopeai.ui.components.pressScale
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.draw.drawBehind
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
+import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
@@ -124,6 +126,7 @@ data class CommunityPost(
     val authorEmail: String,
     val authorPicture: String = "",
     val authorRole: String = "user",
+    val authorIsPremium: Boolean = false,
     val isTeam: Boolean,
     val isTopContributor: Boolean,
     val isPinned: Boolean,
@@ -165,6 +168,7 @@ data class CommunityComment(
     val authorName: String,
     val authorPicture: String = "",
     val authorRole: String = "user",
+    val authorIsPremium: Boolean = false,
     val body: String,
     val createdAt: String,
     val pending: Boolean = false
@@ -208,6 +212,7 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
             authorEmail = p.optString("authorEmail"),
             authorPicture = p.optString("authorPicture"),
             authorRole = p.optString("authorRole", "user"),
+            authorIsPremium = p.optBoolean("authorIsPremium", false),
             isTeam = p.optBoolean("isTeam"),
             isTopContributor = p.optBoolean("isTopContributor"),
             isPinned = p.optBoolean("isPinned"),
@@ -241,6 +246,7 @@ private fun parseComments(json: JSONArray): List<CommunityComment> =
             authorName = c.optString("author_name").ifBlank { "Trader" },
             authorPicture = c.optString("author_picture"),
             authorRole = c.optString("author_role", "user"),
+            authorIsPremium = c.optBoolean("authorIsPremium", c.optBoolean("author_is_premium", false)),
             body = c.optString("body"),
             createdAt = c.optString("created_at")
         )
@@ -1328,6 +1334,10 @@ private fun PostCard(
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
+                        if (post.authorIsPremium) {
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(14.dp))
+                        }
                         if (post.authorRole.equals("admin", true) || post.authorRole.equals("moderator", true) || post.authorRole.equals("mentor", true)) {
                             Spacer(Modifier.width(6.dp))
                             RoleBadge(post.authorRole)
@@ -1757,6 +1767,7 @@ private fun CommentsSheet(
                         authorName = c.optString("author_name").ifBlank { myName },
                         authorPicture = c.optString("author_picture").ifBlank { myPicture },
                         authorRole = c.optString("author_role", "user"),
+                        authorIsPremium = c.optBoolean("authorIsPremium", c.optBoolean("author_is_premium", false)),
                         body = c.optString("body"),
                         createdAt = c.optString("created_at")
                     ) else it
@@ -1903,6 +1914,10 @@ private fun CommentRow(
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(comment.authorName, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                    if (comment.authorIsPremium) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(13.dp))
+                    }
                     if (comment.authorRole.equals("admin", true) || comment.authorRole.equals("moderator", true) || comment.authorRole.equals("mentor", true)) {
                         Spacer(Modifier.width(6.dp))
                         RoleBadge(comment.authorRole)
