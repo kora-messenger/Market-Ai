@@ -1083,6 +1083,7 @@ private fun MemberComposerNote() {
     }
 }
 
+@Composable
 private fun PostComposer(
     mode: String,
     onModeChange: (String) -> Unit,
