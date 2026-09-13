@@ -529,7 +529,7 @@ private fun AiButton(loading: Boolean, onClick: () -> Unit) {
 }
 
 
-@androidx.compose.material3.ExperimentalMaterial3Api
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun TimezonePickerSheet(current: TzOption, onDismiss: () -> Unit, onSelect: (TzOption) -> Unit) {
     val sheetState = rememberModalBottomSheetState()
@@ -573,7 +573,7 @@ private fun TimezonePickerSheet(current: TzOption, onDismiss: () -> Unit, onSele
     }
 }
 
-@androidx.compose.material3.ExperimentalMaterial3Api
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun FilterSheet(
     highImpactOnly: Boolean,
