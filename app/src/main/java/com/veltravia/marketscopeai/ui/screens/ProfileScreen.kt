@@ -304,7 +304,22 @@ fun ProfileScreen(
                 tint = GoldAmber,
                 label = if (planEffectivePremium) "Subscribed" else "Upgrade to Premium",
                 trailingText = planTrailingLabel,
-                onClick = onOpenSubscribe,
+                onClick = onOpenSubscribe
+            )
+            SettingsRow(
+                icon = Icons.Filled.PersonAddAlt,
+                tint = AccentViolet,
+                label = "Invite friends",
+                onClick = {
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(
+                            Intent.EXTRA_TEXT,
+                            "I'm using MarketScope AI to analyze my trades with AI — check it out: ${ApiConfig.BASE_URL}"
+                        )
+                    }
+                    context.startActivity(Intent.createChooser(send, "Invite friends to MarketScope AI"))
+                },
                 showDivider = false
             )
         }
