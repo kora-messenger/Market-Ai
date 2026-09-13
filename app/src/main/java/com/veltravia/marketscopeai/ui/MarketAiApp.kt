@@ -87,6 +87,7 @@ import com.veltravia.marketscopeai.ui.screens.ScreenshotGuideScreen
 import com.veltravia.marketscopeai.ui.screens.QuestionnaireScreen
 import com.veltravia.marketscopeai.ui.screens.MarketViewScreen
 import com.veltravia.marketscopeai.ui.screens.SavedScreen
+import com.veltravia.marketscopeai.ui.screens.DailySignalDetailScreen
 import com.veltravia.marketscopeai.ui.screens.SignalsScreen
 import com.veltravia.marketscopeai.ui.screens.AdminSignalsScreen
 import com.veltravia.marketscopeai.ui.screens.AdminPremiumScreen

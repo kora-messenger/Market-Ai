@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1097,6 +1098,7 @@ private fun fmt(v: Double): String {
  * future push-notification deep link). Every value is real: entry/SL/TPs,
  * risk:reward, conviction, live price and the AI/team's own thesis text.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DailySignalDetailScreen(
     signalId: String,
