@@ -1328,7 +1328,7 @@ private fun PostCard(
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
-                        if (post.authorRole.equals("admin", true) || post.authorRole.equals("mentor", true)) {
+                        if (post.authorRole.equals("admin", true) || post.authorRole.equals("moderator", true) || post.authorRole.equals("mentor", true)) {
                             Spacer(Modifier.width(6.dp))
                             RoleBadge(post.authorRole)
                         }
@@ -1903,7 +1903,7 @@ private fun CommentRow(
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(comment.authorName, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
-                    if (comment.authorRole.equals("admin", true) || comment.authorRole.equals("mentor", true)) {
+                    if (comment.authorRole.equals("admin", true) || comment.authorRole.equals("moderator", true) || comment.authorRole.equals("mentor", true)) {
                         Spacer(Modifier.width(6.dp))
                         RoleBadge(comment.authorRole)
                     }

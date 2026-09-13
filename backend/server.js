@@ -1859,6 +1859,17 @@ app.put("/api/admin/app-version/config", requireAuth, async (req, res) => {
   }
 });
 
+/** True only for the real backend admin/owner (env ADMIN_EMAIL match, or the
+ *  very first account ever created) — this is the account whose role can
+ *  never be relabeled away by mistake. Any OTHER account, even one currently
+ *  labeled "admin" for display, is a normal member as far as this lock goes. */
+async function isRealAdminAccount(user) {
+  if (!user) return false;
+  if (ADMIN_EMAILS.includes(String(user.email || "").toLowerCase())) return true;
+  const adminSub = await getAdminSub();
+  return !!adminSub && String(user.google_sub || "") === adminSub;
+}
+
 app.get("/api/admin/members", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!(await isAdminRequest(req))) {
@@ -1867,13 +1878,14 @@ app.get("/api/admin/members", requireAuth, async (req, res) => {
   const q = String(req.query.q || "").trim().toLowerCase();
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, email, picture, role, community_joined, created_at, last_seen_at
+      `SELECT id, name, email, picture, role, community_joined, created_at, last_seen_at, google_sub
          FROM users
         WHERE ($1 = '' OR lower(name) LIKE '%' || $1 || '%' OR lower(email) LIKE '%' || $1 || '%')
         ORDER BY (last_seen_at IS NULL), last_seen_at DESC NULLS LAST, created_at ASC
         LIMIT 200`,
       [q]
     );
+    const adminSub = await getAdminSub();
     res.json({
       members: rows.map((u) => ({
         id: u.id,
@@ -1884,7 +1896,10 @@ app.get("/api/admin/members", requireAuth, async (req, res) => {
         communityJoined: !!u.community_joined,
         joinedAt: u.created_at,
         lastSeenAt: u.last_seen_at,
-        online: u.last_seen_at != null && Date.now() - new Date(u.last_seen_at).getTime() < 5 * 60 * 1000
+        online: u.last_seen_at != null && Date.now() - new Date(u.last_seen_at).getTime() < 5 * 60 * 1000,
+        // The platform owner — never relabelable from the app.
+        locked: ADMIN_EMAILS.includes(String(u.email || "").toLowerCase()) ||
+          (!!adminSub && String(u.google_sub || "") === adminSub)
       }))
     });
   } catch (err) {
@@ -1892,8 +1907,12 @@ app.get("/api/admin/members", requireAuth, async (req, res) => {
   }
 });
 
-/** Admin: promote/demote a member to mentor. Admins themselves are env-gated
- *  and cannot be changed from the app. */
+/** Admin: set a member's community role — member, mentor, moderator or
+ *  admin (a display/permissions label; the real backend admin/owner is
+ *  env-gated separately and is never touched by this endpoint — see
+ *  isRealAdminAccount). Mentor gets the violet "Mentor" badge everywhere;
+ *  admin + moderator additionally get the "MarketScope AI Team" tag on
+ *  their posts, marking them as official team messages. */
 app.post("/api/admin/members/:id/role", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   if (!(await isAdminRequest(req))) {
@@ -1902,20 +1921,23 @@ app.post("/api/admin/members/:id/role", requireAuth, async (req, res) => {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Member not found." });
   const role = String((req.body || {}).role || "").toLowerCase();
-  if (!["member", "mentor"].includes(role)) {
-    return res.status(400).json({ error: "role must be 'member' or 'mentor'." });
+  if (!["member", "mentor", "moderator", "admin"].includes(role)) {
+    return res.status(400).json({ error: "role must be 'member', 'mentor', 'moderator' or 'admin'." });
   }
   try {
+    const { rows: targetRows } = await pool.query(
+      `SELECT id, email, google_sub FROM users WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!targetRows.length) return res.status(404).json({ error: "Member not found." });
+    if (await isRealAdminAccount(targetRows[0])) {
+      return res.status(403).json({ error: "This is the platform owner's account and can't be relabeled." });
+    }
     const { rows } = await pool.query(
-      `UPDATE users SET role = $1
-        WHERE id = $2 AND role <> 'admin'
+      `UPDATE users SET role = $1 WHERE id = $2
         RETURNING id, name, email, picture, role, community_joined, created_at, last_seen_at`,
       [role, req.params.id]
     );
-    if (!rows.length) {
-      // either the member does not exist, or they are an admin (locked)
-      return res.status(404).json({ error: "Member not found or role is locked." });
-    }
     const u = rows[0];
     res.json({
       member: {
@@ -1923,7 +1945,8 @@ app.post("/api/admin/members/:id/role", requireAuth, async (req, res) => {
         picture: u.picture || null, role: u.role || "member",
         communityJoined: !!u.community_joined, joinedAt: u.created_at,
         lastSeenAt: u.last_seen_at,
-        online: u.last_seen_at != null && Date.now() - new Date(u.last_seen_at).getTime() < 5 * 60 * 1000
+        online: u.last_seen_at != null && Date.now() - new Date(u.last_seen_at).getTime() < 5 * 60 * 1000,
+        locked: false
       }
     });
   } catch (err) {
@@ -4975,7 +4998,11 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     if (!linkVerdict.allowed) {
       return res.status(422).json({ error: linkVerdict.error, linkBlocked: true });
     }
-    const isTeam = ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase());
+    // Official team message: real backend admin OR anyone promoted to
+    // admin/moderator via the members & roles manager. Mentors get their own
+    // violet "Mentor" badge instead (RoleBadge), not the Team tag.
+    const isTeam = ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase()) ||
+      ["admin", "moderator"].includes(String(me.role || "").toLowerCase());
     const { rows } = await pool.query(
       `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments, outcome_tag)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9) RETURNING *`,

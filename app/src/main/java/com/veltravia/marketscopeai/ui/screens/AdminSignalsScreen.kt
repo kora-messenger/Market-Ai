@@ -26,10 +26,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -583,7 +587,7 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
             Text("Members & roles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Promote trusted members to mentor — their name gets the violet Mentor badge everywhere. Admin roles are locked to your admin email(s).",
+                "Tap a member's role to change it. Mentor gets the violet Mentor badge everywhere; Admin and Moderator get the "MarketScope AI Team" tag and can send official messages in the Community screen. The platform owner's account is locked.",
                 style = MaterialTheme.typography.bodySmall, color = TextMuted
             )
             Spacer(Modifier.height(10.dp))
@@ -616,7 +620,7 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
                             ApiClient.setAdminMemberRole(token, m.optString("id"), role)
                             // refresh the member list so the badge/state is server-truth
                             members = ApiClient.fetchAdminMembers(token).optJSONArray("members") ?: org.json.JSONArray()
-                            Toast.makeText(context, if (role == "mentor") "Promoted to mentor" else "Mentor role removed", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Role set to ${roleDisplayName(role)}", Toast.LENGTH_SHORT).show()
                         } catch (ex: Exception) {
                             Toast.makeText(context, ex.message ?: "Could not update role", Toast.LENGTH_SHORT).show()
                         } finally {
@@ -634,16 +638,28 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
     }
 }
 
-/** One member row of the mentor manager: presence dot, name/email, role chip,
- *  and the promote/demote action. Admins are shown but locked. */
+private val COMMUNITY_ROLES = listOf("member", "mentor", "moderator", "admin")
+
+private fun roleDisplayName(role: String): String = when (role.lowercase()) {
+    "admin" -> "Admin"
+    "moderator" -> "Moderator"
+    "mentor" -> "Mentor"
+    else -> "Member"
+}
+
+/** One member row of the members & roles manager: presence dot, name/email,
+ *  role badge, and a tap-to-open menu to set the role to Member, Mentor,
+ *  Moderator or Admin. The platform owner's row is locked (server-enforced
+ *  via `locked`, cannot be relabeled from here). */
 @Composable
 private fun MemberRoleRow(m: JSONObject, busy: Boolean, onSetRole: (String) -> Unit) {
     val name = m.optString("name", "Member")
     val email = m.optString("email", "")
-    val role = m.optString("role", "member")
+    val role = m.optString("role", "member").lowercase()
     val online = m.optBoolean("online", false)
-    val isAdmin = role.equals("admin", ignoreCase = true)
-    val isMentor = role.equals("mentor", ignoreCase = true)
+    // Fallback for cached payloads from before the `locked` field existed.
+    val locked = if (m.has("locked")) m.optBoolean("locked", false) else role == "admin"
+    var menuExpanded by remember { mutableStateOf(false) }
     val initials = name.trim().split(Regex("\\s+")).mapNotNull { it.firstOrNull()?.uppercaseChar() }.take(2).joinToString("")
 
     Row(
@@ -686,18 +702,32 @@ private fun MemberRoleRow(m: JSONObject, busy: Boolean, onSetRole: (String) -> U
         Spacer(Modifier.weight(1f))
         when {
             busy -> CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = AccentCyan)
-            isAdmin -> Text("Admin", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
-            isMentor -> OutlinedButton(
-                onClick = { onSetRole("member") },
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.heightIn(min = 32.dp)
-            ) { Text("Remove mentor", fontSize = 11.sp, color = BearRed, fontWeight = FontWeight.SemiBold) }
-            else -> Button(
-                onClick = { onSetRole("mentor") },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentViolet, contentColor = androidx.compose.ui.graphics.Color.White),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                modifier = Modifier.heightIn(min = 32.dp)
-            ) { Text("Make mentor", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+            locked -> Text("Owner", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
+            else -> Box {
+                OutlinedButton(
+                    onClick = { menuExpanded = true },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.heightIn(min = 32.dp)
+                ) {
+                    Text(roleDisplayName(role), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Spacer(Modifier.width(2.dp))
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    COMMUNITY_ROLES.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(roleDisplayName(option), fontSize = 13.sp) },
+                            leadingIcon = if (option == role) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            onClick = {
+                                menuExpanded = false
+                                if (option != role) onSetRole(option)
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }

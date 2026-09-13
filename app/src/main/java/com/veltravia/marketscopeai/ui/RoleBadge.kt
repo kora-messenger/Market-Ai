@@ -13,17 +13,30 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Small role chip shown next to a community author's name.
- * Admin = teal (the team that runs MarketScope), Mentor = violet
- * (a verified trading mentor). Normal users render nothing.
+ * Admin = teal, Moderator = cyan (both run official team messaging),
+ * Mentor = violet (a verified trading mentor). Normal users render nothing.
  */
 @Composable
 fun RoleBadge(role: String) {
     val admin = role.equals("admin", ignoreCase = true)
+    val moderator = role.equals("moderator", ignoreCase = true)
     val mentor = role.equals("mentor", ignoreCase = true)
-    if (!admin && !mentor) return
-    val label = if (admin) "Admin" else "Mentor"
-    val fg = if (admin) Color(0xFF0F766E) else Color(0xFF7C3AED)
-    val bg = if (admin) Color(0xFFECFDF5) else Color(0xFFF5F3FF)
+    if (!admin && !moderator && !mentor) return
+    val label = when {
+        admin -> "Admin"
+        moderator -> "Moderator"
+        else -> "Mentor"
+    }
+    val fg = when {
+        admin -> Color(0xFF0F766E)
+        moderator -> Color(0xFF0369A1)
+        else -> Color(0xFF7C3AED)
+    }
+    val bg = when {
+        admin -> Color(0xFFECFDF5)
+        moderator -> Color(0xFFEFF6FF)
+        else -> Color(0xFFF5F3FF)
+    }
     Surface(color = bg, shape = RoundedCornerShape(6.dp)) {
         Text(
             label,
