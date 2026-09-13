@@ -534,6 +534,7 @@ async function initDb() {
       body TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE signal_comments ADD COLUMN IF NOT EXISTS author_email TEXT NOT NULL DEFAULT '';
     ALTER TABLE signal_comments ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT true;
     CREATE TABLE IF NOT EXISTS signal_comment_images (
       comment_id UUID PRIMARY KEY REFERENCES signal_comments(id) ON DELETE CASCADE,
@@ -604,6 +605,8 @@ async function initDb() {
       is_team BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS author_email TEXT NOT NULL DEFAULT '';
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_team BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS post_type TEXT NOT NULL DEFAULT 'text';
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS poll_options JSONB;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS allow_comments BOOLEAN NOT NULL DEFAULT true;
@@ -649,6 +652,13 @@ async function initDb() {
       parent_id UUID REFERENCES post_comments(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS author_email TEXT NOT NULL DEFAULT '';
+    ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS author_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES post_comments(id) ON DELETE CASCADE;
+    ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE;
+    ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS body TEXT NOT NULL DEFAULT '';
+    ALTER TABLE post_comments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
     CREATE TABLE IF NOT EXISTS stock_monitors (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
