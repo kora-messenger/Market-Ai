@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Close
@@ -271,6 +273,21 @@ private fun relativeTime(iso: String): String = try {
         d.toDays() < 1 -> "${d.toHours()}h ago"
         d.toDays() < 7 -> "${d.toDays()}d ago"
         else -> DateTimeFormatter.ofPattern("MMM d").format(t.atZone(java.time.ZoneOffset.UTC))
+    }
+} catch (e: Exception) { "" }
+
+/**
+ * "Today" / "Yesterday" / "September 10" day divider shown once above the
+ * first post of each calendar day (local time), FxLens-style feed grouping.
+ */
+private fun dayGroupLabel(iso: String): String = try {
+    val zone = java.time.ZoneId.systemDefault()
+    val day = Instant.parse(iso).atZone(zone).toLocalDate()
+    val today = java.time.LocalDate.now(zone)
+    when {
+        day.isEqual(today) -> "Today"
+        day.isEqual(today.minusDays(1)) -> "Yesterday"
+        else -> DateTimeFormatter.ofPattern("MMMM d").format(day)
     }
 } catch (e: Exception) { "" }
 
@@ -715,20 +732,27 @@ fun CommunityScreen(onOpenLeaderboard: () -> Unit = {}) {
                         item {
                             postComposerBlock()
                         }
-                        items(posts, key = { it.id }) { post ->
-                            PostCard(
-                                post = post,
-                                isAdmin = isAdmin,
-                                onReact = { emoji -> toggleReaction(post, emoji) },
-                                onVote = { optionId -> votePoll(post, optionId) },
-                                onOpenComments = { openPost = post },
-                                onPin = { togglePin(post) },
-                                onOpenImage = { idx ->
-                                    viewerPost = post
-                                    viewerIndex = idx
-                                },
-                                onRegisterView = { registerView(post.id) }
-                            )
+                        itemsIndexed(posts, key = { _, post -> post.id }) { idx, post ->
+                            val showDayHeader = idx == 0 ||
+                                dayGroupLabel(post.createdAt) != dayGroupLabel(posts[idx - 1].createdAt)
+                            Column {
+                                if (showDayHeader) {
+                                    DayGroupHeader(dayGroupLabel(post.createdAt))
+                                }
+                                PostCard(
+                                    post = post,
+                                    isAdmin = isAdmin,
+                                    onReact = { emoji -> toggleReaction(post, emoji) },
+                                    onVote = { optionId -> votePoll(post, optionId) },
+                                    onOpenComments = { openPost = post },
+                                    onPin = { togglePin(post) },
+                                    onOpenImage = { idx2 ->
+                                        viewerPost = post
+                                        viewerIndex = idx2
+                                    },
+                                    onRegisterView = { registerView(post.id) }
+                                )
+                            }
                         }
                         if (loadingMore) {
                             item {
@@ -1366,6 +1390,24 @@ private fun ComposerTab(label: String, selected: Boolean, onClick: () -> Unit) {
 
 // --- post card ----------------------------------------------------------------------
 
+/** Centered "Today" / "Yesterday" / date pill shown above the first post of a new day. */
+@Composable
+private fun DayGroupHeader(label: String) {
+    if (label.isBlank()) return
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(20.dp)) {
+            Text(
+                label,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextMuted,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+            )
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+}
+
 @Composable
 private fun PostCard(
     post: CommunityPost,
@@ -1389,9 +1431,25 @@ private fun PostCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
+        val isTeamAuthor = post.isTeam ||
+            post.authorRole.equals("admin", true) ||
+            post.authorRole.equals("moderator", true) ||
+            post.authorRole.equals("mentor", true)
+        val isMentorAuthor = post.authorRole.equals("mentor", true)
+
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                UserAvatar(photoUrl = post.authorPicture.takeIf { it.isNotBlank() }, size = 38.dp)
+                // Team, mentor and admin posts get a gold ring around the
+                // avatar so official/verified voices stand out in the feed.
+                Box(
+                    modifier = if (isTeamAuthor) {
+                        Modifier
+                            .border(1.5.dp, GoldAmber, CircleShape)
+                            .padding(2.dp)
+                    } else Modifier
+                ) {
+                    UserAvatar(photoUrl = post.authorPicture.takeIf { it.isNotBlank() }, size = 38.dp)
+                }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1576,19 +1634,18 @@ private fun PostCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = Color.Transparent,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = CircleShape,
                     onClick = { showReactionRow = !showReactionRow }
                 ) {
-                    Text(
-                        if (showReactionRow) "Hide reactions" else "React",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = AccentCyan,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                    Icon(
+                        Icons.Filled.AddCircle,
+                        contentDescription = if (showReactionRow) "Hide reactions" else "Add reaction",
+                        tint = if (showReactionRow) AccentCyan else TextMuted,
+                        modifier = Modifier.padding(4.dp).size(20.dp)
                     )
                 }
                 if (post.allowComments) {
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(14.dp))
                     Surface(
                         color = Color.Transparent,
                         shape = RoundedCornerShape(8.dp),
@@ -1605,12 +1662,23 @@ private fun PostCard(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = TextMuted, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(3.dp))
-                    Text("${post.viewCount}", fontSize = 12.sp, color = TextMuted)
+                // Mentor-authored posts get a soft "Mentor post" tag, mirroring
+                // the badge mentors' posts carry in the reference community.
+                if (isMentorAuthor) {
+                    Surface(color = Color(0xFFF5F3FF), shape = RoundedCornerShape(14.dp)) {
+                        Text(
+                            "Mentor post",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF7C3AED),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
                 }
-                Spacer(Modifier.width(12.dp))
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = Color.Transparent,
                     shape = RoundedCornerShape(8.dp),
@@ -1626,6 +1694,17 @@ private fun PostCard(
                     }
                 ) {
                     Icon(Icons.Filled.Share, contentDescription = "Share post", tint = TextMuted, modifier = Modifier.size(14.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(14.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = TextMuted, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("${post.viewCount}", fontSize = 12.sp, color = TextMuted)
+                    }
                 }
             }
         }
