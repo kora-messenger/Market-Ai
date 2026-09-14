@@ -12,38 +12,45 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Small role chip shown next to a community author's name.
- * Admin = teal, Moderator = cyan (both run official team messaging),
- * Mentor = violet (a verified trading mentor). Normal users render nothing.
+ * Colors + label for a community role. Every roled author carries three
+ * coordinated colors: a text color, a soft background for their badge, and
+ * a ring color that wraps their avatar so official voices are recognizable
+ * at a glance anywhere they appear (feed posts, comments, DMs).
+ */
+data class RoleStyle(
+    val label: String,
+    val text: Color,
+    val bg: Color,
+    val ring: Color
+)
+
+/** Role color system: Admin teal, Mentor violet, Moderator blue, Team amber. */
+fun roleStyle(role: String?, isTeam: Boolean = false): RoleStyle? = when {
+    role.equals("admin", true) ->
+        RoleStyle("Admin", Color(0xFF0F766E), Color(0xFFECFDF5), Color(0xFF5EEAD4))
+    role.equals("mentor", true) ->
+        RoleStyle("Mentor", Color(0xFF7C3AED), Color(0xFFF5F3FF), Color(0xFFC4B5FD))
+    role.equals("moderator", true) ->
+        RoleStyle("Mod", Color(0xFF2563EB), Color(0xFFEFF6FF), Color(0xFF93C5FD))
+    isTeam ->
+        RoleStyle("Team", Color(0xFFB45309), Color(0xFFFFF7ED), Color(0xFFFCD34D))
+    else -> null
+}
+
+/**
+ * Small role chip shown next to a community author's name — a fully
+ * rounded pill in the role's colors. Normal users render nothing.
  */
 @Composable
-fun RoleBadge(role: String) {
-    val admin = role.equals("admin", ignoreCase = true)
-    val moderator = role.equals("moderator", ignoreCase = true)
-    val mentor = role.equals("mentor", ignoreCase = true)
-    if (!admin && !moderator && !mentor) return
-    val label = when {
-        admin -> "Admin"
-        moderator -> "Moderator"
-        else -> "Mentor"
-    }
-    val fg = when {
-        admin -> Color(0xFF0F766E)
-        moderator -> Color(0xFF0369A1)
-        else -> Color(0xFF7C3AED)
-    }
-    val bg = when {
-        admin -> Color(0xFFECFDF5)
-        moderator -> Color(0xFFEFF6FF)
-        else -> Color(0xFFF5F3FF)
-    }
-    Surface(color = bg, shape = RoundedCornerShape(6.dp)) {
+fun RoleBadge(role: String, isTeam: Boolean = false) {
+    val style = roleStyle(role, isTeam) ?: return
+    Surface(color = style.bg, shape = RoundedCornerShape(50)) {
         Text(
-            label,
-            fontSize = 9.5.sp,
+            style.label,
+            fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
-            color = fg,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            color = style.text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
     }
 }

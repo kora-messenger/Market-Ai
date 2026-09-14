@@ -68,6 +68,8 @@ import com.veltravia.marketscopeai.ui.screens.NotificationsIntroScreen
 import com.veltravia.marketscopeai.ui.screens.ProjectionIntroScreen
 import com.veltravia.marketscopeai.ui.screens.BrokerSetupIntroScreen
 import com.veltravia.marketscopeai.ui.screens.CommunityScreen
+import com.veltravia.marketscopeai.ui.screens.DmThreadsScreen
+import com.veltravia.marketscopeai.ui.screens.DmChatScreen
 import com.veltravia.marketscopeai.ui.screens.LeaderboardScreen
 import com.veltravia.marketscopeai.ui.screens.LearningHubScreen
 import com.veltravia.marketscopeai.ui.screens.NewsOutlookScreen
@@ -116,6 +118,12 @@ object PushRouter {
      */
     var pendingOpenNotifications by mutableStateOf(false)
     var pendingHighlightNotificationId by mutableStateOf<String?>(null)
+
+    /**
+     * A mentor-DM push was tapped — the nav graph should open the chat
+     * thread directly (threadId from the payload's data.route === "dm").
+     */
+    var pendingDmThreadId by mutableStateOf<String?>(null)
 
     fun tabForRoute(route: String?): Int? = when (route) {
         "signals" -> 1
@@ -242,6 +250,15 @@ fun MarketAiApp() {
             PushRouter.pendingHighlightNotificationId = null
             val encoded = highlightId?.let { java.net.URLEncoder.encode(it, "UTF-8") } ?: ""
             navController.navigate("notifications?highlightId=$encoded")
+        }
+    }
+
+    // Mentor-DM push tapped — open the private chat directly.
+    LaunchedEffect(PushRouter.pendingDmThreadId) {
+        val threadId = PushRouter.pendingDmThreadId
+        if (threadId != null) {
+            PushRouter.pendingDmThreadId = null
+            navController.navigate("dm_chat/$threadId")
         }
     }
 
@@ -419,6 +436,18 @@ fun MarketAiApp() {
                 highlightId = entry.arguments?.getString("highlightId")?.takeIf { it.isNotBlank() }
             )
         }
+        composable("dm_threads") {
+            DmThreadsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenThread = { id -> navController.navigate("dm_chat/$id") }
+            )
+        }
+        composable("dm_chat/{threadId}") { entry ->
+            DmChatScreen(
+                threadId = entry.arguments?.getString("threadId") ?: "",
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("leaderboard") {
             LeaderboardScreen(onBack = { navController.popBackStack() })
         }
@@ -538,7 +567,9 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenSignal = { id -> navController.navigate("daily_signal/$id") }
                 )
                 2 -> CommunityScreen(
-                    onOpenLeaderboard = { navController.navigate("leaderboard") }
+                    onOpenLeaderboard = { navController.navigate("leaderboard") },
+                    onOpenDms = { navController.navigate("dm_threads") },
+                    onOpenDmChat = { id -> navController.navigate("dm_chat/$id") }
                 )
                 3 -> SavedScreen(
                     onOpenAnalysis = { id ->

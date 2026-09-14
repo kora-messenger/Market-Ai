@@ -5606,6 +5606,219 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
 
 // Add a comment (optionally a reply via parent_id).
 
+/* ---------- Direct messages (mentor DMs) ---------- */
+
+/**
+ * Private 1:1 threads between a member and a roled author
+ * (admin / moderator / mentor). The Message pill on a roled community
+ * post opens (or reuses) a thread here; both sides see the thread in
+ * their Messages inbox. Tables are created lazily and idempotently on
+ * first use, so no deploy coordination is needed.
+ */
+let dmTablesReady = false;
+async function ensureDmTables() {
+  if (!pool || dmTablesReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dm_threads (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_email TEXT NOT NULL,
+      mentor_email TEXT NOT NULL,
+      last_message TEXT,
+      last_message_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_sender TEXT,
+      user_unread INTEGER NOT NULL DEFAULT 0,
+      mentor_unread INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS dm_threads_user_idx ON dm_threads (lower(user_email));
+    CREATE INDEX IF NOT EXISTS dm_threads_mentor_idx ON dm_threads (lower(mentor_email));
+    CREATE TABLE IF NOT EXISTS dm_messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      thread_id UUID NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
+      sender_email TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS dm_messages_thread_idx ON dm_messages (thread_id, created_at);
+  `);
+  dmTablesReady = true;
+}
+
+/** Open (or reuse) a private thread with a roled author. */
+app.post("/api/dm/threads", requireAuth, async (req, res) => {
+  try {
+    await ensureDmTables();
+    const me = await currentUser(req);
+    if (!me) return res.status(401).json({ error: "Please sign in again." });
+    const mentorEmail = String(req.body?.mentorEmail || "").trim().toLowerCase();
+    if (!mentorEmail) return res.status(400).json({ error: "Missing recipient." });
+    if (mentorEmail === String(me.email || "").toLowerCase()) {
+      return res.status(400).json({ error: "You can't message yourself." });
+    }
+    const { rows: targetRows } = await pool.query(
+      `SELECT id, name, email, picture, role FROM users WHERE lower(email) = $1 LIMIT 1`,
+      [mentorEmail]
+    );
+    const target = targetRows[0];
+    if (!target) return res.status(404).json({ error: "That member isn't on MarketScope AI yet." });
+    const targetRole = String(target.role || "").toLowerCase();
+    if (!["admin", "moderator", "mentor"].includes(targetRole)) {
+      return res.status(403).json({ error: "Only team members and mentors can be messaged." });
+    }
+    const myEmail = String(me.email || "").toLowerCase();
+    const { rows: existing } = await pool.query(
+      `SELECT id FROM dm_threads WHERE lower(user_email) = $1 AND lower(mentor_email) = $2 LIMIT 1`,
+      [myEmail, mentorEmail]
+    );
+    let threadId = existing[0]?.id;
+    if (!threadId) {
+      const { rows: created } = await pool.query(
+        `INSERT INTO dm_threads (user_email, mentor_email) VALUES ($1, $2) RETURNING id`,
+        [me.email, target.email]
+      );
+      threadId = created[0].id;
+    }
+    return res.json({ thread: { id: threadId } });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not open the chat", detail: String(err.message || err) });
+  }
+});
+
+/** My inbox — threads on either side, newest activity first. */
+app.get("/api/dm/threads", requireAuth, async (req, res) => {
+  try {
+    await ensureDmTables();
+    const me = await currentUser(req);
+    if (!me) return res.status(401).json({ error: "Please sign in again." });
+    const email = String(me.email || "").toLowerCase();
+    const { rows } = await pool.query(
+      `SELECT t.id, t.last_message, t.last_message_at, t.last_sender, t.created_at,
+              CASE WHEN lower(t.user_email) = $1 THEN t.mentor_email ELSE t.user_email END AS counterpart_email,
+              CASE WHEN lower(t.user_email) = $1 THEN t.mentor_unread ELSE t.user_unread END AS unread,
+              cu.name AS counterpart_name, cu.role AS counterpart_role,
+              CASE WHEN cu.avatar_key IS NOT NULL AND cu.avatar_key <> '' THEN 'avatar:' || cu.id ELSE cu.picture END AS counterpart_avatar
+       FROM dm_threads t
+       LEFT JOIN users cu
+         ON lower(cu.email) = lower(CASE WHEN lower(t.user_email) = $1 THEN t.mentor_email ELSE t.user_email END)
+       WHERE lower(t.user_email) = $1 OR lower(t.mentor_email) = $1
+       ORDER BY t.last_message_at DESC LIMIT 100`,
+      [email]
+    );
+    const unreadTotal = rows.reduce((n, r) => n + (r.unread || 0), 0);
+    return res.json({ threads: rows, unreadTotal });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load your messages", detail: String(err.message || err) });
+  }
+});
+
+/** One thread + its messages (participants only). */
+app.get("/api/dm/threads/:id/messages", requireAuth, async (req, res) => {
+  try {
+    await ensureDmTables();
+    const me = await currentUser(req);
+    if (!me) return res.status(401).json({ error: "Please sign in again." });
+    const { rows: threadRows } = await pool.query(
+      `SELECT * FROM dm_threads WHERE id = $1::uuid LIMIT 1`,
+      [req.params.id]
+    );
+    const thread = threadRows[0];
+    if (!thread) return res.status(404).json({ error: "Chat not found." });
+    const myEmail = String(me.email || "").toLowerCase();
+    const isMember = String(thread.user_email).toLowerCase() === myEmail || String(thread.mentor_email).toLowerCase() === myEmail;
+    if (!isMember) return res.status(403).json({ error: "This chat is private." });
+    const counterpartEmail = String(thread.user_email).toLowerCase() === myEmail ? thread.mentor_email : thread.user_email;
+    const { rows: cuRows } = await pool.query(
+      `SELECT id, name, email, role,
+              CASE WHEN avatar_key IS NOT NULL AND avatar_key <> '' THEN 'avatar:' || id ELSE picture END AS avatar
+       FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [counterpartEmail]
+    );
+    const { rows: messages } = await pool.query(
+      `SELECT id, sender_email, body, created_at FROM dm_messages
+       WHERE thread_id = $1::uuid ORDER BY created_at ASC LIMIT 500`,
+      [req.params.id]
+    );
+    return res.json({
+      thread: {
+        id: thread.id,
+        counterpart: cuRows[0] || { email: counterpartEmail, name: counterpartEmail, role: "user" }
+      },
+      messages
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load the chat", detail: String(err.message || err) });
+  }
+});
+
+/** Send a message in a thread. Notifies the other side (in-app + push). */
+app.post("/api/dm/threads/:id/messages", requireAuth, async (req, res) => {
+  try {
+    await ensureDmTables();
+    const me = await currentUser(req);
+    if (!me) return res.status(401).json({ error: "Please sign in again." });
+    const body = String(req.body?.body || "").trim().slice(0, 4000);
+    if (!body) return res.status(400).json({ error: "Message is empty." });
+    const { rows: threadRows } = await pool.query(
+      `SELECT * FROM dm_threads WHERE id = $1::uuid LIMIT 1`,
+      [req.params.id]
+    );
+    const thread = threadRows[0];
+    if (!thread) return res.status(404).json({ error: "Chat not found." });
+    const myEmail = String(me.email || "").toLowerCase();
+    if (String(thread.user_email).toLowerCase() !== myEmail && String(thread.mentor_email).toLowerCase() !== myEmail) {
+      return res.status(403).json({ error: "This chat is private." });
+    }
+    const isMentorSide = String(thread.mentor_email).toLowerCase() === myEmail;
+    const { rows: inserted } = await pool.query(
+      `INSERT INTO dm_messages (thread_id, sender_email, body) VALUES ($1::uuid, $2, $3) RETURNING id, sender_email, body, created_at`,
+      [req.params.id, me.email, body]
+    );
+    await pool.query(
+      `UPDATE dm_threads
+         SET last_message = $2, last_message_at = now(), last_sender = $3,
+             ${isMentorSide ? "user_unread" : "mentor_unread"} = ${isMentorSide ? "user_unread" : "mentor_unread"} + 1
+       WHERE id = $1::uuid`,
+      [req.params.id, body, me.email]
+    );
+    // Notify the recipient — in-app row + push, never blocking the reply.
+    const recipientEmail = (isMentorSide ? thread.user_email : thread.mentor_email).toLowerCase();
+    try {
+      const { rows: recipients } = await pool.query(
+        `SELECT id, name FROM users WHERE lower(email) = $1 LIMIT 1`,
+        [recipientEmail]
+      );
+      const recipient = recipients[0];
+      if (recipient) {
+        const title = `${me.name || "A MarketScope AI member"} sent you a message`;
+        notifyUser(recipient.id, {
+          title,
+          body: body.slice(0, 120),
+          type: "dm",
+          data: { route: "dm", threadId: String(thread.id) }
+        });
+      }
+    } catch (_nErr) { /* notification failure never blocks the send */ }
+    return res.json({ message: inserted[0] });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not send the message", detail: String(err.message || err) });
+  }
+});
+
+/** Mark a thread as read for the caller (clears only MY unread counter). */
+app.post("/api/dm/threads/:id/read", requireAuth, async (req, res) => {
+  try {
+    await ensureDmTables();
+    const me = await currentUser(req);
+    if (!me) return res.status(401).json({ error: "Please sign in again." });
+    const myEmail = String(me.email || "").toLowerCase();
+    await pool.query(`UPDATE dm_threads SET user_unread = 0 WHERE id = $1::uuid AND lower(user_email) = $2`, [req.params.id, myEmail]);
+    await pool.query(`UPDATE dm_threads SET mentor_unread = 0 WHERE id = $1::uuid AND lower(mentor_email) = $2`, [req.params.id, myEmail]);
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not mark as read", detail: String(err.message || err) });
+  }
+});
+
 /* ---------- Push notifications (FCM v1) ---------- */
 
 /**

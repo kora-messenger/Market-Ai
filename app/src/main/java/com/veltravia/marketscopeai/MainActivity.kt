@@ -18,6 +18,14 @@ class MainActivity : ComponentActivity() {
 
     private fun handlePushIntent(intent: Intent?) {
         val route = intent?.getStringExtra("route") ?: return
+        if (route == "dm") {
+            // Mentor-DM push — open the private chat thread directly.
+            val threadId = intent.getStringExtra("threadId")
+            if (!threadId.isNullOrBlank()) {
+                com.veltravia.marketscopeai.ui.PushRouter.pendingDmThreadId = threadId
+            }
+            return
+        }
         if (route == "notifications") {
             // Billing push (payment succeeded/failed) — open the
             // Notifications screen directly, scrolled to that exact message.
