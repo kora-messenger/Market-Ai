@@ -165,7 +165,8 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
                                             name = verifiedUser?.optString("name")?.ifBlank { null }
                                                 ?: credential.user.name,
                                             picture = verifiedUser?.optString("picture")?.ifBlank { null }
-                                                ?: credential.user.picture
+                                                ?: credential.user.picture,
+                                            username = verifiedUser?.optString("username")?.ifBlank { null }
                                         ),
                                         sessionToken = verified.optString("sessionToken").ifBlank { null },
                                         communityJoined = verifiedUser?.optBoolean("communityJoined", false)

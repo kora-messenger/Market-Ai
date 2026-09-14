@@ -913,7 +913,7 @@ app.post("/api/auth/google", async (req, res) => {
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (google_sub)
          DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, picture = EXCLUDED.picture
-         RETURNING id, google_sub, email, name, picture, community_joined, community_joined_at,
+         RETURNING id, google_sub, email, name, picture, username, community_joined, community_joined_at,
                    trial_started_at, is_premium, questionnaire, questionnaire_completed_at,
                    (xmax = 0) AS inserted_new`,
         [payload.sub, user.email, user.name, user.picture]
@@ -932,6 +932,7 @@ app.post("/api/auth/google", async (req, res) => {
         email: rows[0].email,
         name: rows[0].name,
         picture: rows[0].picture,
+        username: rows[0].username || null,
         communityJoined: rows[0].community_joined,
         communityJoinedAt: rows[0].community_joined_at,
         role: rows[0].role || "user",
@@ -5043,6 +5044,7 @@ function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor,
   return {
     id: row.id,
     authorName: row.author_name,
+    authorUsername: row.author_username || null,
     authorEmail: row.author_email,
     authorPicture: row.author_picture || "",
     authorRole: row.author_role || "user",
@@ -5124,6 +5126,8 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
               (SELECT COUNT(*)::int FROM post_views v WHERE v.post_id = p.id) AS view_count,
               NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
                       WHERE lower(u.email) = lower(p.author_email) LIMIT 1), '') AS author_picture,
+              NULLIF((SELECT u.username FROM users u
+                      WHERE lower(u.email) = lower(p.author_email) LIMIT 1), '') AS author_username,
               COALESCE((SELECT u.role FROM users u
                       WHERE lower(u.email) = lower(p.author_email) LIMIT 1), 'user') AS author_role,
               COALESCE((
@@ -5584,6 +5588,8 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
       `SELECT c.id, c.author_name, c.author_email, c.body, c.parent_id, c.created_at,
               NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), '') AS author_picture,
+              NULLIF((SELECT u.username FROM users u
+                      WHERE lower(u.email) = lower(c.author_email) LIMIT 1), '') AS author_username,
               COALESCE((SELECT u.role FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role,
               COALESCE((
@@ -5598,7 +5604,7 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
        ORDER BY c.created_at ASC LIMIT 300`,
       [req.params.id]
     );
-    return res.json({ comments: rows.map((r) => ({ ...r, author_picture: r.author_picture || "", author_role: r.author_role || "user", authorIsPremium: r.author_is_premium || false })) });
+    return res.json({ comments: rows.map((r) => ({ ...r, author_picture: r.author_picture || "", author_username: r.author_username || null, author_role: r.author_role || "user", authorIsPremium: r.author_is_premium || false })) });
   } catch (err) {
     return res.status(500).json({ error: "Could not load comments", detail: String(err.message || err) });
   }
@@ -6105,6 +6111,10 @@ app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
       `SELECT CASE WHEN avatar_key IS NOT NULL THEN 'avatar:' || id ELSE picture END AS p FROM users WHERE id = $1`,
       [me.id]
     )).rows[0]?.p || "";
+    rows[0].author_username = (await pool.query(
+      `SELECT username FROM users WHERE id = $1`,
+      [me.id]
+    )).rows[0]?.username || null;
     // Same entitlement rule as the feed: paid sub or an active admin grant.
     rows[0].author_is_premium = (await hasActivePremiumGrant(me.id)) ||
       (await pool.query(`SELECT is_premium FROM users WHERE id = $1`, [me.id])).rows[0]?.is_premium || false;

@@ -142,6 +142,7 @@ data class CommunityPoll(
 data class CommunityPost(
     val id: String,
     val authorName: String,
+    val authorUsername: String? = null,
     val authorEmail: String,
     val authorPicture: String = "",
     val authorRole: String = "user",
@@ -186,6 +187,7 @@ data class CommunityComment(
     val id: String,
     val parentId: String?,
     val authorName: String,
+    val authorUsername: String? = null,
     val authorPicture: String = "",
     val authorRole: String = "user",
     val authorIsPremium: Boolean = false,
@@ -229,6 +231,7 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
         CommunityPost(
             id = p.optString("id"),
             authorName = p.optString("authorName").ifBlank { "Trader" },
+            authorUsername = p.optString("authorUsername").ifBlank { null },
             authorEmail = p.optString("authorEmail"),
             authorPicture = ApiClient.resolveAvatarUrl(p.optString("authorPicture")) ?: "",
             authorRole = p.optString("authorRole", "user"),
@@ -264,6 +267,7 @@ private fun parseComments(json: JSONArray): List<CommunityComment> =
             id = c.optString("id"),
             parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
             authorName = c.optString("author_name").ifBlank { "Trader" },
+            authorUsername = c.optString("author_username").ifBlank { null },
             authorPicture = ApiClient.resolveAvatarUrl(c.optString("author_picture")) ?: "",
             authorRole = c.optString("author_role", "user"),
             authorIsPremium = c.optBoolean("authorIsPremium", c.optBoolean("author_is_premium", false)),
@@ -271,6 +275,11 @@ private fun parseComments(json: JSONArray): List<CommunityComment> =
             createdAt = c.optString("created_at")
         )
     }
+
+/** Author identity on the Community screen is the @handle when the user has
+ *  set one; the full name is only a fallback for users without a handle. */
+private fun displayHandle(name: String, username: String?): String =
+    if (username.isNullOrBlank()) name else "@$username"
 
 /** 1234 -> "1.2K", 2500000 -> "2.5M" — the compact view-count format. */
 private fun compactCount(n: Int): String = when {
@@ -922,6 +931,7 @@ fun CommunityScreen(
         CommentsSheet(
             post = post,
             myName = me?.name ?: "You",
+            myUsername = me?.username,
             myPicture = me?.picture ?: "",
             onDismiss = { openPost = null },
             onCountChange = { newCount ->
@@ -1527,7 +1537,7 @@ private fun PostCard(
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            post.authorName,
+                            displayHandle(post.authorName, post.authorUsername),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground,
@@ -1741,7 +1751,7 @@ private fun PostCard(
                             type = "text/plain"
                             putExtra(
                                 android.content.Intent.EXTRA_TEXT,
-                                "${post.authorName} on MarketScope AI Community:\n\n${post.body}"
+                                "${displayHandle(post.authorName, post.authorUsername)} on MarketScope AI Community:\n\n${post.body}"
                             )
                         }
                         context.startActivity(android.content.Intent.createChooser(shared, "Share post"))
@@ -1969,6 +1979,7 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
 private fun CommentsSheet(
     post: CommunityPost,
     myName: String,
+    myUsername: String?,
     myPicture: String,
     onDismiss: () -> Unit,
     onCountChange: (Int) -> Unit
@@ -2006,6 +2017,7 @@ private fun CommentsSheet(
             id = "tmp-${UUID.randomUUID()}",
             parentId = replyTo?.id,
             authorName = myName,
+            authorUsername = myUsername,
             authorPicture = myPicture,
             body = text,
             createdAt = Instant.now().toString(),
@@ -2024,6 +2036,7 @@ private fun CommentsSheet(
                         id = c.optString("id"),
                         parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
                         authorName = c.optString("author_name").ifBlank { myName },
+                        authorUsername = c.optString("author_username").ifBlank { myUsername },
                         authorPicture = ApiClient.resolveAvatarUrl(c.optString("author_picture")) ?: myPicture,
                         authorRole = c.optString("author_role", "user"),
                         authorIsPremium = c.optBoolean("authorIsPremium", c.optBoolean("author_is_premium", false)),
@@ -2113,7 +2126,7 @@ private fun CommentsSheet(
             replyTo?.let { target ->
                 Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                        Text("Replying to ${target.authorName}", fontSize = 11.sp, color = TextMuted, modifier = Modifier.weight(1f))
+                        Text("Replying to ${displayHandle(target.authorName, target.authorUsername)}", fontSize = 11.sp, color = TextMuted, modifier = Modifier.weight(1f))
                         IconButton(onClick = { replyTo = null }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Filled.Close, contentDescription = "Cancel reply", tint = TextMuted, modifier = Modifier.size(13.dp))
                         }
@@ -2128,7 +2141,7 @@ private fun CommentsSheet(
                     onValueChange = { input = it },
                     placeholder = {
                         Text(
-                            if (replyTo != null) "Reply to ${replyTo?.authorName}…"
+                            if (replyTo != null) "Reply to ${displayHandle(replyTo?.authorName ?: "", replyTo?.authorUsername)}…"
                             else "Add a comment…",
                             fontSize = 13.sp, color = TextMuted
                         )
@@ -2249,7 +2262,7 @@ private fun CommentRow(
                 Spacer(Modifier.width(8.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(comment.authorName, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                    Text(displayHandle(comment.authorName, comment.authorUsername), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                     if (comment.authorIsPremium) {
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(13.dp))

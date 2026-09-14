@@ -7,7 +7,8 @@ import org.json.JSONObject
 data class GoogleUser(
     val name: String,
     val email: String,
-    val picture: String
+    val picture: String,
+    val username: String? = null
 )
 
 data class UserSession(
@@ -76,6 +77,7 @@ object SessionManager {
     private const val KEY_NAME = "user_name"
     private const val KEY_EMAIL = "user_email"
     private const val KEY_PICTURE = "user_picture"
+    private const val KEY_USERNAME = "username"
     private const val KEY_SESSION_TOKEN = "session_token"
     private const val KEY_COMMUNITY_JOINED = "community_joined"
     private const val KEY_NOTIFICATIONS_PROMPT_SHOWN = "notifications_prompt_shown"
@@ -102,6 +104,7 @@ object SessionManager {
             .putString(KEY_NAME, session.user.name)
             .putString(KEY_EMAIL, session.user.email)
             .putString(KEY_PICTURE, session.user.picture)
+            .putString(KEY_USERNAME, session.user.username ?: "")
             .putString(KEY_SESSION_TOKEN, session.sessionToken)
             .putBoolean(KEY_COMMUNITY_JOINED, session.communityJoined)
             .putBoolean(KEY_TRIAL_ACTIVE, session.trialActive)
@@ -158,7 +161,8 @@ object SessionManager {
         val name = prefs(context).getString(KEY_NAME, null) ?: return null
         val email = prefs(context).getString(KEY_EMAIL, "") ?: ""
         val picture = prefs(context).getString(KEY_PICTURE, "") ?: ""
-        return GoogleUser(name, email, picture)
+        val username = prefs(context).getString(KEY_USERNAME, "")?.ifBlank { null }
+        return GoogleUser(name, email, picture, username)
     }
 
     /** Bearer token for authenticated backend calls (community join, etc.), or null if unset. */
