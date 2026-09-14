@@ -398,7 +398,7 @@ object ApiClient {
     suspend fun createDmThread(sessionToken: String, mentorEmail: String): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject().put("mentorEmail", mentorEmail)
         val request = Request.Builder()
-            .url("\${ApiConfig.BASE_URL}/api/dm/threads")
+            .url("${ApiConfig.BASE_URL}/api/dm/threads")
             .addHeader("Authorization", "Bearer $sessionToken")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
@@ -408,7 +408,7 @@ object ApiClient {
     /** My DM inbox — threads on either side + unreadTotal for the badge. */
     suspend fun fetchDmThreads(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("\${ApiConfig.BASE_URL}/api/dm/threads")
+            .url("${ApiConfig.BASE_URL}/api/dm/threads")
             .addHeader("Authorization", "Bearer $sessionToken")
             .get()
             .build()
@@ -418,7 +418,7 @@ object ApiClient {
     /** One thread's meta + full message history (participants only). */
     suspend fun fetchDmMessages(sessionToken: String, threadId: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("\${ApiConfig.BASE_URL}/api/dm/threads/\$threadId/messages")
+            .url("${ApiConfig.BASE_URL}/api/dm/threads/$threadId/messages")
             .addHeader("Authorization", "Bearer $sessionToken")
             .get()
             .build()
@@ -429,7 +429,7 @@ object ApiClient {
     suspend fun sendDmMessage(sessionToken: String, threadId: String, body: String): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject().put("body", body)
         val request = Request.Builder()
-            .url("\${ApiConfig.BASE_URL}/api/dm/threads/\$threadId/messages")
+            .url("${ApiConfig.BASE_URL}/api/dm/threads/$threadId/messages")
             .addHeader("Authorization", "Bearer $sessionToken")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
@@ -439,7 +439,7 @@ object ApiClient {
     /** Mark a thread as read for me (clears only my unread counter). */
     suspend fun markDmRead(sessionToken: String, threadId: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("\${ApiConfig.BASE_URL}/api/dm/threads/\$threadId/read")
+            .url("${ApiConfig.BASE_URL}/api/dm/threads/$threadId/read")
             .addHeader("Authorization", "Bearer $sessionToken")
             .post("{}".toRequestBody("application/json".toMediaType()))
             .build()

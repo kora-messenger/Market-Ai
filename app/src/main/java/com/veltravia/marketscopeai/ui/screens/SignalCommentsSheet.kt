@@ -511,7 +511,7 @@ fun SignalCommentsSheet(
                                             .padding(12.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            UserAvatar(photoUrl = t.avatarUrl.takeIf { it.isNotBlank() }, size = 24.dp)
+                                            UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(t.avatarUrl), size = 24.dp)
                                             Spacer(Modifier.width(8.dp))
                                             Column(Modifier.weight(1f)) {
                                                 Text(t.authorName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
@@ -742,7 +742,7 @@ private fun MentorUpdateRow(update: SignalUpdate, isAdmin: Boolean, onReply: () 
             .padding(horizontal = 10.dp, vertical = 9.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            UserAvatar(photoUrl = update.authorPicture.takeIf { it.isNotBlank() }, size = 26.dp)
+            UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(update.authorPicture), size = 26.dp)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -803,7 +803,7 @@ private fun TraderCommentRow(
 ) {
     Column(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            UserAvatar(photoUrl = comment.authorPicture.takeIf { it.isNotBlank() }, size = 26.dp)
+            UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(comment.authorPicture), size = 26.dp)
             Spacer(Modifier.width(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(comment.authorName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)

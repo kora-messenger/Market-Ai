@@ -315,7 +315,7 @@ fun DmChatScreen(threadId: String, onBack: () -> Unit) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
             }
             Spacer(Modifier.width(4.dp))
-            UserAvatar(photoUrl = counterpartAvatar.takeIf { it.isNotBlank() }, size = 34.dp)
+            UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(counterpartAvatar), size = 34.dp)
             Spacer(Modifier.width(8.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {

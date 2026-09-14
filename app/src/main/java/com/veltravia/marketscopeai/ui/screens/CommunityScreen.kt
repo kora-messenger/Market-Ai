@@ -1521,7 +1521,7 @@ private fun PostCard(
                             .padding(2.dp)
                     } ?: Modifier
                 ) {
-                    UserAvatar(photoUrl = post.authorPicture.takeIf { it.isNotBlank() }, size = 38.dp)
+                    UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(post.authorPicture), size = 38.dp)
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
@@ -1530,7 +1530,12 @@ private fun PostCard(
                             post.authorName,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // Truncate instead of wrapping: the badges after
+                            // the name must always stay visible in the row.
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (roleMeta != null) {
                             Spacer(Modifier.width(4.dp))
@@ -1568,36 +1573,29 @@ private fun PostCard(
                         }
                     }
                     Spacer(Modifier.height(3.dp))
-                    Text(relativeTime(post.createdAt), fontSize = 11.sp, color = Color(0xFF94A3B8))
-                }
-                if (roleMeta != null) {
-                    // Private-message pill for roled authors — bordered pill
-                    // in the author's own role colors.
-                    Surface(
-                        color = roleMeta.bg,
-                        shape = RoundedCornerShape(50),
-                        border = BorderStroke(1.dp, roleMeta.ring),
-                        onClick = onMessage,
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Icon(Icons.Filled.Email, contentDescription = null, tint = roleMeta.text, modifier = Modifier.size(11.dp))
-                            Spacer(Modifier.width(3.dp))
-                            Text("Message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = roleMeta.text)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(relativeTime(post.createdAt), fontSize = 11.sp, color = Color(0xFF94A3B8))
+                        if (roleMeta != null) {
+                            // Private-message pill for roled authors — a
+                            // bordered pill in the author's own role colors,
+                            // sitting right beside the timestamp.
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                color = roleMeta.bg,
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(1.dp, roleMeta.ring),
+                                onClick = onMessage
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Icon(Icons.Filled.Email, contentDescription = null, tint = roleMeta.text, modifier = Modifier.size(11.dp))
+                                    Spacer(Modifier.width(3.dp))
+                                    Text("Message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = roleMeta.text)
+                                }
+                            }
                         }
-                    }
-                }
-                if (isAdmin) {
-                    IconButton(onClick = onPin, modifier = Modifier.size(30.dp)) {
-                        Icon(
-                            Icons.Filled.PushPin,
-                            contentDescription = if (post.isPinned) "Unpin post" else "Pin post",
-                            tint = if (post.isPinned) AccentViolet else TextMuted,
-                            modifier = Modifier.size(15.dp)
-                        )
                     }
                 }
             }
@@ -1767,6 +1765,18 @@ private fun PostCard(
                         Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(compactCount(post.viewCount), fontSize = 12.sp, color = Color(0xFF94A3B8))
+                    }
+                }
+                if (isAdmin) {
+                    // Admin pin control lives with the other actions so the
+                    // header row stays roomy for name + badges.
+                    IconButton(onClick = onPin, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            Icons.Filled.PushPin,
+                            contentDescription = if (post.isPinned) "Unpin post" else "Pin post",
+                            tint = if (post.isPinned) AccentViolet else TextMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
             }
@@ -2233,7 +2243,7 @@ private fun CommentRow(
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 UserAvatar(
-                    photoUrl = comment.authorPicture.takeIf { it.isNotBlank() },
+                    photoUrl = ApiClient.resolveAvatarUrl(comment.authorPicture),
                     size = if (isReply) 26.dp else 30.dp
                 )
                 Spacer(Modifier.width(8.dp))
