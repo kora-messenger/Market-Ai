@@ -5488,6 +5488,7 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
     // week, most-reacted first. Real engagement-ranked data, never fabricated.
     const { rows: proofRows } = await pool.query(
       `SELECT p.id, p.author_name, p.body, p.outcome_tag,
+              NULLIF((SELECT u.username FROM users u WHERE lower(u.email) = lower(p.author_email) LIMIT 1), '') AS author_username,
               (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
               (SELECT COUNT(*)::int FROM post_reactions r WHERE r.post_id = p.id AND r.created_at >= $1 AND r.created_at < $2) AS week_reactions,
               COALESCE((
@@ -5504,13 +5505,13 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
       [weekStart, weekEnd]
     );
     const topProofs = proofRows.map((r) => ({
-      postId: r.id, authorName: r.author_name, body: r.body,
+      postId: r.id, authorName: r.author_name, authorUsername: r.author_username || null, body: r.body,
       outcomeTag: r.outcome_tag || null,
       authorIsPremium: r.author_is_premium || false,
       imageCount: r.image_count, weekReactions: r.week_reactions
     }));
     const proof = topProofs.length
-      ? { postId: topProofs[0].postId, authorName: topProofs[0].authorName, body: topProofs[0].body,
+      ? { postId: topProofs[0].postId, authorName: topProofs[0].authorName, authorUsername: topProofs[0].authorUsername, body: topProofs[0].body,
           authorIsPremium: topProofs[0].authorIsPremium,
           imageCount: topProofs[0].imageCount, weekReactions: topProofs[0].weekReactions }
       : null;

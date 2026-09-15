@@ -174,6 +174,7 @@ data class PinnedPost(
 data class ProofPost(
     val postId: String,
     val authorName: String,
+    val authorUsername: String? = null,
     val authorIsPremium: Boolean = false,
     val body: String,
     val imageCount: Int,
@@ -337,6 +338,7 @@ private fun parseTopProofs(leaderboard: JSONObject): List<ProofPost> {
         ProofPost(
             postId = o.optString("postId"),
             authorName = o.optString("authorName").ifBlank { "Trader" },
+            authorUsername = o.optString("authorUsername").ifBlank { null },
             authorIsPremium = o.optBoolean("authorIsPremium", false),
             body = o.optString("body"),
             imageCount = o.optInt("imageCount", 0),
@@ -1079,7 +1081,7 @@ private fun FeaturedProofRow(proofs: List<ProofPost>) {
                     Column {
                         coil.compose.AsyncImage(
                             model = ApiClient.communityImageUrl(proof.postId, 0),
-                            contentDescription = "Weekly proof from ${proof.authorName}",
+                            contentDescription = "Weekly proof from ${displayHandle(proof.authorName, proof.authorUsername)}",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1089,7 +1091,7 @@ private fun FeaturedProofRow(proofs: List<ProofPost>) {
                         Column(Modifier.padding(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    proof.authorName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                    displayHandle(proof.authorName, proof.authorUsername), fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onBackground,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
