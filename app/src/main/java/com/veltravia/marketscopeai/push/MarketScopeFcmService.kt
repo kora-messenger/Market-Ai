@@ -40,6 +40,7 @@ class MarketScopeFcmService : FirebaseMessagingService() {
         val channel = when (type) {
             "signal" -> CHANNEL_SIGNALS
             "community" -> CHANNEL_COMMUNITY
+            "price_alert" -> CHANNEL_PRICE_ALERTS
             else -> CHANNEL_GENERAL
         }
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -67,6 +68,7 @@ class MarketScopeFcmService : FirebaseMessagingService() {
         const val CHANNEL_SIGNALS = "signals"
         const val CHANNEL_COMMUNITY = "community"
         const val CHANNEL_GENERAL = "general"
+        const val CHANNEL_PRICE_ALERTS = "price_alerts"
 
         /** Create the channels once at app start (no-op below API 26). */
         fun createChannels(context: Context) {
@@ -81,7 +83,10 @@ class MarketScopeFcmService : FirebaseMessagingService() {
                 ).apply { description = "Activity on your community posts" },
                 NotificationChannel(
                     CHANNEL_GENERAL, "General", NotificationManager.IMPORTANCE_DEFAULT
-                ).apply { description = "Other MarketScope AI updates" }
+                ).apply { description = "Other MarketScope AI updates" },
+                NotificationChannel(
+                    CHANNEL_PRICE_ALERTS, "Price alerts", NotificationManager.IMPORTANCE_HIGH
+                ).apply { description = "Your instrument price levels are hit" }
             )
             channels.forEach { nm.createNotificationChannel(it) }
         }

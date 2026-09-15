@@ -125,6 +125,12 @@ object PushRouter {
      */
     var pendingDmThreadId by mutableStateOf<String?>(null)
 
+    /**
+     * A price-alert push was tapped — the nav graph should open the Market
+     * View screen for the instrument the alert fired on.
+     */
+    var pendingMarketId by mutableStateOf<String?>(null)
+
     fun tabForRoute(route: String?): Int? = when (route) {
         "signals" -> 1
         "community" -> 2
@@ -259,6 +265,15 @@ fun MarketAiApp() {
         if (threadId != null) {
             PushRouter.pendingDmThreadId = null
             navController.navigate("dm_chat/$threadId")
+        }
+    }
+
+    // Price-alert push tapped — open the Market View for that instrument.
+    LaunchedEffect(PushRouter.pendingMarketId) {
+        val marketId = PushRouter.pendingMarketId
+        if (marketId != null) {
+            PushRouter.pendingMarketId = null
+            navController.navigate("market/$marketId")
         }
     }
 

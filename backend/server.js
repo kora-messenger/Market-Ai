@@ -718,6 +718,20 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_push_log_time ON push_log(created_at DESC);
+    CREATE TABLE IF NOT EXISTS price_alerts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      symbol TEXT NOT NULL,
+      display TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      target_price DOUBLE PRECISION NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      triggered_at TIMESTAMPTZ,
+      triggered_price DOUBLE PRECISION
+    );
+    CREATE INDEX IF NOT EXISTS idx_price_alerts_user ON price_alerts(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_price_alerts_active ON price_alerts(symbol) WHERE status = 'active';
   `);
 }
 
@@ -5905,6 +5919,147 @@ async function broadcastNewSignal(signal) {
     console.error("broadcastNewSignal failed:", String(err.message || err));
   }
 }
+
+
+// --- Price alerts ----------------------------------------------------------
+// TradingView-style price alerts: a user picks a Watchlist instrument and a
+// direction ("rises above" / "falls below"), the server watches the real
+// price feeds every few minutes and pushes a notification when it triggers.
+
+const PRICE_ALERT_SYMBOLS = new Set(WATCHLIST.map((w) => w.id));
+const PRICE_ALERT_COOLDOWN_MIN = 10; // one reminder per alert per 10 min
+
+function priceAlertToApi(r) {
+  return {
+    id: r.id,
+    symbol: r.symbol,
+    display: r.display,
+    direction: r.direction,
+    targetPrice: r.target_price,
+    status: r.status,
+    createdAt: r.created_at,
+    triggeredAt: r.triggered_at,
+    triggeredPrice: r.triggered_price
+  };
+}
+
+/** Create a price alert for the signed-in user. */
+app.post("/api/price-alerts", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const symbol = String(req.body.symbol || "").toLowerCase().trim();
+  const direction = String(req.body.direction || "").toLowerCase().trim();
+  const targetPrice = Number(req.body.targetPrice);
+  if (!PRICE_ALERT_SYMBOLS.has(symbol)) {
+    return res.status(400).json({ error: "Unsupported instrument for alerts." });
+  }
+  if (direction !== "above" && direction !== "below") {
+    return res.status(400).json({ error: "Direction must be 'above' or 'below'." });
+  }
+  if (!Number.isFinite(targetPrice) || targetPrice <= 0) {
+    return res.status(400).json({ error: "A valid target price is required." });
+  }
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found." });
+    const meta = WATCHLIST.find((w) => w.id === symbol);
+    // Replace any existing alert for the same instrument+direction.
+    await pool.query(
+      `DELETE FROM price_alerts WHERE user_id = $1 AND symbol = $2 AND direction = $3`,
+      [me.id, symbol, direction]
+    );
+    const { rows } = await pool.query(
+      `INSERT INTO price_alerts (user_id, symbol, display, direction, target_price)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [me.id, symbol, meta ? meta.display : symbol.toUpperCase(), direction, targetPrice]
+    );
+    res.json({ alert: priceAlertToApi(rows[0]) });
+  } catch (err) {
+    res.status(500).json({ error: "Could not create the alert", detail: String(err.message || err) });
+  }
+});
+
+/** List the signed-in user's alerts (newest first). */
+app.get("/api/price-alerts", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found." });
+    const { rows } = await pool.query(
+      `SELECT * FROM price_alerts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [me.id]
+    );
+    res.json({ alerts: rows.map(priceAlertToApi) });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load alerts", detail: String(err.message || err) });
+  }
+});
+
+/** Delete one of the signed-in user's alerts. */
+app.delete("/api/price-alerts/:id", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found." });
+    await pool.query(`DELETE FROM price_alerts WHERE id = $1 AND user_id = $2`, [req.params.id, me.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not delete the alert", detail: String(err.message || err) });
+  }
+});
+
+/**
+ * Cron pass: check every active price alert against the real feeds and
+ * push a notification when it triggers. Triggered alerts auto-complete (one
+ * push each — exactly how the reference behaves), but a re-cross after the
+ * cooldown window re-fires so long-running moves are not missed silently.
+ */
+app.post("/api/cron/price-alerts", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await requireCronOrAdmin(req, res))) return;
+  try {
+    const { rows: alerts } = await pool.query(
+      `SELECT a.*, u.id AS uid FROM price_alerts a JOIN users u ON u.id = a.user_id
+       WHERE a.status = 'active' ORDER BY a.created_at ASC LIMIT 500`
+    );
+    if (alerts.length === 0) return res.json({ checked: 0, triggered: 0 });
+
+    // One price fetch per distinct symbol.
+    const symbols = [...new Set(alerts.map((a) => a.symbol))];
+    const prices = {};
+    await Promise.all(symbols.map(async (s) => {
+      try { prices[s] = await fetchPrice(s); } catch (_e) { prices[s] = null; }
+    }));
+
+    let triggered = 0;
+    for (const a of alerts) {
+      const price = prices[a.symbol];
+      if (price == null || !Number.isFinite(price)) continue;
+      const hit = a.direction === "above" ? price >= a.target_price : price <= a.target_price;
+      if (!hit) continue;
+
+      // Rate limit: skip if we pushed for this alert within the cooldown.
+      if (a.triggered_at && Date.now() - new Date(a.triggered_at).getTime() < PRICE_ALERT_COOLDOWN_MIN * 60 * 1000) continue;
+
+      const move = a.direction === "above" ? "risen above" : "fallen below";
+      const title = `${a.display} ${move} ${Number(a.target_price)}`;
+      const body = `${a.display} is now trading at ${Number(price.toFixed(Math.abs(price) >= 1000 ? 0 : 2)).toLocaleString("en-US")} — your alert level is ${Number(a.target_price).toLocaleString("en-US")}.`;
+      await notifyUser(a.uid, {
+        title,
+        body,
+        type: "price_alert",
+        data: { route: "market/" + a.symbol, alertId: String(a.id) }
+      });
+      await pool.query(
+        `UPDATE price_alerts SET status = 'triggered', triggered_at = now(), triggered_price = $2 WHERE id = $1`,
+        [a.id, price]
+      );
+      triggered++;
+    }
+    res.json({ checked: alerts.length, triggered });
+  } catch (err) {
+    res.status(500).json({ error: "Price alert pass failed", detail: String(err.message || err) });
+  }
+});
 
 app.post("/api/push/register", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });

@@ -77,7 +77,7 @@ async function sendFcm(token, { title, body, data }) {
     // system settings. Without channel_id Android drops the message onto
     // the FCM fallback "Miscellaneous" channel instead.
     const type = String((data && data.type) || "general");
-    const channelId = type === "signal" ? "signals" : type === "community" ? "community" : "general";
+    const channelId = type === "signal" ? "signals" : type === "community" ? "community" : type === "price_alert" ? "price_alerts" : "general";
     const message = {
       token,
       android: {

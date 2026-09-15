@@ -1149,6 +1149,46 @@ object ApiClient {
         request(request)
     }
 
+    /** Price alerts — list the signed-in user's alerts (newest first). */
+    suspend fun fetchPriceAlerts(sessionToken: String): JSONArray = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/price-alerts")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(
+                    json.optString("error", "Could not load alerts (${response.code})")
+                )
+            }
+            json.optJSONArray("alerts") ?: JSONArray()
+        }
+    }
+
+    /** Price alerts — create one ("above" = notify when price rises above target). */
+    suspend fun createPriceAlert(sessionToken: String, symbol: String, direction: String, targetPrice: Double): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("symbol", symbol).put("direction", direction).put("targetPrice", targetPrice)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/price-alerts")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Price alerts — delete one by id. */
+    suspend fun deletePriceAlert(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/price-alerts/$id")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .delete()
+            .build()
+        request(request)
+    }
+
     /** Real account status for the Settings screen — is a deletion pending? */
     suspend fun fetchAccountStatus(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

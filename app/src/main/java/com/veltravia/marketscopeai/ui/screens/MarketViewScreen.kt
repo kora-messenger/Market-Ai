@@ -29,7 +29,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -61,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.components.PremiumChoicePill
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
@@ -430,7 +435,200 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
             }
         }
 
+        // Price alerts — TradingView-style push alerts on this instrument.
+        Spacer(Modifier.height(18.dp))
+        PriceAlertSection(
+            instrumentId = id,
+            display = display,
+            livePrice = bigPrice
+        )
+
         Spacer(Modifier.height(110.dp))
+    }
+}
+
+/** One user price alert row (parsed from the backend payload). */
+private data class PriceAlertRow(
+    val id: String,
+    val direction: String,
+    val targetPrice: Double,
+    val status: String
+)
+
+/**
+ * Price alerts on the open instrument: direction + target level, created and
+ * managed here, evaluated server-side against the real price feeds, and
+ * delivered as high-priority pushes on the "price_alerts" channel.
+ */
+@Composable
+private fun PriceAlertSection(instrumentId: String, display: String, livePrice: Double?) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var alerts by remember { mutableStateOf<List<PriceAlertRow>>(emptyList()) }
+    var showForm by remember { mutableStateOf(false) }
+    var direction by remember { mutableStateOf("above") }
+    var priceInput by remember { mutableStateOf("") }
+    var creating by remember { mutableStateOf(false) }
+    var alertError by remember { mutableStateOf<String?>(null) }
+
+    val token = remember { SessionManager.sessionToken(context) }
+    if (token == null) return // alerts are for signed-in users only
+
+    fun load() {
+        scope.launch {
+            runCatching { ApiClient.fetchPriceAlerts(token) }
+                .onSuccess { arr ->
+                    alerts = (0 until arr.length()).mapNotNull { i ->
+                        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                        PriceAlertRow(
+                            id = o.optString("id"),
+                            direction = o.optString("direction"),
+                            targetPrice = o.optDouble("targetPrice"),
+                            status = o.optString("status")
+                        )
+                    }
+                }
+        }
+    }
+    LaunchedEffect(instrumentId) { load() }
+
+    // Prefill the target with the live price the first time we have one.
+    LaunchedEffect(livePrice) {
+        if (priceInput.isBlank() && livePrice != null && livePrice > 0) {
+            priceInput = formatPrice(instrumentId, livePrice).replace(",", "")
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.Notifications,
+                contentDescription = null,
+                tint = AccentViolet,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Price alerts",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Text(
+                    "We'll notify you when $display crosses your level",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+            }
+            Text(
+                if (showForm) "Close" else "Add alert",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = AccentViolet,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { showForm = !showForm }
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
+
+        if (showForm) {
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PremiumChoicePill(
+                    option = "Rises above",
+                    isSelected = direction == "above",
+                    onSelect = { direction = "above" },
+                    modifier = Modifier.weight(1f)
+                )
+                PremiumChoicePill(
+                    option = "Falls below",
+                    isSelected = direction == "below",
+                    onSelect = { direction = "below" },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = priceInput,
+                onValueChange = { priceInput = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                label = { Text("Target price") },
+                singleLine = true,
+                isError = alertError != null,
+                supportingText = alertError?.let { { Text(it, color = BearRed) } },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            GradientPrimaryButton(
+                text = if (creating) "Creating…" else "Create alert",
+                enabled = !creating,
+                onClick = {
+                    val target = priceInput.toDoubleOrNull()
+                    if (target == null || target <= 0) {
+                        alertError = "Enter a valid price"
+                        return@GradientPrimaryButton
+                    }
+                    creating = true
+                    alertError = null
+                    scope.launch {
+                        runCatching { ApiClient.createPriceAlert(token, instrumentId, direction, target) }
+                            .onSuccess {
+                                creating = false
+                                showForm = false
+                                load()
+                            }
+                            .onFailure {
+                                creating = false
+                                alertError = it.message ?: "Could not create the alert"
+                            }
+                    }
+                },
+                height = 44.dp,
+                showArrow = false
+            )
+        }
+
+        if (alerts.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            alerts.forEach { a ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(SurfaceLight)
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (a.direction == "above") "Rises above ${formatPrice(instrumentId, a.targetPrice)}"
+                            else "Falls below ${formatPrice(instrumentId, a.targetPrice)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            if (a.status == "triggered") "Triggered" else "Watching live prices",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (a.status == "triggered") BullGreen else TextMuted
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                runCatching { ApiClient.deletePriceAlert(token, a.id) }
+                                load()
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete alert", tint = TextMuted, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
     }
 }
 

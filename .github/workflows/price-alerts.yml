@@ -1,0 +1,32 @@
+name: Price alerts
+
+# TradingView-style price alerts: the backend checks every active alert
+# against the real price feeds (Yahoo / Coinbase / Frankfurter chains) and
+# pushes a notification the moment the level is crossed. Every 5 minutes —
+# tight enough that a hit lands while it still matters.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  price-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run price alert pass
+        run: |
+          set -x
+          STATUS=$(curl -s -o /tmp/alerts.json -w "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "https://market-ai-api-jwfb.onrender.com/api/cron/price-alerts" || echo "000")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          cat /tmp/alerts.json || true
+          if [ "$STATUS" != "200" ]; then
+            echo "Price alert pass failed with status $STATUS"
+            cat /tmp/alerts.json 2>/dev/null | head -c 300 || true
+            exit 1
+          fi
