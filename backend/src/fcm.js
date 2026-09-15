@@ -82,7 +82,7 @@ async function sendFcm(token, { title, body, data }) {
       token,
       android: {
         priority: "high",
-        notification: { channel_id: channelId, priority: "high" }
+        notification: { channel_id: channelId }
       },
       notification: { title: String(title || "MarketScope AI"), body: String(body || "") }
     };
