@@ -5093,6 +5093,8 @@ async function weeklyScores(from, to) {
             (SELECT COUNT(*)::int FROM post_reactions r JOIN community_posts p ON p.id = r.post_id WHERE r.created_at >= $1 AND r.created_at < $2 AND p.author_email = e.email) AS reactionsReceived,
             (SELECT COUNT(*)::int FROM post_reactions r WHERE r.created_at >= $1 AND r.created_at < $2 AND r.user_id IN (SELECT id FROM users WHERE email = e.email)) AS reactionsGiven,
             (SELECT COUNT(*)::int FROM post_poll_votes v WHERE v.created_at >= $1 AND v.created_at < $2 AND v.user_id IN (SELECT id FROM users WHERE email = e.email)) AS pollVotes,
+            NULLIF((SELECT u.username FROM users u
+                    WHERE lower(u.email) = lower(e.email) LIMIT 1), '') AS username,
             COALESCE((
               SELECT (u.is_premium OR EXISTS (
                 SELECT 1 FROM premium_grants g
@@ -5524,6 +5526,7 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
       standings: rows.slice(0, 10).map((r, i) => ({
         rank: i + 1,
         name: r.name,
+        username: r.username || null,
         email: r.email,
         score: r.score,
         posts: r.posts,
@@ -5538,6 +5541,7 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
       lastWeekWinners: lastWeekRows.map((r, i) => ({
         rank: i + 1,
         name: r.name,
+        username: r.username || null,
         email: r.email,
         score: r.score,
         isPremium: r.is_premium || false,

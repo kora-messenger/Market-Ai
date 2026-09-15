@@ -59,6 +59,7 @@ import java.time.format.DateTimeFormatter
 data class StandingsEntry(
     val rank: Int,
     val name: String,
+    val username: String? = null,
     val email: String,
     val score: Int,
     val posts: Int,
@@ -76,6 +77,7 @@ private fun parseStandings(json: JSONObject): List<StandingsEntry> {
         StandingsEntry(
             rank = o.optInt("rank"),
             name = o.optString("name").ifBlank { "Trader" },
+            username = o.optString("username").ifBlank { null },
             email = o.optString("email"),
             score = o.optInt("score"),
             posts = o.optInt("posts"),
@@ -87,6 +89,10 @@ private fun parseStandings(json: JSONObject): List<StandingsEntry> {
         )
     }
 }
+
+/** @handle with the full name as fallback — same convention as the Community feed. */
+private fun handle(name: String, username: String?): String =
+    username?.takeIf { it.isNotBlank() }?.let { "@$it" } ?: name
 
 private fun formatDate(iso: String): String = try {
     val t = Instant.parse(iso)
@@ -130,6 +136,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                         name = o.optString("name").ifBlank { "Trader" },
                         email = o.optString("email"),
                         score = o.optInt("score"),
+                        username = o.optString("username").ifBlank { null },
                         isPremium = o.optBoolean("isPremium", false),
                         posts = 0, comments = 0, reactionsReceived = 0, reactionsGiven = 0, pollVotes = 0
                     )
@@ -313,7 +320,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                             }
                             Spacer(Modifier.width(10.dp))
                             Text(
-                                w.name,
+                                handle(w.name, w.username),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onBackground,
@@ -403,7 +410,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            e.name + if (isMe) " (you)" else "",
+                                            handle(e.name, e.username) + if (isMe) " (you)" else "",
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onBackground
