@@ -85,6 +85,29 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         presenceTick.run()
+        ensurePushTokenRegistered()
+    }
+
+    /**
+     * Fetch (or refresh) the FCM token and register it with the backend.
+     * Called on every foreground (onStart), not just cold start — Play
+     * Services can be mid-initialization right after a fresh install/update,
+     * which silently drops a cold-start-only registration with no retry.
+     * FirebaseMessaging.getInstance().token is cheap/cached internally, so
+     * repeating this on every resume is safe and is Firebase's own
+     * recommended pattern.
+     */
+    private fun ensurePushTokenRegistered() {
+        if (com.veltravia.marketscopeai.data.SessionManager.sessionToken(applicationContext) == null) return
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                com.veltravia.marketscopeai.push.MarketScopeFcmService.registerToken(
+                    applicationContext, token
+                )
+            }
+            .addOnFailureListener { err ->
+                android.util.Log.w("MarketScopeAI", "FCM token fetch failed: ${err.message}")
+            }
     }
 
     override fun onStop() {
@@ -98,15 +121,6 @@ class MainActivity : ComponentActivity() {
         com.veltravia.marketscopeai.push.MarketScopeFcmService.createChannels(applicationContext)
         handlePushIntent(intent)
         handleDeepLink(intent)
-        // Register this device for FCM pushes whenever the user is signed in.
-        if (com.veltravia.marketscopeai.data.SessionManager.sessionToken(applicationContext) != null) {
-            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
-                .addOnSuccessListener { token ->
-                    com.veltravia.marketscopeai.push.MarketScopeFcmService.registerToken(
-                        applicationContext, token
-                    )
-                }
-        }
 
         // --- Monetization boot (Free + Premium + Advertising) ---
         // 1) Privacy-first: gather any consent the region requires (UMP),

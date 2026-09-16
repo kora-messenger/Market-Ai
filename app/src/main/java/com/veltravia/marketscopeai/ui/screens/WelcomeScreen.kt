@@ -176,6 +176,14 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
                                         isPremium = verifiedUser?.optBoolean("isPremium", false) ?: false
                                     )
                                 )
+                                // Register this device for pushes right away — don't wait for
+                                // the next app foreground (onStart), which may be a while off.
+                                com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                                    .addOnSuccessListener { fcmToken ->
+                                        com.veltravia.marketscopeai.push.MarketScopeFcmService.registerToken(
+                                            context, fcmToken
+                                        )
+                                    }
                                 onSignedIn(alreadyOnboarded)
                             } catch (e: Exception) {
                                 error = e.message ?: "Login failed. Please try again."
