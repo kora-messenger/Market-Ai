@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -119,6 +120,7 @@ import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Duration
@@ -412,7 +414,14 @@ fun CommunityScreen(
 
     fun load(reset: Boolean) {
         if (token == null) return
+        // Only the very first cold load (empty feed) gets the deliberate
+        // skeleton treatment: on a slow connection the shimmer just stays up
+        // naturally until real data arrives; on a fast connection the fetch
+        // can finish in well under a second, which reads as an ugly flash —
+        // so we hold the skeleton up to a smooth ~2s minimum before reveal.
+        val isFirstLoad = reset && posts.isEmpty()
         if (reset) loading = true else loadingMore = true
+        val startedAt = System.currentTimeMillis()
         scope.launch {
             try {
                 val offset = if (reset) 0 else posts.size
@@ -420,6 +429,11 @@ fun CommunityScreen(
                 val page = parseFeed(feed)
                 hasMore = feed.optBoolean("hasMore", false)
                 totalPosts = feed.optInt("total", 0)
+                if (isFirstLoad) {
+                    val elapsed = System.currentTimeMillis() - startedAt
+                    val minDurationMs = 2000L
+                    if (elapsed < minDurationMs) delay(minDurationMs - elapsed)
+                }
                 if (reset) {
                     posts = page
                     error = null
@@ -1537,6 +1551,10 @@ private fun PostCard(
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
+                    // Name row stays lean — name (always fully visible, like
+                    // "@hosanna" in the reference) + verified check + ONE role
+                    // badge. Extra decorative tags never crowd this row, so
+                    // the name can never be squeezed down to just "...".
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             displayHandle(post.authorName, post.authorUsername),
@@ -1544,10 +1562,8 @@ private fun PostCard(
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            // Truncate instead of wrapping: the badges after
-                            // the name must always stay visible in the row.
-                            modifier = Modifier.weight(1f, fill = false)
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                         if (roleMeta != null) {
                             Spacer(Modifier.width(4.dp))
@@ -1558,28 +1574,34 @@ private fun PostCard(
                             Spacer(Modifier.width(4.dp))
                             Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(14.dp))
                         }
-                        if (post.isTopContributor) {
-                            Spacer(Modifier.width(6.dp))
-                            Surface(color = Color(0xFFFEF3C7), shape = RoundedCornerShape(50)) {
-                                Text(
-                                    "\uD83C\uDFC6 Top Contributor",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFB45309),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
+                    }
+                    // Secondary tags (Top Contributor / Pinned) live on their
+                    // own wrapping row below the name — they never fight the
+                    // name or the role badge for space.
+                    if (post.isTopContributor || post.isPinned) {
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (post.isTopContributor) {
+                                Surface(color = Color(0xFFFEF3C7), shape = RoundedCornerShape(50)) {
+                                    Text(
+                                        "\uD83C\uDFC6 Top Contributor",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFB45309),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
-                        }
-                        if (post.isPinned) {
-                            Spacer(Modifier.width(6.dp))
-                            Surface(color = Color(0xFFECFEFF), shape = RoundedCornerShape(50)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Icon(Icons.Filled.PushPin, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(10.dp))
-                                    Spacer(Modifier.width(3.dp))
-                                    Text("Pinned", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F766E))
+                            if (post.isPinned) {
+                                Surface(color = Color(0xFFECFEFF), shape = RoundedCornerShape(50)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(Icons.Filled.PushPin, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(10.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text("Pinned", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F766E))
+                                    }
                                 }
                             }
                         }
@@ -1682,9 +1704,19 @@ private fun PostCard(
             }
 
             // Engagement strip — reaction chips, the + button, the comments
-            // pill, then share + views anchored right. One tight row.
+            // pill (left, horizontally scrollable so a growing reaction
+            // count never squeezes the Comments pill into near-zero width
+            // and wraps it letter-by-letter), then share + views anchored
+            // right on their own fixed (non-scrolling) section.
             Spacer(Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .horizontalScroll(rememberScrollState())
+            ) {
                 post.reactions.take(4).forEach { reaction ->
                     Surface(
                         color = if (reaction.mine) AccentCyan.copy(alpha = 0.12f) else Color(0xFFF1F5F9),
@@ -1727,7 +1759,7 @@ private fun PostCard(
                         ) {
                             Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Comments \u00B7 ${post.commentCount}", fontSize = 12.sp, color = Color(0xFF475569))
+                            Text("Comments \u00B7 ${post.commentCount}", fontSize = 12.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
                         }
                     }
                 } else if (isMentorAuthor) {
@@ -1739,11 +1771,12 @@ private fun PostCard(
                         ) {
                             Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Mentor post", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                            Text("Mentor post", fontSize = 11.sp, color = Color(0xFF94A3B8), maxLines = 1, softWrap = false)
                         }
                     }
                 }
-                Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.weight(1f))
                 Surface(
                     color = Color.White,
                     shape = CircleShape,
