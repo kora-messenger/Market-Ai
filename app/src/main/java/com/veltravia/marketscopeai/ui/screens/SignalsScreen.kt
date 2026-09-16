@@ -1342,7 +1342,10 @@ fun DailySignalDetailScreen(
                             .background(com.veltravia.marketscopeai.ui.theme.SurfaceDark)
                             .padding(16.dp)
                     ) {
-                        Text(thesis, style = MaterialTheme.typography.bodyMedium, color = Color.White, lineHeight = 20.sp)
+                        // The app is now always-light — SurfaceDark resolves to a
+                        // light gray card, so this text must stay dark, not the
+                        // old dark-theme white (which was invisible on light gray).
+                        Text(thesis, style = MaterialTheme.typography.bodyMedium, color = com.veltravia.marketscopeai.ui.theme.TextPrimary, lineHeight = 20.sp)
                     }
                 }
 
