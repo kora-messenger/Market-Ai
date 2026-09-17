@@ -298,12 +298,17 @@ fun DmChatScreen(threadId: String, onBack: () -> Unit) {
         }
     }
 
+    // No .imePadding() here: the activity declares
+    // windowSoftInputMode="adjustResize" (non-edge-to-edge window), so the
+    // OS already resizes the whole window around the keyboard. Stacking
+    // Compose's own imePadding() on top double-counted the keyboard height
+    // and shoved this header clean off the top of the screen until the
+    // keyboard closed.
     Column(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
-            .imePadding()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
