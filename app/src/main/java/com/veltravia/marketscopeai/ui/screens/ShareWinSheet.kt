@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -157,7 +156,9 @@ fun ShareWinSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .imePadding()
+                // No imePadding(): activity uses adjustResize (non-edge-to-edge)
+                // so the OS already resizes around the keyboard; stacking
+                // Compose's imePadding() double-counts and pushes content off.
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
         ) {

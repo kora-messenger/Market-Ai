@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -230,7 +229,9 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .imePadding()
+            // No imePadding(): activity uses adjustResize (non-edge-to-edge)
+            // so the OS already resizes around the keyboard; stacking
+            // Compose's imePadding() double-counts and pushes content off.
             .padding(horizontal = 20.dp)
     ) {
         Spacer(Modifier.height(20.dp))
