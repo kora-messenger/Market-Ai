@@ -5719,7 +5719,13 @@ app.get("/api/dm/threads", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT t.id, t.last_message, t.last_message_at, t.last_sender, t.created_at,
               CASE WHEN lower(t.user_email) = $1 THEN t.mentor_email ELSE t.user_email END AS counterpart_email,
-              CASE WHEN lower(t.user_email) = $1 THEN t.mentor_unread ELSE t.user_unread END AS unread,
+              -- MY OWN unread count, not the counterpart's: when I'm on the
+              -- user side, the mentor's message-to-me bumps user_unread, so
+              -- THAT is what I should see here — not mentor_unread, which
+              -- only counts messages I sent that the mentor hasn't read yet
+              -- (that swap was the bug: my own sent messages were showing up
+              -- as unread on MY OWN inbox instead of theirs).
+              CASE WHEN lower(t.user_email) = $1 THEN t.user_unread ELSE t.mentor_unread END AS unread,
               cu.name AS counterpart_name, cu.role AS counterpart_role,
               CASE WHEN cu.avatar_key IS NOT NULL AND cu.avatar_key <> '' THEN 'avatar:' || cu.id ELSE cu.picture END AS counterpart_avatar
        FROM dm_threads t
