@@ -940,7 +940,7 @@ fun CommunityScreen(
                 Text(
                     "The post and its comments will be removed permanently. This cannot be undone.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                    color = TextMuted
                 )
             },
             confirmButton = {
