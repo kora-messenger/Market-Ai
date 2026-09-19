@@ -229,6 +229,12 @@ fun AiTradePlanWizardScreen(
     // Back at step 0 leaves the wizard; later steps go back a page.
     BackHandler(enabled = page > 0) { page-- }
 
+    val handleBack: () -> Unit = if (page > 0) {
+        { page-- }
+    } else {
+        onBack
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -237,7 +243,7 @@ fun AiTradePlanWizardScreen(
     ) {
         Spacer(Modifier.height(8.dp))
         Box(modifier = Modifier.fillMaxWidth()) {
-            IconButton(onClick = if (page > 0) { { page-- } } else onBack) {
+            IconButton(onClick = handleBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
