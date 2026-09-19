@@ -79,12 +79,12 @@ import java.util.Locale
 import java.util.TimeZone
 
 // ===========================================================================
-// News Outlook — a focused, single-purpose economic-calendar screen: a
-// timezone-aware feed of scheduled macro events with impact/currency
-// filters and a real AI "directional implication" note per event. Uses the
-// same live economic-calendar backend as the Calendar tab, so this is a
-// second, more specialised lens on the same real data — not a duplicate
-// dataset.
+// News Outlook — a focused, single-purpose economic-calendar screen: the
+// THREE most important macro events right now (high impact first, then
+// closest in time), each with a real AI "directional implication" note.
+// Currency/impact filters still apply first; the full schedule lives in
+// the Calendar tab, so this screen stays deliberately short — the events
+// most likely to move the markets, nothing else.
 // ===========================================================================
 
 private data class OutlookEvent(
@@ -148,6 +148,13 @@ private val utcParser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.
     timeZone = TimeZone.getTimeZone("UTC")
 }
 
+/** Higher = more market-moving. Drives the top-3 ranking below. */
+private fun impactRank(impact: String): Int = when (impact.lowercase()) {
+    "high" -> 3
+    "medium" -> 2
+    else -> 1
+}
+
 @Composable
 fun NewsOutlookScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -202,6 +209,18 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
             (selectedCurrencies.isEmpty() || (ev.currency != null && ev.currency in selectedCurrencies))
     }
 
+    // The screen shows only the 3 most important events: impact first,
+    // then how close the event is in time (recent past and near future
+    // both count as "today's news"). The full feed stays in Calendar.
+    val now = System.currentTimeMillis()
+    val topThree = filtered
+        .filter { it.timestampMillis >= now - 12 * 3600_000L && it.timestampMillis <= now + 3 * 24 * 3600_000L }
+        .sortedWith(
+            compareByDescending<OutlookEvent> { impactRank(it.impact) }
+                .thenBy { kotlin.math.abs(it.timestampMillis - now) }
+        )
+        .take(3)
+
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -230,14 +249,14 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
         ) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "All important news today",
+                "Very important news today",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextPrimary
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Stay ahead of the scheduled events that tend to move the markets you trade.",
+                "The three highest-impact events on the schedule — the ones most likely to move the markets you trade.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted
             )
@@ -298,10 +317,18 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
                     }
                 }
                 else -> {
-                    filtered.sortedBy { it.timestampMillis }.forEach { ev ->
+                    topThree.sortedBy { it.timestampMillis }.forEach { ev ->
                         OutlookEventCard(ev, selectedTz.zoneId, token)
                         Spacer(Modifier.height(12.dp))
                     }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "For the complete schedule, open the Calendar tab.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
             Spacer(Modifier.height(24.dp))
