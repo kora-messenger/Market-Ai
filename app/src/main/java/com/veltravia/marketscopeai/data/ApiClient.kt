@@ -1262,6 +1262,97 @@ object ApiClient {
         request(request)
     }
 
+    /** Thrown when the user has already saved the max number of AI trade plans. */
+    class TradePlanLimitException(message: String) : Exception(message)
+
+    /** Saved AI-generated trade plan summaries for the signed-in user (max 3), newest first. */
+    suspend fun fetchAiTradePlans(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/ai-trade-plans")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Full content of one saved AI trade plan. */
+    suspend fun fetchAiTradePlan(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/ai-trade-plans/$id")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /**
+     * Generates a personalized AI trade plan from the 5-step questionnaire and saves it.
+     * Throws TradePlanLimitException when the user already has 3 saved plans.
+     */
+    suspend fun generateAiTradePlan(
+        sessionToken: String,
+        name: String,
+        experience: String,
+        goal: String,
+        capital: String,
+        assets: List<String>,
+        style: String,
+        timeframes: List<String>,
+        entryCriteria: String,
+        riskPerTrade: String,
+        rrRatio: String,
+        avoidConditions: String,
+        emotions: String,
+        losingPlan: String,
+        idealRoutine: String,
+        notes: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().apply {
+            put("name", name)
+            put("experience", experience)
+            put("goal", goal)
+            put("capital", capital.toDoubleOrNull() ?: 0.0)
+            put("assets", JSONArray(assets))
+            put("style", style)
+            put("timeframes", JSONArray(timeframes))
+            put("entryCriteria", entryCriteria)
+            put("riskPerTrade", riskPerTrade.toDoubleOrNull() ?: 0.0)
+            put("rrRatio", rrRatio)
+            put("avoidConditions", avoidConditions)
+            put("emotions", emotions)
+            put("losingPlan", losingPlan)
+            put("idealRoutine", idealRoutine)
+            put("notes", notes)
+        }
+        val httpRequest = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/ai-trade-plans/generate")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        client.newCall(httpRequest).execute().use { response ->
+            val bodyStr = response.body?.string() ?: "{}"
+            val json = JSONObject(bodyStr)
+            if (!response.isSuccessful) {
+                val message = json.optString("error", "Could not create your trade plan (${response.code})")
+                if (response.code == 409 && json.optBoolean("limitReached", false)) {
+                    throw TradePlanLimitException(message)
+                }
+                throw MarketAiException(message)
+            }
+            json
+        }
+    }
+
+    /** Deletes a saved AI trade plan owned by the signed-in user. */
+    suspend fun deleteAiTradePlan(sessionToken: String, id: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/ai-trade-plans/$id")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .delete()
+            .build()
+        request(request)
+    }
+
     /**
      * Reads a chart screenshot from the photo picker, downscales it so the upload stays
      * light while remaining readable, and returns a base64 JPEG data URL.

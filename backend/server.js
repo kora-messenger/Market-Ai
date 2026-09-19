@@ -602,6 +602,16 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS ai_trade_plans (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      inputs JSONB NOT NULL,
+      content JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_trade_plans_user ON ai_trade_plans(user_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS community_posts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -3506,6 +3516,236 @@ app.delete("/api/trade-plans/:id", requireAuth, async (req, res) => {
     if (!rowCount) {
       return res.status(404).json({ error: "Trade plan not found" });
     }
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: "Could not delete trade plan", detail: String(err.message || err) });
+  }
+});
+
+// ============================================================
+// AI Trade Plan — a personalized trading playbook generated from a
+// 5-step questionnaire (profile, strategy, risk rules, psychology,
+// review) plus the trader's REAL data: their onboarding questionnaire
+// profile and their actual usage stats. Capped at MAX_AI_TRADE_PLANS
+// saved plans per user so plans stay meaningful rather than piling up.
+// ============================================================
+const MAX_AI_TRADE_PLANS = 3;
+
+function buildTradePlanMessages(inputs, traderProfileText, statsText) {
+  const {
+    name, experience, goal, capital, assets, style, timeframes,
+    entryCriteria, riskPerTrade, rrRatio, avoidConditions,
+    emotions, losingPlan, idealRoutine, notes
+  } = inputs;
+
+  const system = `You are a veteran trading coach writing a personalized trading playbook for one specific trader. You write in plain, direct language — no hype, no guaranteed-return language, no financial promises. You are blunt when their stated habits are risky (e.g. if their risk per trade is high, or their emotional challenges suggest revenge trading, say so plainly and give a concrete fix). Ground every section in the specific details you were given — never write generic filler that could apply to anyone.
+
+Respond with ONLY a JSON object (no markdown fences) with these exact keys, each a string except checklist which is an array of short strings:
+{
+  "snapshot": "2-3 sentences summarizing who this trader is and what this plan is built to fix or reinforce, referencing their actual stated experience, goal and capital.",
+  "execution": "A concrete execution framework: how they should identify and enter trades given their style, timeframes and entry criteria. 3-5 sentences or short paragraphs.",
+  "riskRules": "Specific, numeric risk rules built from their stated risk-per-trade and risk-to-reward ratio, plus what to do about their stated avoid-conditions. Call out if their numbers look risky.",
+  "mindset": "Address their specific stated emotional challenges and losing-streak plan directly — give one concrete technique for each challenge they named, not generic advice.",
+  "checklist": ["4 to 6 short, specific pre-market checklist items this exact trader should run through before taking a trade, derived from everything above"],
+  "bottomLine": "1-2 sentences: the single most important thing this trader should hold onto, tied to their stated goal."
+}`;
+
+  const user = `Build this trader's personalized trade plan named "${name}".
+
+Profile: experience level ${experience || "not specified"}; main goal: ${goal || "not specified"}; trading capital: $${capital || "not specified"}.
+Strategy: trades ${Array.isArray(assets) && assets.length ? assets.join(", ") : "unspecified assets"}; style: ${style || "not specified"}; timeframes: ${Array.isArray(timeframes) && timeframes.length ? timeframes.join(", ") : "not specified"}. Their own entry criteria, in their words: "${entryCriteria || "not specified"}".
+Risk: max risk per trade ${riskPerTrade ? riskPerTrade + "%" : "not specified"}; target risk-to-reward ratio ${rrRatio || "not specified"}; conditions they say they should avoid trading in: "${avoidConditions || "not specified"}".
+Psychology: emotional challenges they admit to: "${emotions || "not specified"}"; their current plan for handling a losing streak: "${losingPlan || "not specified"}"; their ideal daily routine: "${idealRoutine || "not specified"}".
+${notes ? `Additional notes from the trader: "${notes}".` : ""}
+${traderProfileText || ""}
+${statsText || ""}
+
+Write the plan now as the JSON object described.`;
+
+  return [{ role: "system", content: system }, { role: "user", content: user }];
+}
+
+app.get("/api/ai-trade-plans", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.name, p.inputs, p.created_at
+       FROM ai_trade_plans p
+       JOIN users u ON u.id = p.user_id
+       WHERE u.google_sub = $1
+       ORDER BY p.created_at DESC LIMIT ${MAX_AI_TRADE_PLANS}`,
+      [req.session.sub]
+    );
+    res.json({
+      plans: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        experience: r.inputs?.experience || null,
+        goal: r.inputs?.goal || null,
+        createdAt: r.created_at
+      })),
+      maxPlans: MAX_AI_TRADE_PLANS
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load trade plans", detail: String(err.message || err) });
+  }
+});
+
+app.get("/api/ai-trade-plans/:id", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: "Trade plan not found" });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.name, p.inputs, p.content, p.created_at
+       FROM ai_trade_plans p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.id = $1 AND u.google_sub = $2`,
+      [req.params.id, req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Trade plan not found" });
+    const r = rows[0];
+    res.json({ id: r.id, name: r.name, inputs: r.inputs, content: r.content, createdAt: r.created_at });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load trade plan", detail: String(err.message || err) });
+  }
+});
+
+app.post("/api/ai-trade-plans/generate", requireAuth, async (req, res) => {
+  if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
+    return res.status(503).json({
+      error: "Plan generation is not configured yet. Add OPENAI_API_KEY or OPENROUTER_API_KEY."
+    });
+  }
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+
+  const body = req.body || {};
+  const name = String(body.name || "").trim().slice(0, 60);
+  const experience = String(body.experience || "").trim().slice(0, 40);
+  const goal = String(body.goal || "").trim().slice(0, 60);
+  const capital = body.capital != null ? Number(body.capital) : null;
+  const assets = Array.isArray(body.assets) ? body.assets.map(String).slice(0, 8) : [];
+  const style = String(body.style || "").trim().slice(0, 40);
+  const timeframes = Array.isArray(body.timeframes) ? body.timeframes.map(String).slice(0, 3) : [];
+  const entryCriteria = String(body.entryCriteria || "").trim().slice(0, 800);
+  const riskPerTrade = body.riskPerTrade != null ? Number(body.riskPerTrade) : null;
+  const rrRatio = String(body.rrRatio || "").trim().slice(0, 20);
+  const avoidConditions = String(body.avoidConditions || "").trim().slice(0, 800);
+  const emotions = String(body.emotions || "").trim().slice(0, 400);
+  const losingPlan = String(body.losingPlan || "").trim().slice(0, 800);
+  const idealRoutine = String(body.idealRoutine || "").trim().slice(0, 800);
+  const notes = String(body.notes || "").trim().slice(0, 800);
+
+  const missing = [];
+  if (!name) missing.push("Plan name");
+  if (!experience) missing.push("Experience Level");
+  if (!goal) missing.push("Main Trading Goal");
+  if (!capital || capital <= 0) missing.push("Trading Capital");
+  if (!assets.length) missing.push("Assets Traded");
+  if (!style) missing.push("Trading Style");
+  if (!timeframes.length) missing.push("Preferred Timeframe(s)");
+  if (!entryCriteria) missing.push("Entry Criteria");
+  if (!riskPerTrade || riskPerTrade <= 0) missing.push("Max Risk Per Trade");
+  if (!rrRatio) missing.push("Risk-to-Reward Ratio");
+  if (missing.length) {
+    return res.status(400).json({ error: `Please complete the "${missing[0]}" field.`, missing });
+  }
+
+  let userRow;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, is_premium, premium_expires_at, questionnaire,
+              (SELECT COUNT(*)::int FROM ai_trade_plans WHERE user_id = u.id) AS plan_count,
+              (SELECT COUNT(*)::int FROM analyses WHERE user_id = u.id) AS analyses_count
+       FROM users u WHERE u.google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    userRow = rows[0];
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load account", detail: String(err.message || err) });
+  }
+
+  if (userRow.plan_count >= MAX_AI_TRADE_PLANS) {
+    return res.status(409).json({
+      error: `You already have ${MAX_AI_TRADE_PLANS} trade plans saved. Delete one before creating a new plan.`,
+      limitReached: true,
+      maxPlans: MAX_AI_TRADE_PLANS
+    });
+  }
+
+  const isPremium = paidPremiumActive(userRow);
+  const traderProfileText = profilePromptText(userRow.questionnaire);
+  const statsText = userRow.analyses_count > 0
+    ? ` Real usage on record: they have run ${userRow.analyses_count} AI chart ${userRow.analyses_count === 1 ? "analysis" : "analyses"} in MarketScope AI so far — if their stated habits above seem to contradict a disciplined amount of analysis, or if very few analyses suggest they're still building the habit, mention it briefly.`
+    : ` Real usage on record: they have not yet run an AI chart analysis in MarketScope AI — gently note that reviewing a real chart analysis would sharpen this plan.`;
+
+  const messages = buildTradePlanMessages(
+    { name, experience, goal, capital, assets, style, timeframes, entryCriteria, riskPerTrade, rrRatio, avoidConditions, emotions, losingPlan, idealRoutine, notes },
+    traderProfileText,
+    statsText
+  );
+
+  const payload = {
+    model: ANALYSIS_MODEL,
+    messages,
+    max_tokens: 1600,
+    response_format: { type: "json_object" },
+    reasoning: { effort: "low" }
+  };
+
+  let content;
+  try {
+    const result = await callAI(payload, "trade-plan", { premium: isPremium });
+    if (!result.ok) {
+      return res.status(502).json({ error: "The plan generator is unavailable right now. Try again shortly." });
+    }
+    const data = await result.response.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    const parsed = extractJson(text);
+    content = {
+      snapshot: String(parsed.snapshot || "").slice(0, 1200),
+      execution: String(parsed.execution || "").slice(0, 1600),
+      riskRules: String(parsed.riskRules || "").slice(0, 1600),
+      mindset: String(parsed.mindset || "").slice(0, 1600),
+      checklist: Array.isArray(parsed.checklist) ? parsed.checklist.map(String).slice(0, 8) : [],
+      bottomLine: String(parsed.bottomLine || "").slice(0, 500)
+    };
+  } catch (err) {
+    console.error("[ai-trade-plans/generate] AI/parse error:", String(err.message || err));
+    return res.status(502).json({ error: "Something went wrong while creating your plan. Try again." });
+  }
+
+  const inputs = { name, experience, goal, capital, assets, style, timeframes, entryCriteria, riskPerTrade, rrRatio, avoidConditions, emotions, losingPlan, idealRoutine, notes };
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO ai_trade_plans (user_id, name, inputs, content)
+       VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+      [userRow.id, name, JSON.stringify(inputs), JSON.stringify(content)]
+    );
+    res.status(201).json({ id: rows[0].id, name, inputs, content, createdAt: rows[0].created_at });
+  } catch (err) {
+    res.status(500).json({ error: "Could not save your trade plan", detail: String(err.message || err) });
+  }
+});
+
+app.delete("/api/ai-trade-plans/:id", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(404).json({ error: "Trade plan not found" });
+  }
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM ai_trade_plans p
+       USING users u
+       WHERE p.id = $1 AND p.user_id = u.id AND u.google_sub = $2`,
+      [req.params.id, req.session.sub]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Trade plan not found" });
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: "Could not delete trade plan", detail: String(err.message || err) });

@@ -82,7 +82,8 @@ import com.veltravia.marketscopeai.ui.screens.CalendarScreen
 import com.veltravia.marketscopeai.ui.screens.WallOfWinsScreen
 import com.veltravia.marketscopeai.ui.screens.RiskCalculatorScreen
 import com.veltravia.marketscopeai.ui.screens.NotificationsScreen
-import com.veltravia.marketscopeai.ui.screens.CreateTradePlanScreen
+import com.veltravia.marketscopeai.ui.screens.AiTradePlanWizardScreen
+import com.veltravia.marketscopeai.ui.screens.AiTradePlanDetailScreen
 import com.veltravia.marketscopeai.ui.screens.ChartUploadScreen
 import com.veltravia.marketscopeai.ui.screens.FirstAnalysisScreen
 import com.veltravia.marketscopeai.ui.screens.SubscribeScreen
@@ -479,9 +480,19 @@ fun MarketAiApp() {
             AdminPremiumScreen(onBack = { navController.popBackStack() })
         }
         composable("create_trade_plan") {
-            CreateTradePlanScreen(
+            AiTradePlanWizardScreen(
                 onBack = { navController.popBackStack() },
-                onSaved = { navController.popBackStack() }
+                onCreated = { planId ->
+                    navController.navigate("ai_trade_plan/$planId") {
+                        popUpTo("create_trade_plan") { inclusive = true }
+                    }
+                }
+            )
+        }
+        composable("ai_trade_plan/{id}") { entry ->
+            AiTradePlanDetailScreen(
+                planId = entry.arguments?.getString("id") ?: "",
+                onBack = { navController.popBackStack() }
             )
         }
         composable("questionnaire") {
@@ -652,7 +663,8 @@ private fun MainTabs(navController: NavHostController) {
                         navController.navigate("signal/${id}")
                     },
                     onCreateTradePlan = { navController.navigate("create_trade_plan") },
-                    onOpenSignal = { id -> navController.navigate("daily_signal/$id") }
+                    onOpenSignal = { id -> navController.navigate("daily_signal/$id") },
+                    onOpenTradePlan = { id -> navController.navigate("ai_trade_plan/$id") }
                 )
                 else -> ProfileScreen(
                     onSignOut = {

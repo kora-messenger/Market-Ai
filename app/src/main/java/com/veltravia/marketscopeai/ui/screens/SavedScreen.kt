@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Bookmark
@@ -81,7 +82,8 @@ private enum class SignalFilter(val label: String) { ALL("All signals"), SCALP("
 fun SavedScreen(
     onOpenAnalysis: (String) -> Unit,
     onCreateTradePlan: () -> Unit,
-    onOpenSignal: (String) -> Unit = {}
+    onOpenSignal: (String) -> Unit = {},
+    onOpenTradePlan: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -116,7 +118,7 @@ fun SavedScreen(
             savedDailyError = e.message ?: "Could not load saved signals"
         }
         try {
-            plans = ApiClient.fetchTradePlans(token)
+            plans = ApiClient.fetchAiTradePlans(token).optJSONArray("plans") ?: JSONArray()
             plansError = null
         } catch (e: Exception) {
             plansError = e.message ?: "Could not load trade plans"
@@ -230,6 +232,13 @@ fun SavedScreen(
                         }
                         Spacer(Modifier.height(16.dp))
                         Text("No trade plans created yet.", color = TextSecondary, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Answer five quick steps and our AI writes your personal trading playbook.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
                         Spacer(Modifier.height(16.dp))
                         Box(
                             modifier = Modifier
@@ -258,7 +267,7 @@ fun SavedScreen(
                     val planList = plans!!
                     for (i in 0 until minOf(planList.length(), 3)) {
                         val p = planList.optJSONObject(i) ?: continue
-                        TradePlanRow(p)
+                        AiPlanRow(p) { id -> onOpenTradePlan(id) }
                         Spacer(Modifier.height(10.dp))
                     }
                     Spacer(Modifier.height(20.dp))
@@ -328,20 +337,18 @@ fun SavedScreen(
 }
 
 @Composable
-private fun TradePlanRow(plan: JSONObject) {
-    val instrument = plan.optString("instrument", "")
-    val direction = plan.optString("direction", "").uppercase()
-    val isLong = direction == "LONG"
-    val dirColor = if (isLong) BullGreen else BearRed
-    val entry = plan.optDouble("entry", Double.NaN)
-    val stopLoss = plan.optDouble("stopLoss", Double.NaN)
-    val takeProfit = plan.optDouble("takeProfit", Double.NaN)
+private fun AiPlanRow(plan: JSONObject, onOpen: (String) -> Unit) {
+    val id = plan.optString("id", "")
+    val name = plan.optString("name", "Trade plan")
+    val goal = plan.optString("goal", "")
+    val created = plan.optString("createdAt", "")
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceLight)
+            .clickable { onOpen(id) }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -349,23 +356,28 @@ private fun TradePlanRow(plan: JSONObject) {
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(dirColor.copy(alpha = 0.14f)),
+                .background(AccentViolet.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            Text(if (isLong) "L" else "S", color = dirColor, fontWeight = FontWeight.Bold)
+            Icon(
+                Icons.AutoMirrored.Filled.MenuBook,
+                contentDescription = null,
+                tint = AccentViolet,
+                modifier = Modifier.size(20.dp)
+            )
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(instrument, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-            val levels = buildList {
-                if (!entry.isNaN()) add("Entry ${formatLevel(entry)}")
-                if (!stopLoss.isNaN()) add("SL ${formatLevel(stopLoss)}")
-                if (!takeProfit.isNaN()) add("TP ${formatLevel(takeProfit)}")
-            }
-            if (levels.isNotEmpty()) {
-                Text(levels.joinToString("  •  "), style = MaterialTheme.typography.bodySmall, color = TextMuted)
+            Text(name, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            if (goal.isNotBlank()) {
+                Text(goal, style = MaterialTheme.typography.bodySmall, color = TextMuted, maxLines = 1)
             }
         }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = TextMuted
+        )
     }
 }
 
