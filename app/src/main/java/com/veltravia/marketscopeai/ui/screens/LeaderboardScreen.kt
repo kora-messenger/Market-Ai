@@ -200,7 +200,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            "Couldn't load standings: $e — tap refresh to retry.",
+                            "We couldn't load the standings — tap refresh to try again.",
                             fontSize = 12.sp, color = Color(0xFFB45309),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                         )
@@ -445,7 +445,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            "You're #$myRank this week with $myScore points — keep going!",
+                            "You're ranked #$myRank this week with $myScore points — the climb continues.",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = AccentCyan,

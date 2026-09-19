@@ -232,7 +232,7 @@ internal fun AnalyzeChartsSection(
     AnalyzeSectionLabel("Upload Your Charts")
     Spacer(Modifier.height(6.dp))
     Text(
-        "Use clear images with clear price number digits for the best results.",
+        "For the most accurate results, upload sharp images where every price figure is clearly legible.",
         style = MaterialTheme.typography.bodySmall,
         color = TextMuted
     )

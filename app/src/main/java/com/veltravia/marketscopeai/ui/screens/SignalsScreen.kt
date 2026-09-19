@@ -969,7 +969,7 @@ private fun LockedSignalsCard(historyCount: Int = 0) {
             title = { Text("MarketScope AI Premium", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Daily Signals is a premium feature. Your 7-day free trial has ended. " +
+                    "Daily Signals is a Premium feature. Your 7-day free trial has ended. " +
                     "Premium billing is being finalized and will be available in the app soon — " +
                     "the win-rate stats above stay free in the meantime.",
                     style = androidx.compose.material3.MaterialTheme.typography.bodySmall,

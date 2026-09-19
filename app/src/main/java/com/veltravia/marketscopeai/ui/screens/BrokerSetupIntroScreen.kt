@@ -112,7 +112,7 @@ fun BrokerSetupIntroScreen(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            "Use a broker that feels close to the environment MarketScope AI is tested against when reading your charts.",
+            "For the most accurate chart readings, use a broker that closely matches the environment MarketScope AI is tested against.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -187,7 +187,7 @@ fun BrokerSetupIntroScreen(
 
             Spacer(Modifier.height(14.dp))
             Text(
-                "Don\u2019t worry \u2014 you can still use any broker you prefer. This is just our recommended match.",
+                "You can use any broker you prefer \u2014 this is simply our recommended match.",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )

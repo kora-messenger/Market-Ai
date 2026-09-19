@@ -498,7 +498,7 @@ fun SignalCommentsSheet(
                             Spacer(Modifier.height(8.dp))
                             if (testimonials.isEmpty()) {
                                 Text(
-                                    "No win proofs shared yet - tap Share your win on the signal card to be the first.",
+                                    "No win proofs shared yet — tap Share your win on the signal card to be the first.",
                                     fontSize = 11.5.sp, color = TextMuted
                                 )
                             } else {

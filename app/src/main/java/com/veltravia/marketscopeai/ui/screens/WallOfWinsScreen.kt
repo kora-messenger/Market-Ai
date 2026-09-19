@@ -164,7 +164,7 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
                 Text("No wins shared yet", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "When a signal closes in profit, take it and share your win — the best proofs land here.",
+                    "When a signal closes in profit, share your result — the strongest proofs are featured here.",
                     fontSize = 12.sp, color = TextMuted
                 )
             }

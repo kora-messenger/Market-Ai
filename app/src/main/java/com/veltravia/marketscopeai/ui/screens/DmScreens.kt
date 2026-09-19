@@ -194,7 +194,7 @@ fun DmThreadsScreen(onBack: () -> Unit, onOpenThread: (String) -> Unit) {
                                 RoleBadge(t.counterpartRole)
                             }
                             Text(
-                                t.lastMessage ?: "Say hello",
+                                t.lastMessage ?: "No messages yet",
                                 fontSize = 12.sp,
                                 color = TextMuted,
                                 maxLines = 1,
@@ -342,7 +342,7 @@ fun DmChatScreen(threadId: String, onBack: () -> Unit) {
                 }
                 messages.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        "Say hello — this chat is private between you two.",
+                        "This conversation is private between the two of you. Send the first message.",
                         fontSize = 13.sp, color = TextMuted,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )

@@ -310,7 +310,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "No judgment here — honest answers are how we tailor every analysis to you.",
+                            "There are no wrong answers — honest input is what tailors every analysis to you.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -550,7 +550,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp),
-                            placeholder = { Text("Be honest — what does a normal day actually look like?", color = TextMuted) },
+                            placeholder = { Text("Describe what a typical trading day looks like for you.", color = TextMuted) },
                             colors = PremiumFieldColors()
                         )
                         Spacer(Modifier.height(12.dp))

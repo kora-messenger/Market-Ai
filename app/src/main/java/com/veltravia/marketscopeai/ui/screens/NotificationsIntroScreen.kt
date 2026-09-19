@@ -137,14 +137,14 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
             Spacer(Modifier.height(24.dp))
 
             Text(
-                "Good setups move fast.",
+                "Strong setups move fast.",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 textAlign = TextAlign.Center
             )
             Text(
-                "So should you.",
+                "Stay ahead of them.",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = AccentCyan,
@@ -182,7 +182,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Free signals, our treat",
+                        "Free signals, included",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -190,7 +190,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "We post free signals straight into the community once notifications are on — that's the only way to catch them in time.",
+                    "Once notifications are enabled, free signals are published straight to the community — the fastest way to catch them in time.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.92f)
                 )

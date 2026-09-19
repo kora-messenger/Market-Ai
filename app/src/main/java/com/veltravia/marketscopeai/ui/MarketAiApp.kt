@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +58,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.data.ApiClient
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.veltravia.marketscopeai.BuildConfig
 import com.veltravia.marketscopeai.ui.screens.ForceUpdateScreen
 import com.veltravia.marketscopeai.ui.components.PremiumTab
@@ -536,6 +539,49 @@ fun MarketAiApp() {
 @Composable
 private fun MainTabs(navController: NavHostController) {
     var currentTab by rememberSaveable { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val badgeScope = rememberCoroutineScope()
+
+    // New-content badges for the Signals (tab 1) and Community (tab 2) tabs:
+    // how many signals / posts were published since the user's last visit to
+    // each tab. Fetched at launch, refreshed while the app is open, and
+    // cleared the moment the user lands on the tab (server stamps "seen").
+    var signalBadge by rememberSaveable { mutableIntStateOf(0) }
+    var communityBadge by rememberSaveable { mutableIntStateOf(0) }
+
+    fun clearBadge(tab: Int) {
+        val name = when (tab) {
+            1 -> "signals"; 2 -> "community"; else -> return
+        }
+        if (tab == 1) signalBadge = 0 else communityBadge = 0
+        SessionManager.sessionToken(context)?.let { tk ->
+            badgeScope.launch {
+                try { ApiClient.markTabSeen(tk, name) } catch (_: Exception) { /* retry on next poll */ }
+            }
+        }
+    }
+
+    fun refreshBadges() {
+        val tk = SessionManager.sessionToken(context) ?: return
+        badgeScope.launch {
+            try {
+                val resp = ApiClient.fetchTabActivity(tk)
+                signalBadge = resp.optInt("signals", 0)
+                communityBadge = resp.optInt("community", 0)
+            } catch (_: Exception) { /* badges are best-effort */ }
+        }
+    }
+
+    LaunchedEffect(Unit) { refreshBadges() }
+    // Keep the badges fresh while the app is open (new posts / signals can
+    // arrive from other team members or the cron pipeline at any time).
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            refreshBadges()
+        }
+    }
+
     // Consume a push-notification tap: jump straight to the relevant tab.
     androidx.compose.runtime.LaunchedEffect(Unit) {
         PushRouter.pendingTab?.let {
@@ -543,12 +589,27 @@ private fun MainTabs(navController: NavHostController) {
             PushRouter.pendingTab = null
         }
     }
+    // Opening a badged tab clears its badge — the content has been seen.
+    androidx.compose.runtime.LaunchedEffect(currentTab) {
+        clearBadge(currentTab)
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             PremiumTabBar(
-                tabs = tabs.map { PremiumTab(it.label, it.selectedIcon, it.unselectedIcon) },
+                tabs = tabs.mapIndexed { index, tab ->
+                    PremiumTab(
+                        label = tab.label,
+                        selectedIcon = tab.selectedIcon,
+                        unselectedIcon = tab.unselectedIcon,
+                        badge = when (index) {
+                            1 -> signalBadge
+                            2 -> communityBadge
+                            else -> 0
+                        }
+                    )
+                },
                 selected = currentTab,
                 onSelect = { currentTab = it }
             )

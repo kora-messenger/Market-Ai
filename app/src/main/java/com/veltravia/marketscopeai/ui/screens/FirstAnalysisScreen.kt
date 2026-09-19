@@ -77,12 +77,12 @@ fun FirstAnalysisScreen(
 
         // Personalized greeting, same energy as the reference recording.
         Text(
-            "Okay ${firstName.uppercase()},",
+            "Welcome, ${firstName.uppercase()}.",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
         Text(
-            "Let us carry out our first analysis for you.",
+            "Your first analysis starts here.",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = TextSecondary
@@ -111,8 +111,8 @@ fun FirstAnalysisScreen(
                 Column {
                     Text(
                         if (SessionManager.effectivePremium(context)) "Premium is active — enjoy full access."
-                        else if (daysLeft > 1) "Your first $daysLeft days are on us!"
-                        else "Your last free day — every analysis included!",
+                        else if (daysLeft > 1) "Your first $daysLeft days are free."
+                        else "Your final free day — every analysis included.",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )

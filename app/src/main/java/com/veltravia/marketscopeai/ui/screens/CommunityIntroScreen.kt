@@ -150,7 +150,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
             Spacer(Modifier.height(24.dp))
 
             Text(
-                "You've been figuring this out alone.",
+                "You've been navigating the markets alone.",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
@@ -167,7 +167,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
             Spacer(Modifier.height(10.dp))
 
             Text(
-                "Free community access unlocks the second you finish setup.",
+                "Community access unlocks the moment you complete setup.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -221,7 +221,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
             CommunityBenefitRow(
                 icon = Icons.Filled.ShowChart,
                 title = "Free signals",
-                description = "Selected setups, before they go Pro-only"
+                description = "Selected setups, before they become Premium-only"
             )
             CommunityBenefitRow(
                 icon = Icons.Filled.CheckCircle,

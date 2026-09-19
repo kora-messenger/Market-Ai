@@ -421,6 +421,12 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire JSONB;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire_completed_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+    -- Bottom tab badge bookkeeping: the last time the user had the Signals
+    -- / Community tabs open, so the app can badge "N new since your last
+    -- visit". NULL = never visited; initialized to now() on first read so
+    -- badges only count content published after the user joined the app.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS signals_seen_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS community_seen_at TIMESTAMPTZ;
     CREATE TABLE IF NOT EXISTS premium_grants (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -5847,6 +5853,71 @@ app.post("/api/dm/threads/:id/read", requireAuth, async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     return res.status(500).json({ error: "Could not mark as read", detail: String(err.message || err) });
+  }
+});
+
+/* ---------- Bottom-tab new-content badges ---------- */
+
+/**
+ * How many new items each bottom tab has waiting for the signed-in user:
+ *   signals   — daily signals published since their last visit to the tab
+ *   community — posts published since their last visit (own posts excluded)
+ * First-time callers get their seen-at stamps initialized to now(), so the
+ * badges only ever count content published AFTER the user starts using the
+ * app — no artificial backlog on day one.
+ */
+app.get("/api/tab-activity", requireAuth, async (req, res) => {
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(401).json({ error: "Please sign in again." });
+    const { rows: meRows } = await pool.query(
+      `SELECT id, signals_seen_at, community_seen_at FROM users WHERE id = $1 LIMIT 1`,
+      [me.id]
+    );
+    const meRow = meRows[0];
+    if (!meRow) return res.status(404).json({ error: "Account not found." });
+    if (!meRow.signals_seen_at || !meRow.community_seen_at) {
+      await pool.query(
+        `UPDATE users
+           SET signals_seen_at   = COALESCE(signals_seen_at, now()),
+               community_seen_at = COALESCE(community_seen_at, now())
+         WHERE id = $1`,
+        [me.id]
+      );
+      return res.json({ signals: 0, community: 0 });
+    }
+    const { rows: sigRows } = await pool.query(
+      `SELECT count(*)::int AS n FROM daily_signals WHERE published_at > $1`,
+      [meRow.signals_seen_at]
+    );
+    const { rows: postRows } = await pool.query(
+      `SELECT count(*)::int AS n FROM community_posts
+        WHERE created_at > $1
+          AND (user_id IS NULL OR user_id <> $2)`,
+      [meRow.community_seen_at, me.id]
+    );
+    return res.json({ signals: sigRows[0].n, community: postRows[0].n });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load tab activity", detail: String(err.message || err) });
+  }
+});
+
+/** Mark a tab as visited — clears its badge by stamping "seen now". */
+app.post("/api/tab-activity/seen", requireAuth, async (req, res) => {
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(401).json({ error: "Please sign in again." });
+    const tab = String(req.body?.tab || "").toLowerCase();
+    if (tab === "signals") {
+      await pool.query(`UPDATE users SET signals_seen_at = now() WHERE id = $1`, [me.id]);
+    } else if (tab === "community") {
+      await pool.query(`UPDATE users SET community_seen_at = now() WHERE id = $1`, [me.id]);
+    } else {
+      return res.status(400).json({ error: "Unknown tab." });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not mark tab as seen", detail: String(err.message || err) });
   }
 });
 

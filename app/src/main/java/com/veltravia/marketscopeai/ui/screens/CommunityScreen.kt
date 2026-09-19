@@ -893,7 +893,7 @@ fun CommunityScreen(
                             .fillMaxWidth()
                     ) {
                         Text(
-                            "Couldn't reach the community: $msg — tap refresh to retry.",
+                            "We couldn't reach the community — tap refresh to try again.",
                             fontSize = 12.sp,
                             color = Color(0xFFB45309),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
@@ -1320,7 +1320,7 @@ private fun PostComposer(
                 }
                 if (pickedImages.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
-                    Text("Tag the outcome (optional, your call)", fontSize = 11.5.sp, color = TextMuted)
+                    Text("Tag the outcome (optional)", fontSize = 11.5.sp, color = TextMuted)
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("win" to "Profited", "loss" to "Lesson learned").forEach { (tag, label) ->
@@ -2156,7 +2156,7 @@ private fun CommentsSheet(
             }
 
             loadError?.let { e ->
-                Text("Couldn't load comments: $e", fontSize = 11.sp, color = Color(0xFFDC2626), modifier = Modifier.padding(vertical = 4.dp))
+                Text("We couldn't load the comments — tap refresh to try again.", fontSize = 11.sp, color = Color(0xFFDC2626), modifier = Modifier.padding(vertical = 4.dp))
             }
 
             replyTo?.let { target ->

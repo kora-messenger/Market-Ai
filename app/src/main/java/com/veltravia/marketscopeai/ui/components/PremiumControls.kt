@@ -18,6 +18,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -494,7 +495,9 @@ fun StaggeredBlock(key: Any, index: Int, content: @Composable () -> Unit) {
 data class PremiumTab(
     val label: String,
     val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector
+    val unselectedIcon: ImageVector,
+    /** New-content count for this tab (Signals / Community). 0 = no badge. */
+    val badge: Int = 0
 )
 
 /**
@@ -579,6 +582,29 @@ fun PremiumTabBar(
                             tint = iconTint,
                             modifier = Modifier.size(22.dp)
                         )
+                        // New-content badge: small violet dot with the count,
+                        // anchored to the icon's top-right edge. Kept inside
+                        // the icon Box so it inherits the pop animation.
+                        if (tab.badge > 0) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 6.dp, y = (-4).dp)
+                                    .clip(CircleShape)
+                                    .background(AccentViolet)
+                                    .border(1.5.dp, Color.White, CircleShape)
+                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    if (tab.badge > 99) "99+" else tab.badge.toString(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(

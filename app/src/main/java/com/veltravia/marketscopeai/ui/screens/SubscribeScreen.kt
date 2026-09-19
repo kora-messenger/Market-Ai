@@ -328,7 +328,7 @@ fun SubscribeScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Take off with Premium",
+                "Go further with Premium",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary

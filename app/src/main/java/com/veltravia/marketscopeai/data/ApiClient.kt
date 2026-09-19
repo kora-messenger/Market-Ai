@@ -446,6 +446,28 @@ object ApiClient {
         request(request)
     }
 
+    /** New-content counts for the bottom tab badges (Signals / Community). */
+    suspend fun fetchTabActivity(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/tab-activity")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Mark a tab visited — clears its badge server-side. */
+    suspend fun markTabSeen(sessionToken: String, tab: String): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("tab", tab).toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/tab-activity/seen")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(body)
+            .build()
+        request(request)
+    }
+
+
     /** All comments on a post (flat; the caller nests by parentId). */
     suspend fun fetchPostComments(sessionToken: String, postId: String): JSONArray =
         withContext(Dispatchers.IO) {

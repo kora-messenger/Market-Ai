@@ -241,7 +241,7 @@ fun AnalyzeFlow(
                 ) {
                     AnalyzeTabInfo(
                         icon = { Icon(Icons.Filled.CurrencyExchange, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp)) },
-                        text = "You're on the Forex tab. Upload your 4H and 15M forex chart screenshots here for the best results - a crypto or stock screenshot won't be accepted on this tab."
+                        text = "You're on the Forex tab. Upload your 4H and 15M forex chart screenshots here for the best results — a crypto or stock screenshot won't be accepted on this tab."
                     )
                     Spacer(Modifier.height(20.dp))
                     AnalyzeSectionLabel("Choose instrument")
@@ -282,7 +282,7 @@ fun AnalyzeFlow(
                 ) {
                     AnalyzeTabInfo(
                         icon = { Icon(Icons.Filled.CurrencyBitcoin, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp)) },
-                        text = "You're on the Crypto tab. Upload your 4H and 15M crypto chart screenshots here for the best results - a forex or stock screenshot won't be accepted on this tab."
+                        text = "You're on the Crypto tab. Upload your 4H and 15M crypto chart screenshots here for the best results — a forex or stock screenshot won't be accepted on this tab."
                     )
                     Spacer(Modifier.height(20.dp))
                     AnalyzeSectionLabel("Choose instrument")
@@ -323,7 +323,7 @@ fun AnalyzeFlow(
                 ) {
                     AnalyzeTabInfo(
                         icon = { Icon(Icons.Filled.TrendingUp, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp)) },
-                        text = "Take a screenshot or input the name of the Stock you want MarketScope AI to analyze for you. We research its real market performance and tell you whether to buy - with a confidence rate."
+                        text = "Take a screenshot or input the name of the Stock you want MarketScope AI to analyze for you. We research its real market performance and tell you whether to buy — with a confidence rate."
                     )
                     Spacer(Modifier.height(20.dp))
                     AnalyzeSectionLabel("Which stock?")
@@ -349,7 +349,7 @@ fun AnalyzeFlow(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(24.dp))
-                    AnalyzeSectionLabel("Optional - stock screenshot")
+                    AnalyzeSectionLabel("Optional — stock screenshot")
                     Spacer(Modifier.height(10.dp))
                     AnalyzeSingleChartTile(
                         imageUri = stockImage,
@@ -372,7 +372,7 @@ fun AnalyzeFlow(
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        "MarketScope AI researches live exchange data - current price, performance from 1 week to 1 year, the 52-week range and more - before recommending a BUY, SELL or HOLD with a confidence percentage.",
+                        "MarketScope AI researches live exchange data — current price, performance from 1 week to 1 year, the 52-week range and more — before recommending a BUY, SELL or HOLD with a confidence percentage.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -396,7 +396,7 @@ fun AnalyzeFlow(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "You've used all your free AI analyses for today. Watch one short video to unlock an extra analysis - or go Premium for unlimited, ad-free analyses.",
+                    "You've used all your free AI analyses for today. Watch one short video to unlock an extra analysis — or go Premium for unlimited, ad-free analyses.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -439,7 +439,7 @@ fun AnalyzeFlow(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Go Premium - unlimited analyses, no ads", color = AccentViolet)
+                        Text("Go Premium — unlimited analyses, ad-free", color = AccentViolet)
                     }
                 }
                 Spacer(Modifier.height(18.dp))

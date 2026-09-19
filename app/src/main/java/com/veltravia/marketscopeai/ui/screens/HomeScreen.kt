@@ -300,13 +300,13 @@ fun HomeScreen(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Hello $firstName",
+                    "Welcome back, $firstName",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    "Take more profitable trades now…",
+                    "Trade with data-driven confidence.",
                     style = MaterialTheme.typography.bodySmall,
                     color = AccentCyan,
                     maxLines = 1

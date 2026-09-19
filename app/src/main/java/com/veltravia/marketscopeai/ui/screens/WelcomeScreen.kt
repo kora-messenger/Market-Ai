@@ -221,7 +221,7 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
             if (clientId.isBlank()) {
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    "Google sign-in activates as soon as your MarketScope AI OAuth client is configured.",
+                    "Google sign-in is temporarily unavailable. Please try again shortly.",
                     style = MaterialTheme.typography.labelMedium,
                     color = TextSecondary,
                     textAlign = TextAlign.Center
