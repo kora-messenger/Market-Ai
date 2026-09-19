@@ -1442,6 +1442,7 @@ app.post("/api/calendar/directional-implication", requireAuth, async (req, res) 
     const result = await callAI({
       model: ANALYSIS_MODEL,
       max_tokens: 260,
+      reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
         {
