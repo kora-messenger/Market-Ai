@@ -5430,6 +5430,40 @@ app.post("/api/community/posts/:id/pin", requireAuth, async (req, res) => {
   }
 });
 
+// Delete a community post — the author or the MarketScope AI team. Every
+// dependent row (comments, reactions, views, poll votes, images) is removed
+// with it via ON DELETE CASCADE; R2 image objects are cleaned up best-effort
+// so orphaned bytes never linger in the bucket.
+app.delete("/api/community/posts/:id", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows: found } = await pool.query(
+      `SELECT id, author_email FROM community_posts WHERE id = $1::uuid`,
+      [req.params.id]
+    );
+    if (!found.length) return res.status(404).json({ error: "Post not found" });
+    const me = await currentUser(req);
+    const isAdmin = (await isAdminRequest(req)) || ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase());
+    const isAuthor = String(found[0].author_email || "").toLowerCase() === String((me.email || "")).toLowerCase();
+    if (!isAuthor && !isAdmin) {
+      return res.status(403).json({ error: "Only the author or the MarketScope AI team can delete a post." });
+    }
+    try {
+      const { rows: images } = await pool.query(
+        `SELECT r2_key FROM community_post_images WHERE post_id = $1::uuid AND r2_key IS NOT NULL`,
+        [req.params.id]
+      );
+      for (const img of images) await r2.deleteObject(img.r2_key);
+    } catch (err) {
+      console.warn("post delete: R2 image cleanup skipped:", String(err.message || err));
+    }
+    await pool.query(`DELETE FROM community_posts WHERE id = $1::uuid`, [req.params.id]);
+    return res.json({ ok: true, id: req.params.id });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not delete the post", detail: String(err.message || err) });
+  }
+});
+
 // Real curated pinned-posts list, most-recently-pinned first — backs the
 // "Pinned posts" carousel in the Community screen. Title is derived honestly
 // from the post's own first line (never fabricated).

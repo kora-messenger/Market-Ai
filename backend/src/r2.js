@@ -17,7 +17,7 @@
  *   R2_SECRET_ACCESS_KEY  — from the R2 API token (shown once)
  *   R2_BUCKET             — e.g. "marketscope-images"
  */
-const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const crypto = require("crypto");
 
@@ -85,4 +85,14 @@ async function signedImageUrl(key, expiresIn = 900) {
   return getSignedUrl(s3, new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn });
 }
 
-module.exports = { isR2Configured, uploadImage, signedImageUrl };
+/**
+ * Remove an object from the bucket. Best-effort cleanup when the owning
+ * record is deleted — a failed object delete never blocks the row delete.
+ */
+async function deleteObject(key) {
+  if (!isR2Configured() || !key) return false;
+  await r2Client().send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: String(key) }));
+  return true;
+}
+
+module.exports = { isR2Configured, uploadImage, signedImageUrl, deleteObject };

@@ -182,6 +182,17 @@ object ApiClient {
         request(request)
     }
 
+    /** Delete a community post (author or team only). Returns { ok: true }. */
+    suspend fun deleteCommunityPost(sessionToken: String, postId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/community/posts/$postId")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .delete()
+                .build()
+            request(request)
+        }
+
     /** Pin or unpin a community post (admin only). Returns { id, isPinned }. */
     suspend fun pinCommunityPost(sessionToken: String, postId: String): JSONObject =
         withContext(Dispatchers.IO) {

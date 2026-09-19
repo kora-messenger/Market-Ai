@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HowToVote
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Refresh
@@ -59,6 +61,7 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,6 +73,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -381,6 +385,7 @@ fun CommunityScreen(
     var imageProcessing by remember { mutableStateOf(false) }
 
     var openPost by remember { mutableStateOf<CommunityPost?>(null) }
+    var deleteTarget by remember { mutableStateOf<CommunityPost?>(null) }
     var viewerPost by remember { mutableStateOf<CommunityPost?>(null) }
     var viewerIndex by remember { mutableStateOf(0) }
     var isAdmin by remember { mutableStateOf(false) }
@@ -458,6 +463,25 @@ fun CommunityScreen(
                 ApiClient.pinCommunityPost(token, post.id)
             } catch (e: Exception) {
                 error = e.message ?: "Could not pin the post"
+                load(reset = true)
+            }
+        }
+    }
+
+    fun deletePost(post: CommunityPost) {
+        val tk = token ?: return
+        // Optimistic removal — the post disappears instantly; if the call
+        // fails we reload the feed so it honestly comes back.
+        posts = posts.filter { it.id != post.id }
+        pinnedPosts = pinnedPosts.filter { it.id != post.id }
+        totalPosts = (totalPosts - 1).coerceAtLeast(0)
+        if (openPost?.id == post.id) openPost = null
+        if (viewerPost?.id == post.id) viewerPost = null
+        scope.launch {
+            try {
+                ApiClient.deleteCommunityPost(tk, post.id)
+            } catch (e: Exception) {
+                error = e.message ?: "Could not delete the post"
                 load(reset = true)
             }
         }
@@ -838,6 +862,10 @@ fun CommunityScreen(
                                 PostCard(
                                     post = post,
                                     isAdmin = isAdmin,
+                                    canDelete = isAdmin || post.authorEmail.equals(
+                                        SessionManager.currentUser(context)?.email, ignoreCase = true
+                                    ),
+                                    onDelete = { deleteTarget = post },
                                     onReact = { emoji -> toggleReaction(post, emoji) },
                                     onVote = { optionId -> votePoll(post, optionId) },
                                     onOpenComments = { openPost = post },
@@ -902,6 +930,33 @@ fun CommunityScreen(
                 }
             }
         }
+    }
+
+    deleteTarget?.let { post ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete this post?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "The post and its comments will be removed permanently. This cannot be undone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteTarget = null
+                    deletePost(post)
+                }) {
+                    Text("Delete", fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text("Cancel", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
     }
 
     viewerPost?.let { post ->
@@ -1510,6 +1565,8 @@ private fun DayGroupHeader(label: String) {
 private fun PostCard(
     post: CommunityPost,
     isAdmin: Boolean,
+    canDelete: Boolean,
+    onDelete: () -> Unit,
     onReact: (String) -> Unit,
     onVote: (String) -> Unit,
     onOpenComments: () -> Unit,
@@ -1809,6 +1866,18 @@ private fun PostCard(
                         Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(compactCount(post.viewCount), fontSize = 12.sp, color = Color(0xFF94A3B8))
+                    }
+                }
+                if (canDelete) {
+                    // Authors can remove their own post; the team can remove
+                    // any post. Sits beside the pin control for consistency.
+                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Delete post",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
                 if (isAdmin) {
