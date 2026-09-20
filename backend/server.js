@@ -6225,7 +6225,7 @@ app.post("/api/bug-reports", requireAuth, async (req, res) => {
 
   const imageList = Array.isArray(req.body.images) ? req.body.images.slice(0, 4) : [];
   for (const dataUrl of imageList) {
-    if (!/^data:image\/\(png|jpe?g|webp\);base64,/.test(String(dataUrl))) {
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(String(dataUrl))) {
       return res.status(400).json({ error: "Screenshots must be png/jpeg/webp." });
     }
     const b64 = String(dataUrl).split(",")[1] || "";
