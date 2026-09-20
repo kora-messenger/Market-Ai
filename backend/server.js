@@ -6290,34 +6290,30 @@ async function storeBugAttachment(dataUrl, kind) {
 /** In-app + push notification for the owner account (oldest user = owner). */
 async function notifyAdminBugReport(reporter, description) {
   if (!pool) return;
-  const { rows } = await pool.query(
-    `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`
-  );
+  // The real owner is whoever matches ADMIN_EMAIL(S). The very first account
+  // created is NOT reliably the owner (an old test account can be older),
+  // so it is only a fallback.
+  let rows = [];
+  if (ADMIN_EMAILS.length) {
+    rows = (await pool.query(
+      `SELECT id FROM users WHERE lower(email) = ANY($1::text[])`,
+      [ADMIN_EMAILS]
+    )).rows;
+  }
+  if (!rows.length) {
+    rows = (await pool.query(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`)).rows;
+  }
   if (!rows.length) return;
   const snippet = description.length > 90 ? description.slice(0, 90) + "\u2026" : description;
-  await notifyUser(rows[0].id, {
-    title: "New bug report",
-    body: `${reporter.email || "A user"} reported: ${snippet}`,
-    type: "general",
-    data: { type: "bug_report", route: "notifications" }
-  });
-}
-
-/** TEMP DIAG: run the exact notifyAdminBugReport steps, surfacing the error. */
-app.get("/api/admin/bug-report-diag", requireAuth, async (req, res) => {
-  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Admins only." });
-  const steps = {};
-  try {
-    const { rows } = await pool.query(`SELECT id, email FROM users ORDER BY created_at ASC LIMIT 1`);
-    steps.oldestUser = rows[0] ? { id: rows[0].id, email: rows[0].email } : null;
-    steps.notified = await addNotification({
-      userId: rows[0]?.id, type: "general", title: "DIAG bug report", body: "diag", data: { route: "notifications" }
+  for (const t of rows) {
+    await notifyUser(t.id, {
+      title: "New bug report",
+      body: `${reporter.email || "A user"} reported: ${snippet}`,
+      type: "general",
+      data: { type: "bug_report", route: "notifications" }
     });
-  } catch (err) {
-    steps.error = String(err.message || err);
   }
-  res.json(steps);
-});
+}
 
 /** Admin inbox: the latest bug reports with fresh signed attachment URLs. */
 app.get("/api/admin/bug-reports", requireAuth, async (req, res) => {
