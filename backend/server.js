@@ -748,6 +748,19 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_price_alerts_user ON price_alerts(user_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_price_alerts_active ON price_alerts(symbol) WHERE status = 'active';
+    CREATE TABLE IF NOT EXISTS bug_reports (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      user_email TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL,
+      attachments JSONB NOT NULL DEFAULT '[]',
+      app_version TEXT,
+      device_model TEXT,
+      android_version TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_bug_reports_created ON bug_reports(created_at DESC);
   `);
 }
 
@@ -6193,6 +6206,135 @@ app.post("/api/tab-activity/seen", requireAuth, async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     return res.status(500).json({ error: "Could not mark tab as seen", detail: String(err.message || err) });
+  }
+});
+
+/* ---------- Bug reports (in-app "Report a bug" flow) ---------- */
+
+/**
+ * User-submitted bug reports from the app's Settings screen. Attachments are
+ * uploaded to R2 under bug-reports/ (bytes never in the DB long-term; the
+ * DB keeps only keys). If R2 is unavailable the base64 is kept inline in the
+ * attachments JSON so a report is never silently lost.
+ */
+app.post("/api/bug-reports", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const description = String(req.body.description || "").trim();
+  if (description.length < 3) return res.status(400).json({ error: "Describe the problem in a few words first." });
+  if (description.length > 2000) return res.status(400).json({ error: "Descriptions are limited to 2000 characters." });
+
+  const imageList = Array.isArray(req.body.images) ? req.body.images.slice(0, 4) : [];
+  for (const dataUrl of imageList) {
+    if (!/^data:image\/\(png|jpe?g|webp\);base64,/.test(String(dataUrl))) {
+      return res.status(400).json({ error: "Screenshots must be png/jpeg/webp." });
+    }
+    const b64 = String(dataUrl).split(",")[1] || "";
+    if (b64.length > 4_000_000) return res.status(400).json({ error: "Each screenshot must be under 3MB." });
+  }
+  let video = req.body.video || null;
+  if (video != null) {
+    if (!/^data:video\/(mp4|webm|3gpp|3gp|quicktime);base64,/.test(String(video))) {
+      return res.status(400).json({ error: "Recordings must be mp4/webm/3gp." });
+    }
+    const b64 = String(video).split(",")[1] || "";
+    if (b64.length > 20_000_000) return res.status(400).json({ error: "Keep the recording under 15MB." });
+  }
+
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found." });
+
+    const attachments = [];
+    for (const dataUrl of imageList) {
+      attachments.push(await storeBugAttachment(String(dataUrl), "image"));
+    }
+    if (video) attachments.push(await storeBugAttachment(String(video), "video"));
+
+    const appVersion = String(req.body.appVersion || "").slice(0, 60);
+    const deviceModel = String(req.body.deviceModel || "").slice(0, 120);
+    const androidVersion = String(req.body.androidVersion || "").slice(0, 40);
+
+    const { rows } = await pool.query(
+      `INSERT INTO bug_reports (user_id, user_email, description, attachments, app_version, device_model, android_version)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7) RETURNING id, created_at`,
+      [me.id, me.email || "", description, JSON.stringify(attachments), appVersion, deviceModel, androidVersion]
+    );
+
+    // Tell the owner a report landed — in-app notification + push (never blocks the response).
+    notifyAdminBugReport(me, description).catch(() => {});
+
+    return res.json({ ok: true, id: rows[0].id });
+  } catch (err) {
+    console.error("bug-report failed:", String(err.message || err));
+    return res.status(500).json({ error: "Could not send the report. Try again in a moment." });
+  }
+});
+
+/** Upload one attachment to R2 (bug-reports/), falling back to inline base64. */
+async function storeBugAttachment(dataUrl, kind) {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/s) || [];
+  const contentType = m[1] || (kind === "video" ? "video/mp4" : "image/jpeg");
+  const b64 = (m[2] || "").replace(/\s+/g, "");
+  const buffer = Buffer.from(b64, "base64");
+  const entry = { kind, contentType, sizeBytes: buffer.length };
+  try {
+    entry.r2Key = await r2.uploadImage(buffer, contentType, "bug-reports");
+  } catch (err) {
+    // R2 down/unconfigured — keep the bytes inline so nothing is lost.
+    console.warn("bug-report R2 upload fell back to inline:", String(err.message || err));
+    entry.dataBase64 = b64;
+  }
+  return entry;
+}
+
+/** In-app + push notification for the owner account (oldest user = owner). */
+async function notifyAdminBugReport(reporter, description) {
+  if (!pool) return;
+  const { rows } = await pool.query(
+    `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`
+  );
+  if (!rows.length) return;
+  const snippet = description.length > 90 ? description.slice(0, 90) + "\u2026" : description;
+  await notifyUser(rows[0].id, {
+    title: "New bug report",
+    body: `${reporter.email || "A user"} reported: ${snippet}`,
+    type: "general",
+    data: { type: "bug_report", route: "notifications" }
+  });
+}
+
+/** Admin inbox: the latest bug reports with fresh signed attachment URLs. */
+app.get("/api/admin/bug-reports", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Admins only." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, user_email, description, attachments, app_version, device_model, android_version, status, created_at
+       FROM bug_reports ORDER BY created_at DESC LIMIT 100`
+    );
+    const reports = [];
+    for (const r of rows) {
+      const attachments = [];
+      const raw = Array.isArray(r.attachments) ? r.attachments : [];
+      for (const a of raw) {
+        const out = { kind: a.kind, contentType: a.contentType, sizeBytes: a.sizeBytes };
+        if (a.r2Key) {
+          out.url = await r2.signedImageUrl(a.r2Key, 3600).catch(() => null);
+        } else if (a.dataBase64) {
+          out.dataUrl = `data:${a.contentType};base64,${a.dataBase64}`;
+        }
+        attachments.push(out);
+      }
+      reports.push({
+        id: r.id, email: r.user_email, description: r.description,
+        appVersion: r.app_version, deviceModel: r.device_model, androidVersion: r.android_version,
+        status: r.status, createdAt: r.created_at, attachments
+      });
+    }
+    return res.json({ reports });
+  } catch (err) {
+    console.error("admin bug-reports failed:", String(err.message || err));
+    return res.status(500).json({ error: "Could not load bug reports." });
   }
 });
 

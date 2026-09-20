@@ -172,6 +172,17 @@ object SessionManager {
     fun communityJoined(context: Context): Boolean =
         prefs(context).getBoolean(KEY_COMMUNITY_JOINED, false)
 
+    /**
+     * "Shake to report a bug" — when on, a firm shake of the phone anywhere
+     * in the app opens the bug report screen. Off by default; purely local.
+     */
+    fun shakeToReportBug(context: Context): Boolean =
+        prefs(context).getBoolean("shake_bug_report", false)
+
+    fun setShakeToReportBug(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean("shake_bug_report", enabled).apply()
+    }
+
     fun setCommunityJoined(context: Context, joined: Boolean) {
         prefs(context).edit().putBoolean(KEY_COMMUNITY_JOINED, joined).apply()
     }

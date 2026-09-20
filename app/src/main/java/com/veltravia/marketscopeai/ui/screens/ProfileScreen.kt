@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
@@ -47,6 +49,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -65,6 +68,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.data.ApiClient
@@ -104,6 +108,7 @@ fun ProfileScreen(
     onOpenRiskCalculator: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSubscribe: () -> Unit,
+    onOpenBugReport: () -> Unit = {},
     onViewSavedTradePlans: () -> Unit
 ) {
     val context = LocalContext.current
@@ -124,6 +129,7 @@ fun ProfileScreen(
     var deletionRequestedAt by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleteBusy by remember { mutableStateOf(false) }
+    var shakeToReport by remember { mutableStateOf(SessionManager.shakeToReportBug(context)) }
 
     // Profile card (FxLens-style): public handle + custom avatar + real stats.
     var username by remember { mutableStateOf<String?>(null) }
@@ -346,6 +352,28 @@ fun ProfileScreen(
                 onClick = {
                     val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
                     context.startActivity(mail)
+                }
+            )
+            SettingsRow(
+                icon = Icons.Filled.BugReport,
+                tint = AccentViolet,
+                label = "Report a bug",
+                onClick = onOpenBugReport
+            )
+            SettingsSwitchRow(
+                icon = Icons.Filled.Vibration,
+                tint = GoldAmber,
+                label = "Shake to report a bug",
+                helper = "Firmly shake your phone anywhere in the app to open the bug report screen.",
+                checked = shakeToReport,
+                onChecked = { enabled ->
+                    shakeToReport = enabled
+                    SessionManager.setShakeToReportBug(context, enabled)
+                    if (enabled) {
+                        com.veltravia.marketscopeai.shake.ShakeBugReporter.start(context)
+                    } else {
+                        com.veltravia.marketscopeai.shake.ShakeBugReporter.stop(context)
+                    }
                 }
             )
             SettingsRow(
@@ -880,6 +908,55 @@ private fun SettingsGroup(borderColor: Color = BorderSubtle, content: @Composabl
             .border(1.dp, borderColor, RoundedCornerShape(16.dp))
     ) {
         content()
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    label: String,
+    helper: String,
+    checked: Boolean,
+    onChecked: (Boolean) -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onChecked(!checked) }
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(tint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                Spacer(Modifier.height(2.dp))
+                Text(helper, style = MaterialTheme.typography.bodySmall, fontSize = 11.sp, color = TextMuted)
+            }
+            Spacer(Modifier.width(6.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = onChecked,
+                modifier = Modifier.height(28.dp)
+            )
+        }
+        Box(
+            Modifier
+                .padding(start = 58.dp)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(BorderSubtle)
+        )
     }
 }
 

@@ -1401,6 +1401,50 @@ object ApiClient {
             "data:image/jpeg;base64,$base64"
         }
 
+    /**
+     * Reads a picked video (screen recording) and returns a base64 data URL.
+     * Enforces the backend's 15MB cap here so the user gets a friendly
+     * message before a huge upload is attempted.
+     */
+    suspend fun prepareVideoDataUrl(context: Context, uri: Uri): String =
+        withContext(Dispatchers.IO) {
+            val resolver = context.contentResolver
+            val mime = resolver.getType(uri) ?: "video/mp4"
+            require(mime.startsWith("video/")) { "That file is not a video" }
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw MarketAiException("Could not read that video")
+            if (bytes.size > 15 * 1024 * 1024) {
+                throw MarketAiException("Keep the recording under 15MB — trim the clip and try again")
+            }
+            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            "data:$mime;base64,$base64"
+        }
+
+    /** Send a bug report (description + up to 4 screenshots + 1 recording). */
+    suspend fun submitBugReport(
+        sessionToken: String,
+        description: String,
+        images: List<String>,
+        video: String?,
+        appVersion: String,
+        deviceModel: String,
+        androidVersion: String
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("description", description)
+            .put("appVersion", appVersion)
+            .put("deviceModel", deviceModel)
+            .put("androidVersion", androidVersion)
+        if (images.isNotEmpty()) payload.put("images", JSONArray().apply { images.forEach { put(it) } })
+        if (video != null) payload.put("video", video)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/bug-reports")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Register this device's FCM push token with the signed-in account. */
     suspend fun registerPushToken(sessionToken: String, fcmToken: String): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject().put("token", fcmToken).put("platform", "android")

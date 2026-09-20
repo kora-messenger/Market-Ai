@@ -135,6 +135,12 @@ object PushRouter {
      */
     var pendingMarketId by mutableStateOf<String?>(null)
 
+    /**
+     * The phone was shaken with "shake to report a bug" enabled — open the
+     * bug report screen. Set by ShakeBugReporter's sensor callback.
+     */
+    var pendingBugReport by mutableStateOf(false)
+
     fun tabForRoute(route: String?): Int? = when (route) {
         "signals" -> 1
         "community" -> 2
@@ -272,6 +278,16 @@ fun MarketAiApp() {
         }
     }
 
+    // Phone shaken with the shake-to-report toggle on — open the bug report
+    // screen (guarded so a double-fire never stacks two copies).
+    LaunchedEffect(PushRouter.pendingBugReport) {
+        if (PushRouter.pendingBugReport) {
+            PushRouter.pendingBugReport = false
+            val current = navController.currentBackStackEntry?.destination?.route
+            if (current != "report_bug") navController.navigate("report_bug")
+        }
+    }
+
     // Price-alert push tapped — open the Market View for that instrument.
     LaunchedEffect(PushRouter.pendingMarketId) {
         val marketId = PushRouter.pendingMarketId
@@ -393,6 +409,11 @@ fun MarketAiApp() {
             ScreenshotGuideScreen(
                 ctaLabel = "Got it",
                 onCta = { navController.popBackStack() },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable("report_bug") {
+            com.veltravia.marketscopeai.ui.screens.BugReportScreen(
                 onBack = { navController.popBackStack() }
             )
         }
@@ -677,6 +698,7 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
                     onOpenNotifications = { navController.navigate("notifications") },
                     onOpenSubscribe = { navController.navigate("subscribe") },
+                    onOpenBugReport = { navController.navigate("report_bug") },
                     onViewSavedTradePlans = { currentTab = 3 }
                 )
             }
