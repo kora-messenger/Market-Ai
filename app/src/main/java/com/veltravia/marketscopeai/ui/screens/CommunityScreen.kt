@@ -391,6 +391,8 @@ fun CommunityScreen(
     var isAdmin by remember { mutableStateOf(false) }
     var canCompose by remember { mutableStateOf(false) }
     var composerOutcomeTag by remember { mutableStateOf<String?>(null) }
+    var composerOpen by remember { mutableStateOf(false) }
+    var composeFabOpen by remember { mutableStateOf(false) }
 
     var pinnedPosts by remember { mutableStateOf<List<PinnedPost>>(emptyList()) }
     var pinnedIndex by remember { mutableStateOf(0) }
@@ -585,6 +587,7 @@ fun CommunityScreen(
                 pollOptions.clear()
                 pollOptions.addAll(listOf(TextFieldValue(""), TextFieldValue("")))
                 composerMode = "text"
+                composerOpen = false
             } catch (e: Exception) {
                 error = e.message ?: "Could not publish"
             } finally {
@@ -730,32 +733,9 @@ fun CommunityScreen(
             }
 
             val postComposerBlock: @Composable () -> Unit = {
-                if (canCompose) PostComposer(
-                    mode = composerMode,
-                    onModeChange = { composerMode = it },
-                    text = composerText,
-                    onTextChange = { composerText = it },
-                    pollOptions = pollOptions,
-                    allowComments = allowComments,
-                    onAllowCommentsChange = { allowComments = it },
-                    pickedImages = pickedImages,
-                    imageProcessing = imageProcessing,
-                    outcomeTag = composerOutcomeTag,
-                    onOutcomeTagChange = { composerOutcomeTag = it },
-                    onPickImage = {
-                        pickImage.launch(
-                            androidx.activity.result.PickVisualMediaRequest(
-                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
-                            )
-                        )
-                    },
-                    onRemoveImage = { index ->
-                        if (index in pickedImages.indices) pickedImages.removeAt(index)
-                    },
-                    publishing = publishing,
-                    onPublish = { publish() }
-                )
-                else MemberComposerNote()
+                // Team/mentor members compose via the floating compose button
+                // (bottom-right); only non-composers get the quiet inline note.
+                if (!canCompose) MemberComposerNote()
             }
 
             when {
@@ -930,6 +910,56 @@ fun CommunityScreen(
                 }
             }
         }
+
+        // Floating compose button — the entry into the publish flow for
+        // team/mentor members. Lives inside the root Box so it overlays the
+        // feed (last child draws on top).
+        if (canCompose) {
+            ComposeFab(
+                open = composeFabOpen,
+                onToggle = { composeFabOpen = !composeFabOpen },
+                onChoose = { chosen ->
+                    composeFabOpen = false
+                    composerMode = chosen
+                    composerOpen = true
+                }
+            )
+        }
+    }
+
+    if (composerOpen) {
+        PublishComposerModal(
+            mode = composerMode,
+            onDismiss = { composerOpen = false },
+            text = composerText,
+            onTextChange = { composerText = it },
+            pollOptions = pollOptions,
+            onChangePollOption = { index, value ->
+                if (index in pollOptions.indices) pollOptions[index] = value
+            },
+            onAddPollOption = { if (pollOptions.size < 6) pollOptions.add(TextFieldValue("")) },
+            onRemovePollOption = { index ->
+                if (pollOptions.size > 2 && index in pollOptions.indices) pollOptions.removeAt(index)
+            },
+            allowComments = allowComments,
+            onAllowCommentsChange = { allowComments = it },
+            pickedImages = pickedImages,
+            imageProcessing = imageProcessing,
+            outcomeTag = composerOutcomeTag,
+            onOutcomeTagChange = { composerOutcomeTag = it },
+            onPickImage = {
+                pickImage.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
+            onRemoveImage = { index ->
+                if (index in pickedImages.indices) pickedImages.removeAt(index)
+            },
+            publishing = publishing,
+            onPublish = { publish() }
+        )
     }
 
     deleteTarget?.let { post ->
@@ -1268,279 +1298,6 @@ private fun MemberComposerNote() {
     }
 }
 
-@Composable
-private fun PostComposer(
-    mode: String,
-    onModeChange: (String) -> Unit,
-    text: TextFieldValue,
-    onTextChange: (TextFieldValue) -> Unit,
-    pollOptions: androidx.compose.runtime.snapshots.SnapshotStateList<TextFieldValue>,
-    allowComments: Boolean,
-    onAllowCommentsChange: (Boolean) -> Unit,
-    pickedImages: androidx.compose.runtime.snapshots.SnapshotStateList<PickedPostImage>,
-    imageProcessing: Boolean,
-    outcomeTag: String?,
-    onOutcomeTagChange: (String?) -> Unit,
-    onPickImage: () -> Unit,
-    onRemoveImage: (Int) -> Unit,
-    publishing: Boolean,
-    onPublish: () -> Unit
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(18.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ComposerTab("Text", mode == "text") { onModeChange("text") }
-                Spacer(Modifier.width(8.dp))
-                ComposerTab("Poll", mode == "poll") { onModeChange("poll") }
-            }
-            Spacer(Modifier.height(10.dp))
-            if (mode == "text") {
-                Text("Share with the community", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = onTextChange,
-                    placeholder = { Text("A win, a setup, a lesson learned…", fontSize = 13.5.sp, color = TextMuted) },
-                    minLines = 2,
-                    shape = RoundedCornerShape(12.dp),
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFFF3F4F7),
-                        unfocusedContainerColor = Color(0xFFF3F4F7),
-                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = Color(0xFFE2E8F0)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (pickedImages.isNotEmpty() || imageProcessing) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pickedImages.forEachIndexed { index, img ->
-                            Box {
-                                coil.compose.AsyncImage(
-                                    model = img.dataUrl,
-                                    contentDescription = "Attached image ${index + 1}",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                )
-                                Surface(
-                                    color = Color(0xCC1E293B),
-                                    shape = CircleShape,
-                                    onClick = { onRemoveImage(index) },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(3.dp)
-                                        .size(18.dp)
-                                ) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Remove image", tint = Color.White, modifier = Modifier.size(11.dp))
-                                }
-                            }
-                        }
-                        if (imageProcessing) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFF1F5F9))
-                            ) {
-                                CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    color = Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(10.dp),
-                    onClick = onPickImage,
-                    enabled = !imageProcessing && pickedImages.size < 4
-                ) {
-                    Text(
-                        if (pickedImages.isEmpty()) "＋ Add post images (share your win 🎉)" else "＋ Add more (${pickedImages.size}/4)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (pickedImages.size < 4) AccentCyan else TextMuted,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-                    )
-                }
-                if (pickedImages.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Tag the outcome (optional)", fontSize = 11.5.sp, color = TextMuted)
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("win" to "Profited", "loss" to "Lesson learned").forEach { (tag, label) ->
-                            val selected = outcomeTag == tag
-                            val tint = if (tag == "win") BullGreen else BearRed
-                            Surface(
-                                color = if (selected) tint.copy(alpha = 0.14f) else Color(0xFFF8FAFC),
-                                shape = RoundedCornerShape(10.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) tint else Color(0xFFE2E8F0)),
-                                onClick = { onOutcomeTagChange(if (selected) null else tag) }
-                            ) {
-                                Text(
-                                    label,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (selected) tint else TextMuted,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                Text("Ask the community", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = onTextChange,
-                    placeholder = { Text("Your poll question…", fontSize = 13.5.sp, color = TextMuted) },
-                    minLines = 1,
-                    shape = RoundedCornerShape(12.dp),
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFFF3F4F7),
-                        unfocusedContainerColor = Color(0xFFF3F4F7),
-                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        focusedBorderColor = AccentCyan,
-                        unfocusedBorderColor = Color(0xFFE2E8F0)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                pollOptions.forEachIndexed { index, option ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = option,
-                            onValueChange = { pollOptions[index] = it },
-                            placeholder = { Text("Option ${index + 1}", fontSize = 13.5.sp, color = TextMuted) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFFF3F4F7),
-                                unfocusedContainerColor = Color(0xFFF3F4F7),
-                                focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                                focusedBorderColor = AccentCyan,
-                                unfocusedBorderColor = Color(0xFFE2E8F0)
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(vertical = 3.dp)
-                        )
-                        if (pollOptions.size > 2) {
-                            IconButton(onClick = { pollOptions.removeAt(index) }, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Filled.Close, contentDescription = "Remove option", tint = TextMuted, modifier = Modifier.size(15.dp))
-                            }
-                        }
-                    }
-                }
-                if (pollOptions.size < 6) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "+ Add option",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AccentCyan,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { pollOptions.add(TextFieldValue("")) }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onAllowCommentsChange(!allowComments) }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (allowComments) AccentCyan else Color(0xFFE2E8F0)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (allowComments) {
-                            Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
-                        }
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text("Allow comments on this poll", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onBackground)
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row {
-                Spacer(Modifier.weight(1f))
-                val composeEnabled = !publishing && (
-                    (mode == "text" && text.text.isNotBlank()) ||
-                    (mode == "poll" && text.text.isNotBlank() && pollOptions.count { it.text.isNotBlank() } >= 2)
-                )
-                val composeInteraction = remember { MutableInteractionSource() }
-                val composeGradient = PremiumGradientBrush
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .pressScale(composeInteraction, downScale = 0.95f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .drawBehind { drawRect(brush = composeGradient, alpha = if (composeEnabled) 1f else 0.4f) }
-                        .clickable(
-                            interactionSource = composeInteraction,
-                            indication = rememberRipple(),
-                            enabled = composeEnabled
-                        ) { onPublish() }
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    if (publishing) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(
-                            if (mode == "poll") Icons.Filled.HowToVote else Icons.Filled.Send,
-                            contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (mode == "poll") "Publish poll" else "Publish",
-                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ComposerTab(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        color = if (selected) AccentCyan.copy(alpha = 0.12f) else Color(0xFFF3F4F7),
-        shape = RoundedCornerShape(9.dp),
-        onClick = onClick
-    ) {
-        Text(
-            label,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) AccentCyan else TextMuted,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
-    }
-}
-
 // --- post card ----------------------------------------------------------------------
 
 /** Centered "Today" / "Yesterday" / date pill shown above the first post of a new day. */
@@ -1818,8 +1575,9 @@ private fun PostCard(
                             Text("Comments \u00B7 ${post.commentCount}", fontSize = 12.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
                         }
                     }
-                } else if (isMentorAuthor) {
-                    // Mentor posts with the comments off carry a quiet label.
+                } else if (isMentorAuthor || roleMeta != null) {
+                    // Roled posts with comments off carry a quiet label —
+                    // "Mentor post" for mentors, "Team post" for the desk.
                     Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(50)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1827,7 +1585,13 @@ private fun PostCard(
                         ) {
                             Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Mentor post", fontSize = 11.sp, color = Color(0xFF94A3B8), maxLines = 1, softWrap = false)
+                            Text(
+                                if (isMentorAuthor) "Mentor post" else "Team post",
+                                fontSize = 11.sp,
+                                color = Color(0xFF94A3B8),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
