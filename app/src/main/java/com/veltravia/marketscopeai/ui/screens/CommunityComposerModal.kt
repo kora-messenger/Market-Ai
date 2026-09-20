@@ -129,13 +129,14 @@ fun ComposeFab(
         }
 
         val interaction = remember { MutableInteractionSource() }
+        val fabGradient = PremiumGradientBrush
         Box(
             modifier = Modifier
                 .padding(end = 20.dp, bottom = 24.dp)
                 .size(56.dp)
                 .shadow(10.dp, CircleShape)
                 .clip(CircleShape)
-                .drawBehind { drawRect(brush = PremiumGradientBrush) }
+                .drawBehind { drawRect(brush = fabGradient) }
                 .pressScale(interaction, downScale = 0.92f)
                 .clickable(interactionSource = interaction, indication = null) { onToggle() },
             contentAlignment = Alignment.Center
@@ -551,13 +552,14 @@ fun PublishComposerModal(
                             (isPoll && text.text.isNotBlank() && pollOptions.count { it.text.isNotBlank() } >= 2)
                         )
                     val interaction = remember { MutableInteractionSource() }
+                    val publishGradient = PremiumGradientBrush
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp)
                             .clip(RoundedCornerShape(22.dp))
                             .drawBehind {
-                                drawRect(brush = PremiumGradientBrush, alpha = if (composeEnabled) 1f else 0.45f)
+                                drawRect(brush = publishGradient, alpha = if (composeEnabled) 1f else 0.45f)
                             }
                             .pressScale(interaction, downScale = 0.98f)
                             .clickable(interactionSource = interaction, indication = null, enabled = composeEnabled) { onPublish() },
