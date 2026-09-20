@@ -142,6 +142,20 @@ app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" })
   }
 });
 
+// CORS for the public marketing site (marketscope-site on GitHub Pages):
+// the site fetches read-only public endpoints (watchlist ticker, community
+// stats, signal stats) straight from the browser. Only that exact origin is
+// allowed, and only simple GETs ever work cross-origin here — no credentials,
+// no preflighted mutations. Authenticated app traffic (OkHttp) is unaffected.
+app.use((req, res, next) => {
+  const origin = req.headers.origin || "";
+  if (origin === "https://kora-messenger.github.io") {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  next();
+});
+
 app.use(express.json({ limit: "25mb" }));
 
 const PORT = process.env.PORT || 3000;
