@@ -300,9 +300,7 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
 
             when {
                 events == null && error == null -> {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AccentViolet, strokeWidth = 2.5.dp)
-                    }
+                    NewsOutlookSkeleton()
                 }
                 error != null -> {
                     Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
