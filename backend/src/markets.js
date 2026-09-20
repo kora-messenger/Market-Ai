@@ -47,6 +47,15 @@ async function fetchWatchlist() {
           dayRef.set(item.id, { day: today, price });
         } else if (ref.price > 0) {
           changePct = ((price - ref.price) / ref.price) * 100;
+          // Guard against a poisoned reference (a bad feed captured at first
+          // fetch of the day can sit 30%+ away from the real market). An
+          // honest intraday change for these instruments is never beyond
+          // ±10%, so beyond that we treat the reference as invalid: re-capture
+          // it at the current price and report no change rather than a lie.
+          if (!Number.isFinite(changePct) || Math.abs(changePct) > 10) {
+            dayRef.set(item.id, { day: today, price });
+            changePct = null;
+          }
         }
       }
 
