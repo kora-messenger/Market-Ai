@@ -6303,6 +6303,22 @@ async function notifyAdminBugReport(reporter, description) {
   });
 }
 
+/** TEMP DIAG: run the exact notifyAdminBugReport steps, surfacing the error. */
+app.get("/api/admin/bug-report-diag", requireAuth, async (req, res) => {
+  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Admins only." });
+  const steps = {};
+  try {
+    const { rows } = await pool.query(`SELECT id, email FROM users ORDER BY created_at ASC LIMIT 1`);
+    steps.oldestUser = rows[0] ? { id: rows[0].id, email: rows[0].email } : null;
+    steps.notified = await addNotification({
+      userId: rows[0]?.id, type: "general", title: "DIAG bug report", body: "diag", data: { route: "notifications" }
+    });
+  } catch (err) {
+    steps.error = String(err.message || err);
+  }
+  res.json(steps);
+});
+
 /** Admin inbox: the latest bug reports with fresh signed attachment URLs. */
 app.get("/api/admin/bug-reports", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
