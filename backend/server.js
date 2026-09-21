@@ -6240,6 +6240,7 @@ app.get("/api/community/leaderboard", requireAuth, async (req, res) => {
        FROM community_posts p
        WHERE p.created_at >= $1 AND p.created_at < $2
          AND EXISTS (SELECT 1 FROM community_post_images i WHERE i.post_id = p.id)
+         AND p.outcome_tag = 'win'
        ORDER BY week_reactions DESC, p.created_at DESC LIMIT 5`,
       [weekStart, weekEnd]
     );
