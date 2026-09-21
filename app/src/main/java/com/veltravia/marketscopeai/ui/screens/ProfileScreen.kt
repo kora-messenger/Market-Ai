@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.ui.UserAvatar
+
+import coil.imageLoader
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.monetization.planDisplay
 import com.veltravia.marketscopeai.data.ApiConfig
@@ -201,7 +203,20 @@ fun ProfileScreen(
                 try {
                     val dataUrl = ApiClient.prepareChartImage(context, uri)
                     val res = ApiClient.uploadProfileAvatar(t, dataUrl)
-                    myAvatarUrl = ApiClient.resolveAvatarUrl(res.optString("avatar"))
+                    val fresh = ApiClient.resolveAvatarUrl(res.optString("avatar"))
+                    if (fresh != null) {
+                        // The avatar URL stays constant across uploads, so Coil's
+                        // memory and disk caches would keep showing the old photo.
+                        // Evict both and re-request with a one-time version suffix
+                        // (the API ignores query strings) so the new photo shows
+                        // immediately everywhere.
+                        val loader = context.imageLoader
+                        loader.memoryCache?.remove(coil.memory.MemoryCache.Key(fresh))
+                        loader.diskCache?.remove(fresh)
+                        myAvatarUrl = fresh + "?v=" + System.currentTimeMillis()
+                    } else {
+                        myAvatarUrl = null
+                    }
                 } catch (e: Exception) {
                     profileError = e.message ?: "Could not update the photo"
                 } finally {
