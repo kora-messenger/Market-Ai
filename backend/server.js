@@ -441,6 +441,7 @@ async function initDb() {
     -- badges only count content published after the user joined the app.
     ALTER TABLE users ADD COLUMN IF NOT EXISTS signals_seen_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_seen_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS community_last_seen_at TIMESTAMPTZ;
     CREATE TABLE IF NOT EXISTS premium_grants (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -644,6 +645,19 @@ async function initDb() {
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS outcome_tag TEXT;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS link_preview JSONB;
+    -- Server-side scraped OpenGraph cards (title/description/og:image),
+    -- cached per URL — the same "pasted link becomes a preview card"
+    -- behavior the reference app shows on its community posts.
+    CREATE TABLE IF NOT EXISTS link_previews (
+      url TEXT PRIMARY KEY,
+      title TEXT,
+      description TEXT,
+      image TEXT,
+      domain TEXT,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      failed_at TIMESTAMPTZ
+    );
     CREATE TABLE IF NOT EXISTS community_post_images (
       post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
       position INT NOT NULL,
@@ -5478,8 +5492,223 @@ async function guardLinks(author, body) {
   return { allowed: true };
 }
 
-function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor, viewCount) {
+// ===========================================================================
+// Link previews — the "paste a link, get a preview card" behavior for
+// community posts. The SERVER scrapes OpenGraph tags (never the app, so
+// users' devices never probe arbitrary hosts), caches per URL, and hard
+// blocks private/loopback addresses (SSRF guard).
+// ===========================================================================
+
+const LINK_PREVIEW_MAX_BYTES = 512 * 1024; // half an MB of HTML is plenty
+const LINK_PREVIEW_TTL_MS = 7 * 86400000; // success cache: 7 days
+const LINK_PREVIEW_FAIL_TTL_MS = 86400000; // failure cache: 1 day
+
+const URL_IN_TEXT_RE = /https?:\/\/[A-Za-z0-9\-._~:/?#@!$&'()*+,;=%]+/g;
+
+function firstUrlInText(text) {
+  const m = String(text || "").match(URL_IN_TEXT_RE);
+  return m ? m[0] : null;
+}
+
+function isPrivateIPv4(ip) {
+  const p = ip.split(".").map(Number);
+  if (p.length !== 4 || p.some((n) => Number.isNaN(n))) return true; // be safe
+  if (p[0] === 127 || p[0] === 10 || p[0] === 0) return true;
+  if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+  if (p[0] === 192 && p[1] === 168) return true;
+  if (p[0] === 169 && p[1] === 254) return true;
+  if (p[0] >= 224) return true; // multicast + reserved
+  return false;
+}
+
+function isPrivateIPv6(ip) {
+  const low = ip.toLowerCase();
+  if (low === "::1" || low === "::" ) return true;
+  if (low.startsWith("fe80") || low.startsWith("fc") || low.startsWith("fd")) return true;
+  // IPv4-mapped / NAT64 style embedded addresses
+  const v4mapped = low.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4mapped) return isPrivateIPv4(v4mapped[1]);
+  if (/^64:ff9b::/.test(low)) return true;
+  return false;
+}
+
+async function assertPublicHost(hostname) {
+  if (!hostname) throw new Error("No hostname");
+  if (hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".internal")) {
+    throw new Error("Private host");
+  }
+  const dns = require("node:dns").promises;
+  const results = await dns.lookup(hostname, { all: true, verbatim: true });
+  if (!results.length) throw new Error("Host did not resolve");
+  for (const r of results) {
+    if (r.family === 6 ? isPrivateIPv6(r.address) : isPrivateIPv4(r.address)) {
+      throw new Error("Private host");
+    }
+  }
+}
+
+function decodeHtmlEntities(s) {
+  return String(s || "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&#x27;/gi, "'").replace(/&#x2F;/gi, "/")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractMeta(html) {
+  const pick = (prop) => {
+    // order: property=, name=, with/without quotes — all common shapes
+    const res = [
+      new RegExp(`<meta[^>]+(?:property|name)=["\']${prop}["\'][^>]+content=["\']([^"\']+)["\']`, "i"),
+      new RegExp(`<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']${prop}["\']`, "i")
+    ];
+    for (const re of res) {
+      const m = html.match(re);
+      if (m && m[1]) return decodeHtmlEntities(m[1]);
+    }
+    return null;
+  };
+  let title = pick("og:title") || pick("twitter:title");
+  if (!title) {
+    const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+    if (m) title = decodeHtmlEntities(m[1]);
+  }
+  let description = pick("og:description") || pick("description") || pick("twitter:description");
+  let image = pick("og:image") || pick("og:image:url") || pick("twitter:image");
+  return { title, description, image };
+}
+
+async function scrapeLinkPreview(rawUrl) {
+  let u;
+  try { u = new URL(rawUrl); } catch { throw new Error("Not a valid URL"); }
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Only http(s) links");
+  if (u.username || u.password) throw new Error("Credentials in URL are not allowed");
+  await assertPublicHost(u.hostname);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  let html = "";
+  try {
+    const resp = await fetch(u.toString(), {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: { "user-agent": "MarketScopeAI-LinkPreview/1.0", accept: "text/html,*/*" }
+    });
+    const ctype = String(resp.headers.get("content-type") || "");
+    if (!ctype.includes("text/html")) throw new Error("Not an HTML page");
+    const reader = resp.body && typeof resp.body.getReader === "function" ? resp.body.getReader() : null;
+    if (!reader) throw new Error("No body");
+    const dec = new TextDecoder();
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      html += dec.decode(value, { stream: true });
+      if (total > LINK_PREVIEW_MAX_BYTES) {
+        await reader.cancel().catch(() => {});
+        break; // enough for the <head> in practice; og tags sit up top
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!html) throw new Error("Empty response");
+
+  const meta = extractMeta(html);
+  if (!meta.title && !meta.image && !meta.description) throw new Error("No preview data found");
+
+  // Resolve the og:image against the page URL (sites love relative paths).
+  if (meta.image) {
+    try { meta.image = new URL(meta.image, u.toString()).toString(); } catch { meta.image = null; }
+  }
   return {
+    url: u.toString(),
+    title: (meta.title || "").slice(0, 140) || null,
+    description: (meta.description || "").slice(0, 280) || null,
+    image: meta.image,
+    domain: u.hostname.replace(/^www\./, "")
+  };
+}
+
+/** Cached lookup + scrape. Never throws — failures are cached and returned as null. */
+async function linkPreviewFor(rawUrl) {
+  if (!pool) return null;
+  const url = String(rawUrl || "").slice(0, 2000);
+  try {
+    const { rows } = await pool.query(
+      `SELECT title, description, image, domain, fetched_at, failed_at FROM link_previews WHERE url = $1`,
+      [url]
+    );
+    if (rows.length) {
+      const r = rows[0];
+      if (r.failed_at && Date.now() - new Date(r.failed_at).getTime() < LINK_PREVIEW_FAIL_TTL_MS) return null;
+      if (r.fetched_at && Date.now() - new Date(r.fetched_at).getTime() < LINK_PREVIEW_TTL_MS) {
+        if (r.title || r.image || r.description) {
+          return { url, title: r.title, description: r.description, image: r.image, domain: r.domain };
+        }
+        return null;
+      }
+    }
+  } catch { /* cache read failure is non-fatal */ }
+
+  try {
+    const preview = await scrapeLinkPreview(url);
+    await pool.query(
+      `INSERT INTO link_previews (url, title, description, image, domain, fetched_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (url) DO UPDATE SET title = $2, description = $3, image = $4, domain = $5, fetched_at = now(), failed_at = NULL`,
+      [preview.url, preview.title, preview.description, preview.image, preview.domain]
+    );
+    return preview;
+  } catch (err) {
+    await pool.query(
+      `INSERT INTO link_previews (url, failed_at) VALUES ($1, now())
+       ON CONFLICT (url) DO UPDATE SET failed_at = now()`,
+      [url]
+    ).catch(() => {});
+    return null;
+  }
+}
+
+// GET /api/link-preview?url=... — app fetches a card for any pasted link
+// (composer live preview, older posts published before previews existed).
+app.get("/api/link-preview", requireAuth, async (req, res) => {
+  try {
+    const url = firstUrlInText(String(req.query.url || ""));
+    if (!url) return res.status(400).json({ error: "Provide a http(s) link." });
+    const preview = await linkPreviewFor(url);
+    if (!preview) return res.json({ preview: null });
+    return res.json({ preview });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not build a preview for that link." });
+  }
+});
+
+function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor, viewCount, lastSeenAt) {
+  let linkPreview = null;
+  if (row.link_preview && typeof row.link_preview === "object") {
+    const lp = row.link_preview;
+    if (lp.title || lp.image || lp.description) {
+      linkPreview = {
+        url: lp.url || null,
+        title: lp.title || null,
+        description: lp.description || null,
+        image: lp.image || null,
+        domain: lp.domain || null
+      };
+    }
+  }
+  // "New since your last visit" — the feed marks unread messages, and
+  // the act of reading the feed then clears the bar (below).
+  let isNew = false;
+  if (lastSeenAt && row.created_at && new Date(row.created_at) > new Date(lastSeenAt)) {
+    isNew = true;
+  }
+  return {
+    linkPreview,
+    isNew,
     id: row.id,
     authorName: row.author_name,
     authorUsername: row.author_username || null,
@@ -5560,6 +5789,17 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
     const offset = Math.max(parseInt(req.query.offset) || 0, 0);
     const me = await currentUser(req);
     const meId = me ? me.id : null;
+    // The viewer's last-visit bar: posts newer than this carry isNew, and
+    // the visit itself moves the bar forward (page 0 only, so paging an
+    // old session doesn't wipe markers for content you haven't reached).
+    let lastSeenAt = null;
+    if (me) {
+      const { rows: seen } = await pool.query(
+        `SELECT community_last_seen_at FROM users WHERE id = $1 LIMIT 1`,
+        [me.id]
+      );
+      lastSeenAt = seen.length ? seen[0].community_last_seen_at : null;
+    }
 
     const { rows: posts } = await pool.query(
       `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
@@ -5628,7 +5868,7 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
     const votesByPoll = {};
     for (const v of votes) (votesByPoll[v.poll_id] = votesByPoll[v.poll_id] || []).push(v);
 
-    return res.json({
+    const payload = {
       posts: posts.map((p) => {
         let poll = null;
         if (p.post_type === "poll" && Array.isArray(p.poll_options)) {
@@ -5643,11 +5883,19 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
           poll = { options, counts, totalVotes };
         }
         const isBadge = badgeEmails.has((p.author_email || "").toLowerCase());
-        return postToApi(p, byPost[p.id] || [], cByPost[p.id] || 0, poll, myVoteOption[p.id] || null, isBadge, p.view_count || 0);
+        return postToApi(p, byPost[p.id] || [], cByPost[p.id] || 0, poll, myVoteOption[p.id] || null, isBadge, p.view_count || 0, lastSeenAt);
       }),
       total: total[0].c,
       hasMore: offset + posts.length < total[0].c
-    });
+    };
+    // Reading the feed IS the visit: advance the bar so the next visit only
+    // marks what landed after this one. Page 0 only — paging a session back
+    // in time must not wipe the markers. Fired without blocking the reply.
+    if (me && offset === 0) {
+      pool.query(`UPDATE users SET community_last_seen_at = now() WHERE id = $1`, [me.id])
+        .catch(() => {});
+    }
+    return res.json(payload);
   } catch (err) {
     return res.status(500).json({ error: "Could not load the feed", detail: String(err.message || err) });
   }
@@ -5752,6 +6000,23 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     const poll = postType === "poll"
       ? { options: row.poll_options, counts: {}, totalVotes: 0 }
       : null;
+    // Pasted link -> preview card. Scrape server-side (bounded, cached,
+    // non-fatal): the author sees the exact card their readers will see.
+    let linkPreview = null;
+    const pastedUrl = firstUrlInText(body);
+    if (pastedUrl) {
+      linkPreview = await Promise.race([
+        linkPreviewFor(pastedUrl),
+        new Promise((resolve) => setTimeout(() => resolve(null), 4500))
+      ]);
+      if (linkPreview) {
+        await pool.query(
+          `UPDATE community_posts SET link_preview = $1::jsonb WHERE id = $2`,
+          [JSON.stringify(linkPreview), row.id]
+        );
+        row.link_preview = linkPreview;
+      }
+    }
     const post = postToApi({ ...row, image_count: imageList.length }, [], 0, poll, null, false, 0);
     return res.json({ post });
   } catch (err) {
