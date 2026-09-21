@@ -2913,6 +2913,66 @@ function profilePromptText(q) {
   return ` Trader profile from their onboarding questionnaire — this is the person you are advising: ${bits.join("; ")}.`;
 }
 
+/**
+ * The FULL binding context for every AI analysis this user runs:
+ * their questionnaire profile + their most recent AI trade plan, turned into
+ * hard rules the model must obey (never soft "tailor to it" advice).
+ *
+ * Also resolves the analysis mode their declared style maps to — a declared
+ * Day Trader / Scalper must only ever receive intraday (scalp-biased)
+ * setups, a Swing / Position trader only swing-biased setups. The request's
+ * own mode is overridden by this when a style is on file.
+ */
+async function traderProfileContext(userRow) {
+  const q = userRow && userRow.questionnaire && typeof userRow.questionnaire === "object" ? userRow.questionnaire : null;
+  const desc = profilePromptText(q);
+
+  // --- Enforced mode from declared style ---
+  const style = String((q && q.style) || "").trim().toLowerCase();
+  let enforcedMode = null;
+  let styleRule = "";
+  if (style.includes("day trad") || style === "scalping" || style.includes("scalp")) {
+    enforcedMode = "scalp";
+    styleRule = `STYLE RULE (binding): this trader declared ${q.style}. Produce ONLY intraday setups: entries on the 15M, targets and stops sized for completion within the trading day, and estimatedDuration of hours, not days/weeks. A multi-day swing setup is a violation of their profile even if technically good — in that case respond NO_TRADE and say the clean setup on the chart doesn't fit their day-trading profile.`;
+  } else if (style.includes("swing") || style.includes("position")) {
+    enforcedMode = "swing";
+    styleRule = `STYLE RULE (binding): this trader declared ${q.style}. Produce ONLY swing/position setups: entries anchored to 4H structure, targets and stops sized for a multi-day-to-multi-week hold. A quick intraday scalp is a violation of their profile even if technically good — in that case respond NO_TRADE and say the intraday move doesn't fit their ${q.style} profile.`;
+  }
+
+  // --- Their most recent AI trade plan: their own written rules ---
+  let planBlock = "";
+  try {
+    const { rows } = await pool.query(
+      `SELECT name, inputs, content FROM ai_trade_plans WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [userRow.id]
+    );
+    if (rows.length) {
+      const p = rows[0];
+      const inp = p.inputs && typeof p.inputs === "object" ? p.inputs : {};
+      const c = p.content && typeof p.content === "object" ? p.content : {};
+      const lines = [];
+      lines.push(`their active trade plan "${String(p.name || "Trade plan").slice(0, 60)}"`);
+      if (inp.style) lines.push(`plan style: ${inp.style}`);
+      if (Array.isArray(inp.timeframes) && inp.timeframes.length) lines.push(`plan timeframes: ${inp.timeframes.join(", ")}`);
+      if (inp.riskPerTrade) lines.push(`plan max risk per trade: ${inp.riskPerTrade}`);
+      if (inp.rrRatio) lines.push(`plan target risk-to-reward: ${inp.rrRatio}`);
+      if (inp.entryCriteria) lines.push(`plan entry criteria: ${String(inp.entryCriteria).slice(0, 300)}`);
+      if (inp.avoidConditions) lines.push(`conditions they avoid: ${String(inp.avoidConditions).slice(0, 300)}`);
+      if (c.execution) lines.push(`plan execution rules: ${String(c.execution).slice(0, 450)}`);
+      if (c.riskRules) lines.push(`plan risk rules: ${String(c.riskRules).slice(0, 450)}`);
+      if (Array.isArray(c.checklist) && c.checklist.length) {
+        lines.push(`plan pre-trade checklist: ${c.checklist.slice(0, 6).map((i) => String(i).slice(0, 90)).join("; ")}`);
+      }
+      planBlock = ` Their ACTIVE TRADE PLAN (their own written rules — treat as binding): ${lines.join("; ")}. If the setup you see would violate one of these plan rules (risk per trade, entry criteria, avoided conditions, checklist), respond NO_TRADE and name the exact rule it breaks.`;
+    }
+  } catch (_e) {
+    planBlock = ""; // plan lookup must never break the analysis
+  }
+
+  const text = [desc, styleRule, planBlock].filter(Boolean).join(" ").trim();
+  return { text, enforcedMode };
+}
+
 const SYSTEM_PROMPT = `You are a senior market analyst. You receive two real chart screenshots of the same instrument:
 - a 4H (higher timeframe) chart and a 15M (lower timeframe) chart.
 The trader picked Scalp mode (favor 15M entries, quicker targets) or Swing mode (favor 4H structure, wider targets).
@@ -2931,7 +2991,7 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "keyLevels": [number]
 }
 Prices must be plausible for the instrument shown on the charts. Provide a realistic estimated duration based on timeframe and momentum. If the setup is not clean, choose NO_TRADE with a clear thesis.
-If a trader profile is provided with the request, tailor the analysis to it: respect their stated risk per trade when framing risk, lean the reasoning toward their preferred style/timeframes/entry criteria, and pitch the explanation to their experience level. The profile describes THIS trader — never contradict it (e.g. never present a scalp-style setup to a declared position trader as ideal).`;
+If a trader profile is provided with the request it is BINDING, not a suggestion: give setups ONLY in their declared style and preferred timeframes, respect their stated risk per trade and capital when framing risk, obey their own entry criteria, and pitch the explanation to their experience level. If the charts offer no setup that fits their profile, respond NO_TRADE and say plainly why it doesn't fit THEIR way of trading — never hand them a different style's setup. If their active trade plan is included, the setup must comply with its risk rules, entry criteria and avoided conditions or it is NO_TRADE with the broken rule named.`;
 
 function extractJson(text) {
   let t = (text || "").trim();
@@ -2983,7 +3043,12 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
   }
 
-  const traderProfile = profilePromptText(userRow.questionnaire);
+  const profileCtx = await traderProfileContext(userRow);
+  // The user's declared style wins: a Day Trader never gets swing setups
+  // (and vice versa), even if the toggle on the form said otherwise.
+  const enforcedMode = profileCtx.enforcedMode || mode;
+  const modeOverridden = profileCtx.enforcedMode != null && profileCtx.enforcedMode !== mode;
+  const traderProfile = profileCtx.text;
   const trial = trialInfo(userRow);
   const premium = paidPremiumActive(userRow) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
@@ -3104,7 +3169,7 @@ Respond ONLY with JSON:
           content: [
             {
               type: "text",
-              text: `Instrument: ${instrument.display}. Mode: ${mode === "scalp" ? "Scalp (15M-biased)" : "Swing (4H-biased)"}.` +
+              text: `Instrument: ${instrument.display}. Mode: ${enforcedMode === "scalp" ? "Scalp (15M-biased)" : "Swing (4H-biased)"}${modeOverridden ? ` (enforced from the trader's declared style — they selected ${mode} but their profile overrides it)` : ""}.` +
                 (livePrice != null
                   ? ` Verified current market price of ${instrument.display}: ${livePrice}. Cross-check the chart against this live market — if the chart and the live market contradict each other, say so in the thesis.`
                   : "") +
@@ -3138,7 +3203,8 @@ Respond ONLY with JSON:
     const result = {
       instrument: instrument.display,
       instrumentId: instrument.id,
-      mode,
+      mode: enforcedMode,
+      modeOverridden,
       model: premium ? OPENAI_MODEL : ANALYSIS_MODEL,
       livePrice,
       marketVerified: livePrice != null,
@@ -3149,7 +3215,7 @@ Respond ONLY with JSON:
 
     const { rows } = await pool.query(
       `INSERT INTO analyses (user_id, instrument_id, mode, result) VALUES ($1, $2, $3, $4) RETURNING id`,
-      [userRow.id, instrument.id, mode, JSON.stringify(result)]
+      [userRow.id, instrument.id, enforcedMode, JSON.stringify(result)]
     );
     if (rows.length) result.id = rows[0].id;
 
@@ -3180,7 +3246,7 @@ Respond with STRICT JSON only (no markdown fences), shape:
 }
 Hard rules: LONG pairs with recommendation BUY; SHORT with SELL; NO_TRADE with HOLD. All prices must be in the stock's own currency and near its real current price. Ground every claim in the provided data — never invent numbers.
 Critical: if the 3-month, 6-month, 1-year or YTD performance is strongly positive (double digits) but you are NOT recommending BUY, the FIRST sentence of your thesis MUST explicitly reconcile that apparent tension — e.g. explain the rally already looks priced in, that short-term momentum has stalled versus the longer-term trend, that you'd want a pullback before entering, or a valuation concern — so a trader skimming the performance numbers immediately understands why you are not chasing an already-strong stock rather than seeing a contradiction.
-If a trader profile is provided with the request, tailor the analysis to it: shape the holding-period estimate (estimatedDuration) toward their style and preferred timeframes, respect their stated risk per trade and capital when framing position risk, and pitch the explanation to their experience level. The profile describes THIS trader — never contradict it.`;
+If a trader profile is provided with the request it is BINDING, not a suggestion: shape the holding-period estimate (estimatedDuration) toward their declared style and preferred timeframes, respect their stated risk per trade and capital when framing position risk, obey their own entry criteria, and pitch the explanation to their experience level. A declared day trader should not be handed a 6-month buy-and-hold — if the profile conflicts with the setup, choose NO_TRADE/HOLD and say the mismatch plainly. If their active trade plan is included, the recommendation must comply with its risk rules and avoided conditions or it is NO_TRADE with the broken rule named.`;
 
 app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
@@ -3209,7 +3275,8 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
   }
 
-  const traderProfile = profilePromptText(userRow.questionnaire);
+  const profileCtx = await traderProfileContext(userRow);
+  const traderProfile = profileCtx.text;
   const trial = trialInfo(userRow);
   const premium = paidPremiumActive(userRow) || Boolean(await getActivePremiumGrant(userRow.id));
   if (!trial.trialActive && !premium) {
