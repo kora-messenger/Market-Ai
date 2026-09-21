@@ -2,6 +2,7 @@ package com.veltravia.marketscopeai.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
@@ -92,6 +94,7 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
     var loadError by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableStateOf(0) }
     var detail by remember { mutableStateOf<JSONObject?>(null) }
+    var viewerUrl by remember { mutableStateOf<String?>(null) }
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
 
     suspend fun loadPage(offset: Int) {
@@ -176,7 +179,13 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(wins) { w -> WallWinCard(w) { detail = w } }
+                    items(wins) { w ->
+                    WallWinCard(
+                        w,
+                        onClick = { detail = w },
+                        onOpenImage = { viewerUrl = ApiClient.signalTestimonialImageUrl(w.optString("id", "")) }
+                    )
+                }
                     if (hasMore) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
                             if (loadingMore) CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(22.dp))
@@ -210,6 +219,7 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
         ) {
             WinDetailSheet(
                 win = d,
+                onOpenImage = { viewerUrl = ApiClient.signalTestimonialImageUrl(d.optString("id", "")) },
                 onReshare = {
                     val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                         type = "text/plain"
@@ -224,12 +234,17 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
             )
         }
     }
+
+    // Full-screen proof image viewer.
+    viewerUrl?.let { url ->
+        ImageViewerDialog(urls = listOf(url), onDismiss = { viewerUrl = null })
+    }
 }
 
 /** One wall card: proof screenshot (or instrument tile), instrument + outcome, author. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun WallWinCard(w: JSONObject, onClick: () -> Unit) {
+private fun WallWinCard(w: JSONObject, onClick: () -> Unit, onOpenImage: () -> Unit) {
     val isLong = w.optString("direction", "long").equals("long", ignoreCase = true)
     val hasImage = w.optBoolean("hasImage", false)
     val exitPrice = w.optDouble("exitPrice", Double.NaN)
@@ -252,6 +267,7 @@ private fun WallWinCard(w: JSONObject, onClick: () -> Unit) {
                     .aspectRatio(16f / 10f)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color.White)
+                    .clickable { onOpenImage() }
             )
             Spacer(Modifier.height(8.dp))
         } else {
@@ -301,7 +317,7 @@ private fun WallWinCard(w: JSONObject, onClick: () -> Unit) {
 /** The full proof: image at size, full comment, author, reshare (tap = sheet, long-press = copy). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun WinDetailSheet(win: JSONObject, onReshare: () -> Unit, onCopy: () -> Unit) {
+private fun WinDetailSheet(win: JSONObject, onReshare: () -> Unit, onCopy: () -> Unit, onOpenImage: () -> Unit) {
     val isLong = win.optString("direction", "long").equals("long", ignoreCase = true)
     val hasImage = win.optBoolean("hasImage", false)
     val exitPrice = win.optDouble("exitPrice", Double.NaN)
@@ -337,6 +353,7 @@ private fun WinDetailSheet(win: JSONObject, onReshare: () -> Unit, onCopy: () ->
                     .aspectRatio(16f / 9f)
                     .clip(RoundedCornerShape(14.dp))
                     .background(SurfaceLight)
+                    .clickable { onOpenImage() }
             )
             Spacer(Modifier.height(12.dp))
         }

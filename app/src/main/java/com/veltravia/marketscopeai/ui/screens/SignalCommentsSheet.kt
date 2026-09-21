@@ -59,6 +59,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.RoleBadge
 import com.veltravia.marketscopeai.ui.UserAvatar
@@ -667,31 +668,8 @@ fun SignalCommentsSheet(
     }
 
     // Full-screen screenshot viewer.
-    if (viewerImage != null) {
-        Dialog(
-            onDismissRequest = { viewerImage = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.92f))
-                    .clickable { viewerImage = null },
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = viewerImage,
-                    contentDescription = "Trade screenshot",
-                    modifier = Modifier.fillMaxWidth()
-                )
-                IconButton(
-                    onClick = { viewerImage = null },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
-                }
-            }
-        }
+    viewerImage?.let { url ->
+        ImageViewerDialog(urls = listOf(url), onDismiss = { viewerImage = null })
     }
 }
 

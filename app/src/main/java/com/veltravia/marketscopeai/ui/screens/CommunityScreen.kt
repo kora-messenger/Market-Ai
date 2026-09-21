@@ -1,6 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
 import com.veltravia.marketscopeai.ui.roleStyle
+import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -392,6 +393,7 @@ fun CommunityScreen(
     var deleteTarget by remember { mutableStateOf<CommunityPost?>(null) }
     var viewerPost by remember { mutableStateOf<CommunityPost?>(null) }
     var viewerIndex by remember { mutableStateOf(0) }
+    var proofViewerUrl by remember { mutableStateOf<String?>(null) }
     var isAdmin by remember { mutableStateOf(false) }
     var canCompose by remember { mutableStateOf(false) }
     var composerOutcomeTag by remember { mutableStateOf<String?>(null) }
@@ -827,7 +829,12 @@ fun CommunityScreen(
                         }
                         if (proofPosts.isNotEmpty()) {
                             item {
-                                FeaturedProofRow(proofPosts)
+                                FeaturedProofRow(
+                                    proofs = proofPosts,
+                                    onOpenImage = { proof ->
+                                        proofViewerUrl = ApiClient.communityImageUrl(proof.postId, 0)
+                                    }
+                                )
                             }
                         }
                         item {
@@ -1000,40 +1007,17 @@ fun CommunityScreen(
 
     viewerPost?.let { post ->
         if (post.imageCount > 0) {
-            androidx.compose.ui.window.Dialog(
-                onDismissRequest = { viewerPost = null },
-                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { viewerPost = null },
-                    contentAlignment = Alignment.Center
-                ) {
-                    coil.compose.AsyncImage(
-                        model = ApiClient.communityImageUrl(post.id, viewerIndex),
-                        contentDescription = "Post image",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    Surface(
-                        color = Color(0xB3000000),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .statusBarsPadding()
-                            .padding(top = 10.dp)
-                    ) {
-                        Text(
-                            "${viewerIndex + 1} / ${post.imageCount} · tap anywhere to close",
-                            fontSize = 11.sp,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
+            ImageViewerDialog(
+                urls = (0 until post.imageCount).map { idx -> ApiClient.communityImageUrl(post.id, idx) },
+                initialIndex = viewerIndex,
+                onDismiss = { viewerPost = null }
+            )
         }
+    }
+
+    // Weekly proof strip image opened full-screen.
+    proofViewerUrl?.let { url ->
+        ImageViewerDialog(urls = listOf(url), onDismiss = { proofViewerUrl = null })
     }
 
     openPost?.let { post ->
@@ -1170,7 +1154,10 @@ private fun PinnedPostsWidget(
 }
 
 @Composable
-private fun FeaturedProofRow(proofs: List<ProofPost>) {
+private fun FeaturedProofRow(
+    proofs: List<ProofPost>,
+    onOpenImage: (ProofPost) -> Unit
+) {
     Column {
         Text(
             "Featured trader proof this week",
@@ -1194,6 +1181,7 @@ private fun FeaturedProofRow(proofs: List<ProofPost>) {
                                 .fillMaxWidth()
                                 .height(90.dp)
                                 .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                                .clickable { onOpenImage(proof) }
                         )
                         Column(Modifier.padding(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
