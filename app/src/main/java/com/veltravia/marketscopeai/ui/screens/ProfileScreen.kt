@@ -244,7 +244,9 @@ fun ProfileScreen(
         AccountSummaryCard(
             name = user?.name ?: "Trader",
             email = user?.email ?: "",
-            avatarUrl = myAvatarUrl ?: ApiClient.resolveAvatarUrl(user?.picture),
+            // No custom avatar -> the app's own default avatar icon, never
+            // the Google account photo.
+            avatarUrl = myAvatarUrl,
             username = username,
             isPremium = isPremium,
             trialActive = trialActive,

@@ -267,8 +267,8 @@ private fun ViewerPage(
 
     suspend fun resetZoom() = animateZoomTo(1f, 0f, 0f)
 
-    val maxOffsetX get() = (scale - 1f) * boxSize.width / 2f
-    val maxOffsetY get() = (scale - 1f) * boxSize.height / 2f
+    fun maxOffsetX() = (scale - 1f) * boxSize.width / 2f
+    fun maxOffsetY() = (scale - 1f) * boxSize.height / 2f
 
     // Dismiss drag only while the page is un-zoomed; while zoomed the pan
     // transform handler owns every gesture and the pager is disabled.
@@ -286,7 +286,7 @@ private fun ViewerPage(
             .then(
                 if (scale > 1.01f) Modifier.pointerInput(url) {
                     // Pan + pinch while zoomed; consume so the pager never scrolls.
-                    awaitEachGesture {
+                    val needsSettle = awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
                         do {
                             val event = awaitPointerEvent()
@@ -308,9 +308,11 @@ private fun ViewerPage(
                                 onZoomedChange(newScale > 1.01f)
                             }
                         } while (event.changes.any { it.pressed })
-                        // Finger lifted: settle below-1 zoom back to 1x.
-                        if (scale < 1.02f) resetZoom()
+                        // Finger lifted: report whether zoom settled below 1x
+                        // (the caller suspends outside the restricted scope).
+                        scale < 1.02f
                     }
+                    if (needsSettle) resetZoom()
                 } else Modifier
             )
             .pointerInput(url) {
@@ -335,8 +337,8 @@ private fun ViewerPage(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-                translationX = offX.coerceIn(-maxOffsetX, maxOffsetX)
-                translationY = offY.coerceIn(-maxOffsetY, maxOffsetY)
+                translationX = offX.coerceIn(-maxOffsetX(), maxOffsetX())
+                translationY = offY.coerceIn(-maxOffsetY(), maxOffsetY())
             }
     ) {
         var loadState by remember(zoomResetKey) { mutableStateOf<AsyncImagePainter.State?>(null) }
