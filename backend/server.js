@@ -1547,6 +1547,41 @@ app.get("/api/trending", async (_req, res) => {
   }
 });
 
+/**
+ * PUBLIC wins feed for the marketing site's Results section (CORS above
+ * allows only the GitHub Pages origin, GET only). Read-only, approved
+ * testimonials only, capped at 8, no auth — the site shows initials, not
+ * full profiles, and never any member email or identifiers.
+ */
+app.get("/api/community/wins/public", async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT t.id, t.comment, t.created_at, t.author_name,
+              s.instrument_display, s.direction, s.outcome
+       FROM signal_testimonials t
+       JOIN daily_signals s ON s.id = t.signal_id
+       WHERE t.status = 'approved'
+         AND t.comment IS NOT NULL AND length(trim(t.comment)) > 0
+       ORDER BY t.created_at DESC
+       LIMIT 8`
+    );
+    res.json({
+      wins: rows.map((r) => ({
+        id: r.id,
+        comment: r.comment,
+        createdAt: r.created_at,
+        authorName: r.author_name,
+        instrument: r.instrument_display,
+        direction: r.direction,
+        outcome: r.outcome
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load wins", detail: String(err.message || err) });
+  }
+});
+
 app.get("/api/community/stats", async (req, res) => {
   if (!pool) {
     return res.status(503).json({ error: "Database is not configured." });
