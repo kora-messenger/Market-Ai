@@ -532,6 +532,7 @@ async function initDb() {
     ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS mode TEXT;
     ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS exit_price DOUBLE PRECISION;
     ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS resolved_by TEXT;
+    ALTER TABLE daily_signals ADD COLUMN IF NOT EXISTS tps_hit JSONB;
     CREATE TABLE IF NOT EXISTS signal_reactions (
       signal_id UUID REFERENCES daily_signals(id) ON DELETE CASCADE,
       user_id UUID NOT NULL,
@@ -3866,6 +3867,7 @@ function signalToApi(r, extra) {
     closedAt: r.closed_at,
     publishedAt: r.published_at,
     lastPrice: r.last_price,
+    tpsHit: Array.isArray(r.tps_hit) ? r.tps_hit.map(Number).filter(Number.isFinite) : [],
     exitPrice: r.exit_price != null ? Number(r.exit_price) : null,
     resolvedBy: r.resolved_by || null,
     lastPriceAt: r.last_price_at,
@@ -4342,6 +4344,12 @@ function resolveFromCandles(sig, candles, intervalSec) {
   const startMs = new Date(sig.published_at).getTime() - intervalSec * 1000;
   let triggeredAt = null;
   let lastClose = null;
+  // Every TP level actually traded through since publication (drives the
+  // in-app tick list and the one-time "TP n hit" push notifications).
+  const tpsHit = [];
+  const tpHit = (tp) => {
+    if (!tpsHit.some((t) => Math.abs(t - tp) < 1e-9)) tpsHit.push(tp);
+  };
   for (const c of candles) {
     const ms = c.t * 1000;
     if (ms < startMs) continue;
@@ -4349,24 +4357,28 @@ function resolveFromCandles(sig, candles, intervalSec) {
     if (triggeredAt == null && (isLong ? c.h >= sig.entry : c.l <= sig.entry)) {
       triggeredAt = new Date(ms).toISOString();
     }
+    for (const tp of tps) {
+      if (isLong ? c.h >= tp : c.l <= tp) tpHit(tp);
+    }
     const hitSl = isLong ? c.l <= sig.stop_loss : c.h >= sig.stop_loss;
     const hitFinalTp = finalTp != null && (isLong ? c.h >= finalTp : c.l <= finalTp);
     if (hitSl) {
       return {
         outcome: "invalidated_sl", exitPrice: sig.stop_loss,
         closedAt: new Date(ms).toISOString(),
-        triggeredAt: triggeredAt || new Date(ms).toISOString(), lastClose
+        triggeredAt: triggeredAt || new Date(ms).toISOString(), lastClose, tpsHit
       };
     }
     if (hitFinalTp) {
+      tpHit(finalTp);
       return {
         outcome: "successful", exitPrice: finalTp,
         closedAt: new Date(ms).toISOString(),
-        triggeredAt: triggeredAt || new Date(ms).toISOString(), lastClose
+        triggeredAt: triggeredAt || new Date(ms).toISOString(), lastClose, tpsHit
       };
     }
   }
-  return { outcome: null, exitPrice: null, closedAt: null, triggeredAt, lastClose };
+  return { outcome: null, exitPrice: null, closedAt: null, triggeredAt, lastClose, tpsHit };
 }
 
 app.post("/api/daily-signals/price-check", async (req, res) => {
@@ -4409,6 +4421,19 @@ app.post("/api/daily-signals/price-check", async (req, res) => {
       let closedAt = null;
       let triggeredAt = candleResult ? candleResult.triggeredAt : null;
 
+      // --- TP-hit tracking: which targets has price actually traded through?
+      const tpsAll = Array.isArray(r.take_profits) ? r.take_profits.map(Number).filter(Number.isFinite) : [];
+      const prevHit = Array.isArray(r.tps_hit) ? r.tps_hit.map(Number).filter(Number.isFinite) : [];
+      let tpsHit = [];
+      if (candleResult && Array.isArray(candleResult.tpsHit)) tpsHit = candleResult.tpsHit.slice();
+      if (price == null) {
+        // spot-price fallback below will re-decide outcome; seed hit TPs from spot
+      } else if (!tpsHit.length) {
+        // candles returned but no TP recorded — keep prev hits (feed hiccup, not a miss)
+        tpsHit = prevHit.slice();
+      }
+      const isLongTp = r.direction === "long";
+
       if (price == null) {
         // Fallback: candles unavailable for this instrument — decide on spot price.
         price = await fetchPrice(r.instrument_id);
@@ -4427,6 +4452,12 @@ app.post("/api/daily-signals/price-check", async (req, res) => {
           exitPrice = finalTp;
         } else if (isLong ? price >= r.entry : price <= r.entry) {
           outcome = "triggered_active";
+        }
+        // Spot fallback: judge TP touches from the last known price too.
+        for (const tp of tpsAll) {
+          if (isLongTp ? price >= tp : price <= tp) {
+            if (!tpsHit.some((t) => Math.abs(t - tp) < 1e-9)) tpsHit.push(tp);
+          }
         }
       } else if (outcome == null) {
         exitPrice = candleResult.exitPrice;
@@ -4448,13 +4479,28 @@ app.post("/api/daily-signals/price-check", async (req, res) => {
         outcome = triggered ? "expired_partial" : "expired";
         status = "closed";
       }
+      // One-time push + in-app notification per newly hit target.
+      const newHits = tpsAll.filter((tp) => {
+        const already = prevHit.some((t) => Math.abs(t - tp) < 1e-9);
+        const hitNow = tpsHit.some((t) => Math.abs(t - tp) < 1e-9);
+        return hitNow && !already;
+      });
+      for (const tp of newHits) {
+        const idx = tpsAll.indexOf(tp);
+        const tpLabel = idx === 0 ? "Initial TP" : `TP ${idx + 1}`;
+        await broadcastTpHit(r, tpLabel, tp, tpsHit, tpsAll).catch((e) =>
+          console.error("broadcastTpHit failed:", String(e.message || e))
+        );
+      }
+      if (newHits.length) tpsHit = Array.from(new Set([...prevHit, ...newHits]));
       await pool.query(
         `UPDATE daily_signals
          SET last_price = $1, last_price_at = now(), status = $2, outcome = $3,
              triggered_at = COALESCE(triggered_at, $4),
              closed_at = COALESCE(closed_at, $5),
              exit_price = COALESCE(exit_price, $6),
-             resolved_by = COALESCE(resolved_by, $7)
+             resolved_by = COALESCE(resolved_by, $7),
+             tps_hit = $9
          WHERE id = $8`,
         [
           price, status, outcome || r.outcome,
@@ -4462,13 +4508,15 @@ app.post("/api/daily-signals/price-check", async (req, res) => {
           status === "closed" ? (closedAt || new Date().toISOString()) : null,
           exitPrice,
           status === "closed" ? "auto" : null,
-          r.id
+          r.id,
+          JSON.stringify(tpsHit)
         ]
       );
       results.push({
         id: r.id, instrument: r.instrument_display, price, status,
         outcome: outcome || r.outcome,
-        resolvedBy: status === "closed" ? "auto" : null
+        resolvedBy: status === "closed" ? "auto" : null,
+        newTpsHit: newHits
       });
     }
     res.json({ checked: results.length, results });
@@ -6454,6 +6502,26 @@ async function notifyUser(userId, { title, body, type, data }) {
     }
   } catch (err) {
     console.error("notifyUser failed:", String(err.message || err));
+  }
+}
+
+/**
+ * A live signal just traded through one of its targets — tell every user once.
+ * Same delivery pipeline as broadcastNewSignal: in-app notification + FCM push,
+ * deep-linking to that signal's detail screen.
+ */
+async function broadcastTpHit(signalRow, tpLabel, tpLevel, tpsHit, tpsAll) {
+  if (!pool) return;
+  const hitCount = Array.isArray(tpsHit) ? tpsHit.length : 1;
+  const totalCount = Array.isArray(tpsAll) ? tpsAll.length : 1;
+  const title = `🎯 ${tpLabel} hit — ${signalRow.instrument_display}`;
+  const body = `The ${signalRow.direction === "long" ? "long" : "short"} signal took profit at ${round(tpLevel)} (${hitCount}/${totalCount} targets).`;
+  const { rows: users } = await pool.query(`SELECT id FROM users`);
+  for (const u of users) {
+    await notifyUser(u.id, {
+      title, body, type: "signal",
+      data: { route: `daily_signal/${signalRow.id}`, signalId: String(signalRow.id) }
+    });
   }
 }
 

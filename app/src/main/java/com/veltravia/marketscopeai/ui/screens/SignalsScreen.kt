@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material.icons.filled.PauseCircle
@@ -1174,6 +1175,15 @@ fun DailySignalDetailScreen(
                 val tps = item.optJSONArray("takeProfits")
                 val firstTp = if (tps != null && tps.length() > 0) tps.optDouble(0) else Double.NaN
                 val finalTp = if (tps != null && tps.length() > 0) tps.optDouble(tps.length() - 1) else Double.NaN
+                val tpsHit = remember {
+                    val arr = item.optJSONArray("tpsHit")
+                    val hits = mutableListOf<Double>()
+                    if (arr != null) for (i in 0 until arr.length()) {
+                        val v = arr.optDouble(i, Double.NaN)
+                        if (!v.isNaN()) hits.add(v)
+                    }
+                    hits
+                }
                 val rr = item.optDouble("riskReward", Double.NaN)
                 val thesis = item.optString("thesis", "")
                 val strength = item.optString("strength", "moderate")
@@ -1321,6 +1331,45 @@ fun DailySignalDetailScreen(
                         tint = AccentCyan,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+
+                // --- Take-profit targets: one row per TP, green tick once hit ---
+                if (tps != null && tps.length() > 0) {
+                    Spacer(Modifier.height(20.dp))
+                    Text("TAKE PROFIT TARGETS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(8.dp))
+                    for (tpIndex in 0 until tps.length()) {
+                        val tpVal = tps.optDouble(tpIndex, Double.NaN)
+                        val hit = tpsHit.any { !it.isNaN() && kotlin.math.abs(it - tpVal) < 1e-6 }
+                        val tpName = if (tpIndex == 0) "Initial TP" else "TP ${tpIndex + 1}"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (hit) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                                contentDescription = if (hit) "$tpName hit" else null,
+                                tint = if (hit) BullGreen else TextMuted.copy(alpha = 0.5f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                tpName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (hit) BullGreen else TextPrimary
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                if (!tpVal.isNaN()) fmt(tpVal) else "—",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (hit) BullGreen else TextSecondary
+                            )
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(22.dp))

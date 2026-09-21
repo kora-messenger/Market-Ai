@@ -136,6 +136,12 @@ object PushRouter {
     var pendingMarketId by mutableStateOf<String?>(null)
 
     /**
+     * A signal push (TP hit) was tapped — the nav graph should open that
+     * signal's detail screen.
+     */
+    var pendingSignalId by mutableStateOf<String?>(null)
+
+    /**
      * The phone was shaken with "shake to report a bug" enabled — open the
      * bug report screen. Set by ShakeBugReporter's sensor callback.
      */
@@ -294,6 +300,15 @@ fun MarketAiApp() {
         if (marketId != null) {
             PushRouter.pendingMarketId = null
             navController.navigate("market/$marketId")
+        }
+    }
+
+    // Signal push (TP hit) tapped — open that signal's detail screen.
+    LaunchedEffect(PushRouter.pendingSignalId) {
+        val signalId = PushRouter.pendingSignalId
+        if (signalId != null) {
+            PushRouter.pendingSignalId = null
+            navController.navigate("daily_signal/$signalId")
         }
     }
 

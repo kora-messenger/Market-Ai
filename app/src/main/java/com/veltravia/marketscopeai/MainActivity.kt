@@ -39,6 +39,11 @@ class MainActivity : ComponentActivity() {
             com.veltravia.marketscopeai.ui.PushRouter.pendingMarketId = route.removePrefix("market/")
             return
         }
+        if (route.startsWith("daily_signal/")) {
+            // TP-hit / signal push tapped — open that signal's detail screen.
+            com.veltravia.marketscopeai.ui.PushRouter.pendingSignalId = route.removePrefix("daily_signal/")
+            return
+        }
         com.veltravia.marketscopeai.ui.PushRouter.pendingTab =
             com.veltravia.marketscopeai.ui.PushRouter.tabForRoute(route)
     }
