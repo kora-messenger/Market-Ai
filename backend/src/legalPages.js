@@ -275,14 +275,28 @@ const DOCS = {
 // --- HTML rendering (public web pages) ---
 
 const baseStyle = `
-  body { background:#0B0E14; color:#E7ECF5; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; line-height:1.65; margin:0; padding:0; }
-  .wrap { max-width:720px; margin:0 auto; padding:40px 24px 80px; }
-  h1 { font-size:26px; margin-bottom:4px; }
-  h2 { font-size:18px; margin-top:36px; color:#5AD1E6; }
-  p, li { color:#B7C0D1; font-size:15px; }
-  .updated { color:#7A8499; font-size:13px; margin-bottom:32px; }
-  a { color:#5AD1E6; }
-  strong { color:#E7ECF5; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap');
+  :root { --ink:#0a0e1a; --text-2:#414b60; --muted:#79839a; --border:#e7eaf1; --bg-soft:#f7f8fb; --violet:#7c3aed; --cyan:#06b6d4; --grad:linear-gradient(135deg,#7c3aed 0%,#06b6d4 100%); --shadow-sm:0 1px 2px rgba(10,14,26,.05); }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#ffffff; color:var(--ink); font-family:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; line-height:1.65; -webkit-font-smoothing:antialiased; }
+  a { color:var(--violet); text-decoration:none; font-weight:600; }
+  a:hover { text-decoration:underline; }
+  .kicker { display:inline-flex; align-items:center; gap:10px; font-size:12px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--violet); margin-bottom:18px; }
+  .kicker::before { content:""; width:22px; height:2px; border-radius:2px; background:var(--grad); }
+  .wrap { max-width:780px; margin:0 auto; padding:0 24px 96px; }
+  .hero { padding:56px 0 40px; background:radial-gradient(52% 60% at 12% 0%,rgba(124,58,237,.06),transparent 60%),radial-gradient(46% 56% at 88% 8%,rgba(6,182,212,.07),transparent 62%),#fff; }
+  .hero h1 { font-family:'Sora','Inter',sans-serif; font-size:clamp(30px,5vw,42px); font-weight:800; letter-spacing:-.02em; line-height:1.12; }
+  .updated { color:var(--muted); font-size:14px; margin-top:12px; }
+  .card { border:1px solid var(--border); border-radius:18px; padding:28px; background:#fff; margin-bottom:16px; box-shadow:var(--shadow-sm); }
+  h2 { font-family:'Sora','Inter',sans-serif; font-size:17.5px; font-weight:700; letter-spacing:-.01em; margin-bottom:14px; }
+  p, li { color:var(--text-2); font-size:15px; margin-bottom:12px; }
+  p:last-child { margin-bottom:0; }
+  ul { margin:4px 0 12px; padding-left:20px; }
+  li { margin-bottom:8px; }
+  strong { color:var(--ink); }
+  .more { margin-top:36px; padding-top:24px; border-top:1px solid var(--border); color:var(--muted); font-size:13px; }
+  .more span { color:var(--border); }
+  @media(max-width:640px){ .card { padding:20px; } .hero { padding:40px 0 28px; } }
 `;
 
 function esc(s) {
@@ -311,12 +325,12 @@ function renderBlocksHtml(blocks) {
 function renderDocHtml(docKey) {
   const doc = DOCS[docKey];
   const body = doc.sections.map((s) =>
-    `<h2>${esc(s.heading)}</h2>\n${renderBlocksHtml(s.blocks)}`
+    `<section class="card"><h2>${esc(s.heading)}</h2>\n${renderBlocksHtml(s.blocks)}</section>`
   ).join("\n");
   const others = Object.entries(DOCS).filter(([k]) => k !== docKey)
     .map(([, d]) => `<a href="${esc(d.path)}">${esc(d.title)}</a>`)
-    .join(' &nbsp;<span style="color:#7A8499">·</span>&nbsp; ');
-  const footer = `<p style="margin-top:48px;color:#7A8499;font-size:13px">More policies: ${others}</p>`;
+    .join(' <span>·</span> ');
+  const footer = `<p class="more">More policies: ${others} · <a href="https://kora-messenger.github.io/marketscope-site/help.html">Help Center</a></p>`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -326,12 +340,15 @@ function renderDocHtml(docKey) {
 <style>${baseStyle}</style>
 </head>
 <body>
-<div class="wrap">
+<header class="hero"><div class="wrap">
+<div class="kicker">Legal</div>
 <h1>${esc(doc.title)}</h1>
 <p class="updated">Effective ${esc(EFFECTIVE_DATE)}</p>
+</div></header>
+<main class="wrap">
 ${body}
 ${footer}
-</div>
+</main>
 </body>
 </html>`;
 }
