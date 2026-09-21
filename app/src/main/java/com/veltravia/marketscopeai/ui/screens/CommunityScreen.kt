@@ -164,7 +164,9 @@ data class CommunityPost(
     val poll: CommunityPoll?,
     val reactions: List<CommunityReaction>,
     val outcomeTag: String? = null,
-    val viewCount: Int = 0
+    val viewCount: Int = 0,
+    val linkPreview: LinkPreview? = null,
+    val isNew: Boolean = false
 )
 
 /** A real curated pinned post (from GET /api/community/pinned). */
@@ -254,6 +256,8 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
             poll = parsePoll(p),
             outcomeTag = p.optString("outcomeTag").takeIf { it.isNotBlank() && it != "null" },
             viewCount = p.optInt("viewCount", 0),
+            linkPreview = parseLinkPreview(p),
+            isNew = p.optBoolean("isNew", false),
             reactions = (0 until reactions.length()).map { r ->
                 val o = reactions.getJSONObject(r)
                 CommunityReaction(
@@ -927,9 +931,14 @@ fun CommunityScreen(
         }
     }
 
+    // Live link card: paste a URL in the composer and the preview appears
+    // before publishing — the same card readers will see.
+    val composerLinkPreview = if (composerOpen) rememberComposerLinkPreview(composerText.text) else null
+
     if (composerOpen) {
         PublishComposerModal(
             mode = composerMode,
+            linkPreview = composerLinkPreview,
             onDismiss = { composerOpen = false },
             text = composerText,
             onTextChange = { composerText = it },
@@ -1339,94 +1348,166 @@ private fun PostCard(
     val isMentorAuthor = post.authorRole.equals("mentor", true)
     // Registers a real, deduped view once per composition (per session per post).
     LaunchedEffect(post.id) { onRegisterView() }
+    // Link card: server-stored preview when present; older posts resolve
+    // lazily through the cached endpoint on first render.
+    val linkPreview = rememberResolvedLinkPreview(post.id, post.body, post.linkPreview)
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(24.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = BorderStroke(1.dp, Color(0xFFEEF1F5)),
-        // The reference feed uses inset cards (~80% width, anchored left)
-        // instead of full-bleed rows — the silhouette is part of the look.
-        modifier = Modifier.fillMaxWidth(0.80f)
-    ) {
-        Column(Modifier.padding(16.dp)) {
+    // --- message row: avatar anchored left, everything else a chat column ---
+    Row(Modifier.fillMaxWidth()) {
+        Box(
+            modifier = roleMeta?.let {
+                Modifier
+                    .border(2.dp, it.ring, CircleShape)
+                    .padding(2.dp)
+            } ?: Modifier
+        ) {
+            UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(post.authorPicture), size = 36.dp)
+        }
+        Spacer(Modifier.width(8.dp))
+
+        Column(Modifier.weight(1f)) {
+            // Sender line — like any messaging app: handle, badges, NEW marker.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Roled authors (admin / mentor / moderator / team) get a
-                // soft ring around their avatar in their role color.
-                Box(
-                    modifier = roleMeta?.let {
-                        Modifier
-                            .border(2.dp, it.ring, CircleShape)
-                            .padding(2.dp)
-                    } ?: Modifier
-                ) {
-                    UserAvatar(photoUrl = ApiClient.resolveAvatarUrl(post.authorPicture), size = 38.dp)
+                Text(
+                    displayHandle(post.authorName, post.authorUsername),
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (roleMeta != null) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Filled.Verified, contentDescription = "Verified author", tint = roleMeta.text, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    RoleBadge(post.authorRole, post.isTeam)
+                } else if (post.authorIsPremium) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(13.dp))
                 }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    // Name row stays lean — name (always fully visible, like
-                    // "@hosanna" in the reference) + verified check + ONE role
-                    // badge. Extra decorative tags never crowd this row, so
-                    // the name can never be squeezed down to just "...".
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                if (post.isPinned) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Filled.PushPin, contentDescription = "Pinned", tint = Color(0xFF0F766E), modifier = Modifier.size(11.dp))
+                }
+                if (post.isTopContributor) {
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Filled.EmojiEvents, contentDescription = "Top contributor", tint = Color(0xFFB45309), modifier = Modifier.size(13.dp))
+                }
+                if (post.isNew) {
+                    Spacer(Modifier.width(6.dp))
+                    Surface(
+                        color = AccentViolet.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(50)
+                    ) {
                         Text(
-                            displayHandle(post.authorName, post.authorUsername),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
+                            "NEW",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.6.sp,
+                            color = AccentViolet,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
-                        if (roleMeta != null) {
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Filled.Verified, contentDescription = "Verified author", tint = roleMeta.text, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(6.dp))
-                            RoleBadge(post.authorRole, post.isTeam)
-                        } else if (post.authorIsPremium) {
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(14.dp))
-                        }
                     }
-                    // Secondary tags (Top Contributor / Pinned) live on their
-                    // own wrapping row below the name — they never fight the
-                    // name or the role badge for space.
-                    if (post.isTopContributor || post.isPinned) {
-                        Spacer(Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (post.isTopContributor) {
-                                Surface(color = Color(0xFFFEF3C7), shape = RoundedCornerShape(50)) {
-                                    Text(
-                                        "\uD83C\uDFC6 Top Contributor",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFFB45309),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // --- the bubble: asymmetric corners with a tight top-left
+            // where it meets the avatar — the messaging-feed silhouette.
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(topStart = 6.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 16.dp),
+                border = BorderStroke(1.dp, Color(0xFFE7ECF3)),
+                shadowElevation = 1.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    if (post.poll != null) {
+                        PollBody(post, onVote)
+                    } else {
+                        if (post.body.isNotBlank()) {
+                            // Linkified body: URLs open the browser; tapping
+                            // anything else still expands long posts.
+                            LinkText(
+                                post.body,
+                                fontSize = 13.5.sp,
+                                lineHeight = 19.sp,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = if (expanded) Int.MAX_VALUE else 8,
+                                overflow = TextOverflow.Ellipsis,
+                                onNonLinkTap = { expanded = !expanded }
+                            )
+                        }
+                        if (post.outcomeTag != null) {
+                            Spacer(Modifier.height(8.dp))
+                            val tint = if (post.outcomeTag == "win") BullGreen else BearRed
+                            Surface(color = tint.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
+                                Text(
+                                    if (post.outcomeTag == "win") "\uD83C\uDFC6 Profited \u2014 author\u2019s tag" else "\uD83D\uDCDA Lesson learned \u2014 author\u2019s tag",
+                                    fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = tint,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
                             }
-                            if (post.isPinned) {
-                                Surface(color = Color(0xFFECFEFF), shape = RoundedCornerShape(50)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    ) {
-                                        Icon(Icons.Filled.PushPin, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(10.dp))
-                                        Spacer(Modifier.width(3.dp))
-                                        Text("Pinned", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F766E))
+                        }
+                        if (linkPreview != null) {
+                            Spacer(Modifier.height(8.dp))
+                            LinkPreviewCard(linkPreview)
+                        }
+                        if (post.imageCount > 0) {
+                            Spacer(Modifier.height(8.dp))
+                            if (post.imageCount == 1) {
+                                coil.compose.AsyncImage(
+                                    model = ApiClient.communityImageUrl(post.id, 0),
+                                    contentDescription = "Post image",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(220.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onOpenImage(0) }
+                                )
+                            } else {
+                                val rows = (post.imageCount + 1) / 2
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    (0 until rows).forEach { row ->
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            (0 until 2).forEach { col ->
+                                                val idx = row * 2 + col
+                                                if (idx < post.imageCount) {
+                                                    coil.compose.AsyncImage(
+                                                        model = ApiClient.communityImageUrl(post.id, idx),
+                                                        contentDescription = "Post image ${idx + 1}",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(110.dp)
+                                                            .clip(RoundedCornerShape(10.dp))
+                                                            .clickable { onOpenImage(idx) }
+                                                    )
+                                                } else {
+                                                    Spacer(Modifier.weight(1f))
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    Spacer(Modifier.height(3.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(relativeTime(post.createdAt), fontSize = 11.sp, color = Color(0xFF94A3B8))
+
+                    // Message time inside the bubble, bottom-right — the
+                    // messaging-feed signature detail.
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         if (roleMeta != null) {
-                            // Private-message pill for roled authors — a
-                            // bordered pill in the author's own role colors,
-                            // sitting right beside the timestamp.
-                            Spacer(Modifier.width(8.dp))
+                            // Private-message pill for roled authors, in their
+                            // own role colors, beside the timestamp.
                             Surface(
                                 color = roleMeta.bg,
                                 shape = RoundedCornerShape(50),
@@ -1442,161 +1523,91 @@ private fun PostCard(
                                     Text("Message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = roleMeta.text)
                                 }
                             }
+                            Spacer(Modifier.width(8.dp))
                         }
+                        Text(relativeTime(post.createdAt), fontSize = 10.sp, color = Color(0xFF94A3B8))
                     }
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-
-            if (post.poll != null) {
-                PollBody(post, onVote)
-            } else {
-                if (post.body.isNotBlank()) {
-                    Text(
-                        post.body,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = if (expanded) Int.MAX_VALUE else 8,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable { expanded = !expanded }
-                    )
-                }
-                if (post.outcomeTag != null) {
-                    Spacer(Modifier.height(8.dp))
-                    val tint = if (post.outcomeTag == "win") BullGreen else BearRed
-                    Surface(color = tint.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
-                        Text(
-                            if (post.outcomeTag == "win") "\uD83C\uDFC6 Profited \u2014 author\u2019s tag" else "\uD83D\uDCDA Lesson learned \u2014 author\u2019s tag",
-                            fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = tint,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+            // --- under-bubble engagement strip: reactions, comments, then the
+            // quieter share / views / moderation tools anchored right.
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    post.reactions.take(4).forEach { reaction ->
+                        Surface(
+                            color = if (reaction.mine) AccentCyan.copy(alpha = 0.12f) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(50),
+                            onClick = { onReact(reaction.emoji) }
+                        ) {
+                            Text(
+                                "${reaction.emoji} ${reaction.count}",
+                                fontSize = 11.5.sp,
+                                color = if (reaction.mine) AccentCyan else MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
                     }
-                }
-                if (post.imageCount > 0) {
-                    Spacer(Modifier.height(8.dp))
-                    if (post.imageCount == 1) {
-                        coil.compose.AsyncImage(
-                            model = ApiClient.communityImageUrl(post.id, 0),
-                            contentDescription = "Post image",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(220.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onOpenImage(0) }
-                        )
-                    } else {
-                        val rows = (post.imageCount + 1) / 2
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            (0 until rows).forEach { row ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    (0 until 2).forEach { col ->
-                                        val idx = row * 2 + col
-                                        if (idx < post.imageCount) {
-                                            coil.compose.AsyncImage(
-                                                model = ApiClient.communityImageUrl(post.id, idx),
-                                                contentDescription = "Post image ${idx + 1}",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(110.dp)
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .clickable { onOpenImage(idx) }
-                                            )
-                                        } else {
-                                            Spacer(Modifier.weight(1f))
-                                        }
-                                    }
-                                }
+                    Surface(
+                        color = if (showReactionRow) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, if (showReactionRow) Color(0xFF5EEAD4) else Color(0xFFEEF1F5)),
+                        onClick = { showReactionRow = !showReactionRow },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = if (showReactionRow) "Hide reactions" else "Add reaction",
+                                tint = if (showReactionRow) Color(0xFF0F766E) else Color(0xFF94A3B8),
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+                    if (post.allowComments) {
+                        Surface(
+                            color = Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(50),
+                            onClick = onOpenComments
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                            ) {
+                                Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Comments \u00B7 ${post.commentCount}", fontSize = 11.5.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
+                            }
+                        }
+                    } else if (isMentorAuthor || roleMeta != null) {
+                        // Roled posts with comments off carry a quiet label —
+                        // "Mentor post" for mentors, "Team post" for the desk.
+                        Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(50)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                            ) {
+                                Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    if (isMentorAuthor) "Mentor post" else "Team post",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF94A3B8),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
                 }
-            }
-
-            // Engagement strip — reaction chips, the + button, the comments
-            // pill (left, horizontally scrollable so a growing reaction
-            // count never squeezes the Comments pill into near-zero width
-            // and wraps it letter-by-letter), then share + views anchored
-            // right on their own fixed (non-scrolling) section.
-            Spacer(Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .horizontalScroll(rememberScrollState())
-            ) {
-                post.reactions.take(4).forEach { reaction ->
-                    Surface(
-                        color = if (reaction.mine) AccentCyan.copy(alpha = 0.12f) else Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(50),
-                        onClick = { onReact(reaction.emoji) }
-                    ) {
-                        Text(
-                            "${reaction.emoji} ${reaction.count}",
-                            fontSize = 12.sp,
-                            color = if (reaction.mine) AccentCyan else MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-                Surface(
-                    color = if (showReactionRow) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, if (showReactionRow) Color(0xFF5EEAD4) else Color(0xFFEEF1F5)),
-                    onClick = { showReactionRow = !showReactionRow },
-                    modifier = Modifier.size(34.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = if (showReactionRow) "Hide reactions" else "Add reaction",
-                            tint = if (showReactionRow) Color(0xFF0F766E) else Color(0xFF94A3B8),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-                if (post.allowComments) {
-                    Surface(
-                        color = Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(50),
-                        onClick = onOpenComments
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-                        ) {
-                            Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Comments \u00B7 ${post.commentCount}", fontSize = 12.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
-                        }
-                    }
-                } else if (isMentorAuthor || roleMeta != null) {
-                    // Roled posts with comments off carry a quiet label —
-                    // "Mentor post" for mentors, "Team post" for the desk.
-                    Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(50)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-                        ) {
-                            Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                if (isMentorAuthor) "Mentor post" else "Team post",
-                                fontSize = 11.sp,
-                                color = Color(0xFF94A3B8),
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
                 Surface(
                     color = Color.White,
                     shape = CircleShape,
@@ -1611,13 +1622,13 @@ private fun PostCard(
                         }
                         context.startActivity(android.content.Intent.createChooser(shared, "Share post"))
                     },
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share post", tint = Color(0xFF64748B), modifier = Modifier.size(15.dp))
+                        Icon(Icons.Filled.Share, contentDescription = "Share post", tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
                     }
                 }
-                Spacer(Modifier.width(2.dp))
+                Spacer(Modifier.width(4.dp))
                 Surface(
                     color = Color(0xFFF8FAFC),
                     shape = RoundedCornerShape(50),
@@ -1625,34 +1636,32 @@ private fun PostCard(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                     ) {
-                        Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(compactCount(post.viewCount), fontSize = 12.sp, color = Color(0xFF94A3B8))
+                        Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text(compactCount(post.viewCount), fontSize = 11.sp, color = Color(0xFF94A3B8))
                     }
                 }
                 if (canDelete) {
-                    // Authors can remove their own post; the team can remove
-                    // any post. Sits beside the pin control for consistency.
-                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                    Spacer(Modifier.width(2.dp))
+                    IconButton(onClick = onDelete, modifier = Modifier.size(26.dp)) {
                         Icon(
                             Icons.Filled.Delete,
                             contentDescription = "Delete post",
                             tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                     }
                 }
                 if (isAdmin) {
-                    // Admin pin control lives with the other actions so the
-                    // header row stays roomy for name + badges.
-                    IconButton(onClick = onPin, modifier = Modifier.size(28.dp)) {
+                    Spacer(Modifier.width(2.dp))
+                    IconButton(onClick = onPin, modifier = Modifier.size(26.dp)) {
                         Icon(
                             Icons.Filled.PushPin,
                             contentDescription = if (post.isPinned) "Unpin post" else "Pin post",
                             tint = if (post.isPinned) AccentViolet else TextMuted,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                     }
                 }
@@ -1661,7 +1670,7 @@ private fun PostCard(
             // Reaction picker — a floating rounded panel with a soft border
             // that springs in; tapping an emoji reacts and closes it.
             if (showReactionRow) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 val pickerScale by animateFloatAsState(
                     targetValue = if (showReactionRow) 1f else 0.85f,
                     animationSpec = spring(dampingRatio = 0.72f),
@@ -2147,7 +2156,7 @@ private fun CommentRow(
                     )
                 }
                 Spacer(Modifier.height(2.dp))
-                Text(comment.body, fontSize = 13.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onBackground)
+                LinkText(comment.body, fontSize = 13.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onBackground)
                 if (!comment.pending) {
                     Spacer(Modifier.height(2.dp))
                     Surface(color = Color.Transparent, shape = RoundedCornerShape(6.dp), onClick = onReply) {

@@ -143,6 +143,17 @@ object ApiClient {
         request(request)
     }
 
+    /** Server-side OpenGraph scrape of a pasted link (cached per URL server-side). */
+    suspend fun fetchLinkPreview(sessionToken: String, url: String): JSONObject = withContext(Dispatchers.IO) {
+        val encoded = java.net.URLEncoder.encode(url, "UTF-8")
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/link-preview?url=$encoded")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Marks the signed-in user as a community member (real, persisted server-side). */
     suspend fun joinCommunity(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

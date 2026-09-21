@@ -198,6 +198,7 @@ private val QUICK_PAIRS = listOf("EURUSD", "GBPUSD", "XAUUSD", "NAS100", "BTCUSD
 @Composable
 fun PublishComposerModal(
     mode: String, // "text" | "poll"
+    linkPreview: LinkPreview?,
     onDismiss: () -> Unit,
     text: TextFieldValue,
     onTextChange: (TextFieldValue) -> Unit,
@@ -540,6 +541,38 @@ fun PublishComposerModal(
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // --- live link preview card --------------------------------------------
+                    // Pasting a URL shows the scraped card immediately: the
+                    // author sees exactly what readers will see under the post.
+                    if (!isPoll && text.text.isNotBlank() && firstUrlIn(text.text) != null) {
+                        Spacer(Modifier.height(16.dp))
+                        Text("Link preview", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Spacer(Modifier.height(6.dp))
+                        if (linkPreview != null) {
+                            LinkPreviewCard(linkPreview)
+                        } else {
+                            Surface(
+                                color = Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(14.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                                ) {
+                                    CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        "Reading the link you pasted\u2026",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF64748B)
+                                    )
                                 }
                             }
                         }
