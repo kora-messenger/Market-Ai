@@ -286,7 +286,7 @@ private fun ViewerPage(
             .then(
                 if (scale > 1.01f) Modifier.pointerInput(url) {
                     // Pan + pinch while zoomed; consume so the pager never scrolls.
-                    val needsSettle = awaitEachGesture {
+                    awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
                         do {
                             val event = awaitPointerEvent()
@@ -308,11 +308,11 @@ private fun ViewerPage(
                                 onZoomedChange(newScale > 1.01f)
                             }
                         } while (event.changes.any { it.pressed })
-                        // Finger lifted: report whether zoom settled below 1x
-                        // (the caller suspends outside the restricted scope).
-                        scale < 1.02f
+                        // Finger lifted: settle below-1 zoom back to 1x. The
+                        // gesture scope is restricted, so hop to the composable
+                        // scope for the animated reset.
+                        if (scale < 1.02f) scope.launch { resetZoom() }
                     }
-                    if (needsSettle) resetZoom()
                 } else Modifier
             )
             .pointerInput(url) {
