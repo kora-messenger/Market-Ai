@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.MailOutline
@@ -80,6 +81,7 @@ import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
+import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
@@ -109,7 +111,8 @@ fun ProfileScreen(
     onOpenNotifications: () -> Unit,
     onOpenSubscribe: () -> Unit,
     onOpenBugReport: () -> Unit = {},
-    onViewSavedTradePlans: () -> Unit
+    onViewSavedTradePlans: () -> Unit,
+    onEditTradingProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -286,6 +289,13 @@ fun ProfileScreen(
         Spacer(Modifier.height(20.dp))
         SectionLabel("Activity")
         SettingsGroup {
+            SettingsRow(
+                icon = Icons.Filled.Tune,
+                tint = BullGreen,
+                label = "Trading profile",
+                trailingText = SessionManager.questionnaireAnswers(context)?.style?.ifBlank { null } ?: "Not set",
+                onClick = onEditTradingProfile
+            )
             SettingsRow(
                 icon = Icons.Filled.BookmarkBorder,
                 tint = AccentCyan,

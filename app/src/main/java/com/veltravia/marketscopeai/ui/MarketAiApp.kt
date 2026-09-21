@@ -540,6 +540,14 @@ fun MarketAiApp() {
                 }
             )
         }
+        // Editing the trading profile from Settings: same questionnaire flow,
+        // but completing it returns to wherever the user came from instead of
+        // running the rest of onboarding again.
+        composable("questionnaire_edit") {
+            QuestionnaireScreen(
+                onDone = { navController.popBackStack() }
+            )
+        }
         composable("main") {
             MainTabs(navController)
         }
@@ -714,7 +722,8 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenNotifications = { navController.navigate("notifications") },
                     onOpenSubscribe = { navController.navigate("subscribe") },
                     onOpenBugReport = { navController.navigate("report_bug") },
-                    onViewSavedTradePlans = { currentTab = 3 }
+                    onViewSavedTradePlans = { currentTab = 3 },
+                    onEditTradingProfile = { navController.navigate("questionnaire_edit") }
                 )
             }
 
