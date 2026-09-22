@@ -647,6 +647,22 @@ async function initDb() {
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS outcome_tag TEXT;
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS link_preview JSONB;
+    -- Admin/mentor reposts of a mentor-reviewed win. A repost is a normal
+    -- community post (shows in the feed like any other) but is linked back
+    -- to the signal_testimonials row it came from, and carries who reposted
+    -- it separately from who the post displays as author (the original
+    -- trader). One testimonial can only ever be reposted once.
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_repost BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS repost_of_testimonial_id UUID REFERENCES signal_testimonials(id) ON DELETE SET NULL;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS reposted_by_name TEXT;
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS reposted_by_email TEXT;
+    -- A trader's OWN casual note that a post relates to a take-profit or
+    -- stop-loss moment. Purely a personal label — unlike outcome_tag it is
+    -- never mentor-reviewed, never counts toward the weekly proof strip, and
+    -- can never make a post eligible for the repost feature.
+    ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS self_tag TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS community_posts_repost_unique
+      ON community_posts(repost_of_testimonial_id) WHERE repost_of_testimonial_id IS NOT NULL;
     -- Server-side scraped OpenGraph cards (title/description/og:image),
     -- cached per URL — the same "pasted link becomes a preview card"
     -- behavior the reference app shows on its community posts.
@@ -1538,6 +1554,14 @@ app.post("/api/calendar/directional-implication", requireAuth, async (req, res) 
 const COMPOSER_ROLES = new Set(["admin", "moderator", "mentor"]);
 function canComposeCommunity(role) {
   return COMPOSER_ROLES.has(String(role || "").toLowerCase());
+}
+
+// Reposting a mentor-reviewed win into Community is intentionally narrower
+// than general posting rights: only admin and mentor (never moderator,
+// never a plain member no matter how they got Premium).
+const REPOST_ROLES = new Set(["admin", "mentor"]);
+function canRepostCommunity(role) {
+  return REPOST_ROLES.has(String(role || "").toLowerCase());
 }
 
 /** Public, real aggregated Forex/Crypto/Stocks news (Investing.com, Cointelegraph, Yahoo Finance). */
@@ -4310,10 +4334,14 @@ app.get("/api/daily-signals/access", requireAuth, async (req, res) => {
     const isAdmin = await isAdminRequest(req);
     const communityRole = rows[0].role || "member";
     const canCompose = isAdmin || canComposeCommunity(communityRole);
+    // Reposting a win into Community is a narrower right than composing —
+    // Premium/lifetime grants never factor in, only the real owner or an
+    // explicitly assigned admin/mentor community role.
+    const canRepost = isAdmin || canRepostCommunity(communityRole);
     const grant = await getActivePremiumGrant(rows[0].id);
     const paid = paidPremiumActive(rows[0]);
     const entitled = trial.trialActive || paid || isAdmin || !!grant;
-    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: paid || !!grant, plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free"), communityRole, canCompose });
+    res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: paid || !!grant, plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free"), communityRole, canCompose, canRepost });
   } catch (err) {
     res.status(500).json({ error: "Could not check access", detail: String(err.message || err) });
   }
@@ -5176,6 +5204,7 @@ app.get("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) => 
       `SELECT t.id, t.author_name, t.author_email, t.comment, t.status, t.created_at,
               (t.user_id = $2::uuid) AS is_mine,
               EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              EXISTS(SELECT 1 FROM community_posts cp WHERE cp.repost_of_testimonial_id = t.id) AS is_reposted,
               (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END) AS avatar_url, u.role
        FROM signal_testimonials t
        LEFT JOIN users u ON u.id = t.user_id
@@ -5194,6 +5223,7 @@ app.get("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) => 
         createdAt: r.created_at,
         isMine: !!r.is_mine,
         hasImage: r.has_image,
+        isReposted: !!r.is_reposted,
         avatarUrl: r.avatar_url || null,
         authorRole: r.role || "member"
       }))
@@ -5320,6 +5350,7 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
       `SELECT t.id, t.comment, t.created_at, t.author_name, t.author_email,
               t.signal_id, s.instrument_id, s.instrument_display, s.direction, s.take_profits, s.exit_price,
               EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              EXISTS(SELECT 1 FROM community_posts cp WHERE cp.repost_of_testimonial_id = t.id) AS is_reposted,
               COALESCE(u.is_premium OR EXISTS (
                 SELECT 1 FROM premium_grants g
                 WHERE g.user_id = u.id AND g.revoked_at IS NULL
@@ -5343,6 +5374,7 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
         authorIsPremium: r.author_is_premium || false,
         avatarUrl: r.avatar_url || null,
         hasImage: r.has_image,
+        isReposted: !!r.is_reposted,
         instrument: r.instrument_display,
         instrumentId: r.instrument_id,
         direction: r.direction,
@@ -5367,6 +5399,7 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
       `SELECT t.id, t.comment, t.created_at, t.author_name, t.signal_id,
               s.instrument_display, s.instrument_id, s.direction, s.exit_price,
               EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
+              EXISTS(SELECT 1 FROM community_posts cp WHERE cp.repost_of_testimonial_id = t.id) AS is_reposted,
               COALESCE(u.is_premium OR EXISTS (
                 SELECT 1 FROM premium_grants g
                 WHERE g.user_id = u.id AND g.revoked_at IS NULL
@@ -5398,6 +5431,7 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
         authorIsPremium: r.author_is_premium || false,
         avatarUrl: r.avatar_url || null,
         hasImage: r.has_image,
+        isReposted: !!r.is_reposted,
         instrument: r.instrument_display,
         instrumentId: r.instrument_id,
         direction: r.direction,
@@ -5983,6 +6017,9 @@ function postToApi(row, reactions, commentCount, poll, myVote, isTopContributor,
     isPinned: row.is_pinned === true,
     imageCount: row.image_count || 0,
     outcomeTag: row.outcome_tag || null,
+    isRepost: row.is_repost === true,
+    repostedByName: row.reposted_by_name || null,
+    selfTag: row.self_tag || null,
     viewCount: viewCount || 0,
     poll: poll ? {
       options: poll.options,
@@ -6209,13 +6246,16 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     }
   }
   const allowComments = req.body.allowComments !== false;
-  // Self-reported trade outcome — only meaningful on an image post (a chart/proof
-  // screenshot). Never inferred or fabricated by the backend; the author tags it.
-  let outcomeTag = String(req.body.outcomeTag || "").toLowerCase();
-  if (!["win", "loss"].includes(outcomeTag)) outcomeTag = null;
-  if (outcomeTag && imageList.length === 0) {
-    return res.status(400).json({ error: "An outcome tag can only be added to a post with an image." });
-  }
+  // A community post is for community discussion only — it can never
+  // self-declare a REVIEWED trade outcome. The green "win" tag (outcomeTag)
+  // is now only ever set by the server itself, on an admin/mentor repost of
+  // a mentor-reviewed win (see POST /api/community/posts/repost). Client
+  // input for outcomeTag is ignored. A trader can still casually label
+  // their own post as a TP/SL moment via selfTag — that's personal
+  // commentary, never mentor-reviewed and never repostable.
+  const outcomeTag = null;
+  let selfTag = String(req.body.selfTag || "").toLowerCase();
+  if (!["tp", "sl"].includes(selfTag)) selfTag = null;
 
   try {
     const me = await currentUser(req);
@@ -6230,9 +6270,9 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     const isTeam = ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase()) ||
       ["admin", "moderator"].includes(String(me.role || "").toLowerCase());
     const { rows } = await pool.query(
-      `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments, outcome_tag)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9) RETURNING *`,
-      [me.id, me.name || "Trader", me.email || "", body, isTeam, postType, JSON.stringify(pollOptions), allowComments, outcomeTag]
+      `INSERT INTO community_posts (user_id, author_name, author_email, body, is_team, post_type, poll_options, allow_comments, outcome_tag, self_tag)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10) RETURNING *`,
+      [me.id, me.name || "Trader", me.email || "", body, isTeam, postType, JSON.stringify(pollOptions), allowComments, outcomeTag, selfTag]
     );
     const row = rows[0];
     // The feed query joins these live from `users` (username/role/premium/
@@ -6310,6 +6350,101 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
     return res.json({ post });
   } catch (err) {
     return res.status(500).json({ error: "Could not publish the post", detail: String(err.message || err) });
+  }
+});
+
+/**
+ * Admin/mentor repost: takes a mentor-reviewed, approved win testimonial and
+ * publishes it into the Community feed as a normal post — displayed under
+ * the ORIGINAL trader's name (not the reposter's), tagged with a green win
+ * marker, and linked back to the source testimonial so it can only ever be
+ * reposted once. Never touches Premium/role — see canRepostCommunity.
+ */
+app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const testimonialId = String((req.body || {}).testimonialId || "");
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(testimonialId)) return res.status(400).json({ error: "A valid testimonialId is required." });
+
+  try {
+    const { rows: meRows } = await pool.query(
+      `SELECT id, name, email, role FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!meRows.length) return res.status(404).json({ error: "User not found" });
+    const me = meRows[0];
+    const admin = await isAdminRequest(req);
+    if (!admin && !canRepostCommunity(me.role)) {
+      return res.status(403).json({ error: "Reposting a win is reserved for the MarketScope AI team and mentors." });
+    }
+
+    const { rows: tRows } = await pool.query(
+      `SELECT t.id, t.user_id, t.author_name, t.author_email, t.comment, t.status,
+              s.instrument_display, s.direction, s.exit_price
+       FROM signal_testimonials t
+       JOIN daily_signals s ON s.id = t.signal_id
+       WHERE t.id = $1::uuid`,
+      [testimonialId]
+    );
+    if (!tRows.length) return res.status(404).json({ error: "Win not found." });
+    const t = tRows[0];
+    if (t.status !== "approved") {
+      return res.status(422).json({ error: "Only a reviewed, approved win can be reposted." });
+    }
+
+    const { rows: existing } = await pool.query(
+      `SELECT id FROM community_posts WHERE repost_of_testimonial_id = $1::uuid`,
+      [testimonialId]
+    );
+    if (existing.length) {
+      return res.status(409).json({ error: "This win has already been reposted to Community.", alreadyReposted: true });
+    }
+
+    const dirLabel = String(t.direction || "").toLowerCase() === "long" ? "LONG" : "SHORT";
+    const body = (t.comment && t.comment.trim())
+      ? t.comment.trim()
+      : `${t.instrument_display || "Signal"} ${dirLabel} — profit target hit at ${t.exit_price ?? "target"}.`;
+
+    const { rows: postRows } = await pool.query(
+      `INSERT INTO community_posts
+         (user_id, author_name, author_email, body, is_team, post_type, allow_comments, outcome_tag,
+          is_repost, repost_of_testimonial_id, reposted_by_name, reposted_by_email)
+       VALUES ($1, $2, $3, $4, false, 'text', true, 'win', true, $5::uuid, $6, $7)
+       RETURNING *`,
+      [t.user_id, t.author_name || "Trader", t.author_email || "", body, testimonialId, me.name || "Team", me.email || ""]
+    );
+    const row = postRows[0];
+
+    const { rows: imgRows } = await pool.query(
+      `SELECT content_type, data_base64, r2_key FROM signal_testimonial_images WHERE testimonial_id = $1::uuid LIMIT 1`,
+      [testimonialId]
+    );
+    let imageCount = 0;
+    if (imgRows.length) {
+      const img = imgRows[0];
+      await pool.query(
+        `INSERT INTO community_post_images (post_id, position, content_type, data_base64, r2_key) VALUES ($1::uuid, 0, $2, $3, $4)`,
+        [row.id, img.content_type || "image/jpeg", img.data_base64 || "", img.r2_key || null]
+      );
+      imageCount = 1;
+    }
+
+    if (t.user_id && t.user_id !== me.id) {
+      notifyUser(t.user_id, {
+        title: "Your win was reposted to Community — MarketScope AI",
+        body: "The MarketScope AI team reposted your win to the Community feed for everyone to see.",
+        type: "community_repost",
+        data: { type: "community_repost", route: "community" }
+      }).catch(() => {});
+    }
+
+    const post = postToApi({ ...row, image_count: imageCount }, [], 0, null, null, false, 0);
+    return res.json({ post });
+  } catch (err) {
+    if (String(err && err.code) === "23505") {
+      return res.status(409).json({ error: "This win has already been reposted to Community.", alreadyReposted: true });
+    }
+    return res.status(500).json({ error: "Could not repost this win", detail: String(err.message || err) });
   }
 });
 
