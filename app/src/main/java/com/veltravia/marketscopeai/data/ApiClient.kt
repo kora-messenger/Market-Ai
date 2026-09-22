@@ -755,13 +755,16 @@ object ApiClient {
         request(request)
     }
 
-    /** Start a Premium checkout. Returns { authorizationUrl, reference } on success;
-     *  throws MarketAiException with the server's honest message if payments are not live yet. */
-    suspend fun startSubscriptionCheckout(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+    /** Start a Premium checkout for the given billing plan ("monthly" or
+     *  "yearly"). Returns { authorizationUrl, reference } on success; throws
+     *  MarketAiException with the server's honest message if payments are
+     *  not live yet. */
+    suspend fun startSubscriptionCheckout(sessionToken: String, plan: String = "monthly"): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("plan", plan)
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/subscription/checkout")
             .addHeader("Authorization", "Bearer $sessionToken")
-            .post("{}".toRequestBody("application/json".toMediaType()))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
         request(request)
     }

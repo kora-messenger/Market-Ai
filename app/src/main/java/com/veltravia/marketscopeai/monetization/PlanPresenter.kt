@@ -37,13 +37,16 @@ fun planDisplay(status: JSONObject): PlanDisplay {
     val adminGrant = status.optJSONObject("adminGrant")
     val effectivePremium = plan == "premium" || plan == "lifetime"
 
+    // Paid subscription — the server tells us which billing option the
+    // user actually paid for ("monthly" or "yearly"); default to Monthly
+    // for older rows/clients that predate the yearly plan.
+    val premiumPlan = status.optString("premiumPlan", "")
+
     val trailingLabel = when {
         plan == "lifetime" -> "Lifetime"
         plan == "premium" && premiumSource == "admin_grant" && adminGrant != null ->
             grantTrailingLabel(adminGrant)
-        // Paid subscription — currently the only recurring product is
-        // monthly (Paystack and Google Play premium-monthly alike).
-        plan == "premium" -> "Monthly"
+        plan == "premium" -> if (premiumPlan == "yearly") "Yearly" else "Monthly"
         trialActive -> "Trial: ${trialDaysRemaining}d left"
         else -> "Free"
     }

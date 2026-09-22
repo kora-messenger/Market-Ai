@@ -3,6 +3,7 @@ package com.veltravia.marketscopeai.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,12 +61,24 @@ import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import kotlinx.coroutines.launch
 
+private data class BillingOption(
+    val id: String, // "monthly" | "yearly"
+    val label: String,
+    val price: Double,
+    val period: String,
+    val productId: String,
+    val discountPercent: Int? = null,
+    val monthlyEquivalent: Double? = null,
+    val savingsLabel: String? = null
+)
+
 private data class SubPlan(
     val id: String,
     val name: String,
     val price: Double,
     val period: String?,
-    val features: List<String>
+    val features: List<String>,
+    val billingOptions: List<BillingOption> = emptyList()
 )
 
 /**
@@ -98,6 +111,14 @@ fun SubscribeScreen(
     var freePlan by remember { mutableStateOf<SubPlan?>(null) }
     var premiumPlan by remember { mutableStateOf<SubPlan?>(null) }
     var planCurrency by remember { mutableStateOf("USD") }
+
+    // Which billing option is selected within the Premium tab: "monthly"
+    // (default) or "yearly" (10% cheaper, billed once a year).
+    var selectedBilling by remember { mutableStateOf("monthly") }
+    // Google Play product ids the backend actually has wired up right now —
+    // only offer the Play button for a billing choice if its product id is
+    // in this set (e.g. "premium-yearly" may not exist in Play Console yet).
+    var allowedGooglePlayIds by remember { mutableStateOf(setOf<String>()) }
 
     // Which tab is showing: 0 = Free, 1 = Premium.
     var selectedTab by remember { mutableIntStateOf(1) }
@@ -196,7 +217,11 @@ fun SubscribeScreen(
 
     // --- Google Play checkout: connect → find the product → Play sheet ---
     fun startGooglePlayCheckout() {
-        val productId = googlePlayProductId ?: return
+        val productId = premiumPlan?.billingOptions
+            ?.firstOrNull { it.id == selectedBilling }
+            ?.productId
+            ?: googlePlayProductId
+            ?: return
         val activity = context as? android.app.Activity ?: return
         googleBusy = true
         statusMessage = null
@@ -227,7 +252,7 @@ fun SubscribeScreen(
         statusMessage = null
         scope.launch {
             try {
-                val checkout = ApiClient.startSubscriptionCheckout(token)
+                val checkout = ApiClient.startSubscriptionCheckout(token, selectedBilling)
                 val url = checkout.optString("authorizationUrl", "")
                 busy = false
                 if (url.isNotBlank()) {
@@ -250,14 +275,17 @@ fun SubscribeScreen(
             planCurrency = plans.optString("currency", planCurrency).uppercase()
             val methods = plans.optJSONObject("paymentMethods")
             paystackReady = methods?.optBoolean("paystack", false) ?: false
+            var playIds = setOf<String>()
             methods?.optJSONObject("googlePlay")?.let { gp ->
                 googlePlayEnabled = gp.optBoolean("enabled", false)
                 val ids = gp.optJSONArray("productIds")
-                val first = ids?.let { arr ->
-                    (0 until arr.length()).map { arr.optString(it) }.firstOrNull { it.isNotBlank() && it != "null" }
-                }
-                googlePlayProductId = if (googlePlayEnabled) first else null
+                val allIds = ids?.let { arr ->
+                    (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() && it != "null" }
+                } ?: emptyList()
+                playIds = allIds.toSet()
+                googlePlayProductId = if (googlePlayEnabled) allIds.firstOrNull() else null
             }
+            allowedGooglePlayIds = playIds
             val arr = plans.optJSONArray("plans") ?: org.json.JSONArray()
             for (i in 0 until arr.length()) {
                 val p = arr.optJSONObject(i) ?: continue
@@ -265,12 +293,31 @@ fun SubscribeScreen(
                 p.optJSONArray("features")?.let { fa ->
                     for (j in 0 until fa.length()) feats.add(fa.optString(j))
                 }
+                val billing = mutableListOf<BillingOption>()
+                p.optJSONArray("billingOptions")?.let { ba ->
+                    for (j in 0 until ba.length()) {
+                        val b = ba.optJSONObject(j) ?: continue
+                        billing.add(
+                            BillingOption(
+                                id = b.optString("id"),
+                                label = b.optString("label"),
+                                price = b.optDouble("price", 0.0),
+                                period = b.optString("period", "month"),
+                                productId = b.optString("productId"),
+                                discountPercent = b.optInt("discountPercent", -1).takeIf { it >= 0 },
+                                monthlyEquivalent = b.optDouble("monthlyEquivalent", -1.0).takeIf { it >= 0 },
+                                savingsLabel = b.optString("savingsLabel").takeIf { it.isNotBlank() && it != "null" }
+                            )
+                        )
+                    }
+                }
                 val parsed = SubPlan(
                     id = p.optString("id"),
                     name = p.optString("name"),
                     price = p.optDouble("price", 0.0),
                     period = p.optString("period").takeIf { it.isNotBlank() && it != "null" },
-                    features = feats
+                    features = feats,
+                    billingOptions = billing
                 )
                 when (parsed.id) {
                     "free" -> freePlan = parsed
@@ -376,7 +423,53 @@ fun SubscribeScreen(
                                 .background(SurfaceLight)
                                 .padding(20.dp)
                         ) {
-                            if (plan.price > 0) {
+                            // Monthly / Yearly billing switch — only Premium
+                            // has two real, separately priced options.
+                            val activeBilling = plan.billingOptions.firstOrNull { it.id == selectedBilling }
+                                ?: plan.billingOptions.firstOrNull()
+                            if (plan.id == "premium" && plan.billingOptions.size > 1) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    plan.billingOptions.forEach { option ->
+                                        BillingPill(
+                                            option = option,
+                                            selected = option.id == selectedBilling,
+                                            onClick = { selectedBilling = option.id },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(16.dp))
+                            }
+                            if (activeBilling != null) {
+                                Row(
+                                    verticalAlignment = Alignment.Bottom,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        "$planCurrency %.2f".format(activeBilling.price),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        "/ ${activeBilling.period}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextMuted,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                }
+                                if (activeBilling.id == "yearly" && activeBilling.monthlyEquivalent != null) {
+                                    Text(
+                                        "Billed once a year — works out to $planCurrency %.2f/mo".format(activeBilling.monthlyEquivalent),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = TextMuted,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            } else if (plan.price > 0) {
                                 Row(
                                     verticalAlignment = Alignment.Bottom,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -480,10 +573,22 @@ fun SubscribeScreen(
                         )
                     }
                     else -> {
+                        // Which billing option is currently selected, and
+                        // whether Google Play actually has a matching
+                        // product live for it (e.g. "premium-yearly" may not
+                        // exist in Play Console yet even after monthly does).
+                        val selectedProductId = premiumPlan?.billingOptions
+                            ?.firstOrNull { it.id == selectedBilling }
+                            ?.productId
+                            ?: googlePlayProductId
+                        val playAvailableForSelection = googlePlayEnabled &&
+                            selectedProductId != null &&
+                            (allowedGooglePlayIds.isEmpty() || allowedGooglePlayIds.contains(selectedProductId))
+
                         // Both methods configured: Google Play as the primary
                         // (Play-Store-native, billed to the Google account),
                         // Paystack as the alternative (card/bank/USSD).
-                        if (googlePlayEnabled && googlePlayProductId != null) {
+                        if (playAvailableForSelection) {
                             GradientPrimaryButton(
                                 text = "Subscribe with Google Play",
                                 enabled = !googleBusy && !busy,
@@ -563,6 +668,44 @@ private fun PlanTab(
                 .clip(RoundedCornerShape(2.dp))
                 .background(if (selected) AccentViolet else BorderSubtle)
         )
+    }
+}
+
+@Composable
+private fun BillingPill(
+    option: BillingOption,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) AccentViolet.copy(alpha = 0.12f) else Color.White)
+            .border(
+                width = if (selected) 1.5.dp else 1.dp,
+                color = if (selected) AccentViolet else BorderSubtle,
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            option.label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) AccentViolet else TextPrimary
+        )
+        option.savingsLabel?.let { label ->
+            Spacer(Modifier.height(3.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (selected) AccentViolet else AccentCyan
+            )
+        }
     }
 }
 

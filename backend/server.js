@@ -31,13 +31,34 @@ const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
 const SUBSCRIBE_URL = process.env.SUBSCRIBE_URL || "https://market-ai-api-jwfb.onrender.com/subscribe";
 const SUB_CURRENCY = (process.env.SUB_CURRENCY || "USD").toUpperCase();
 const SUB_PRICE = Number(process.env.SUB_PRICE || "9.99"); // price per month, 2 decimals
+// Yearly Premium — defaults to 10% off the monthly price x 12, e.g.
+// 9.99 x 12 = 119.88, less 10% = 107.89. Override with SUB_PRICE_YEARLY if
+// the exact billed figure should differ from the computed discount.
+const SUB_PRICE_YEARLY = Number(
+  process.env.SUB_PRICE_YEARLY || (Math.round(SUB_PRICE * 12 * 0.9 * 100) / 100).toFixed(2)
+);
+const SUB_YEARLY_DISCOUNT_PERCENT = 10;
+
+/** Price + billing period for a plan id ("monthly" | "yearly"). Unknown ids
+ *  fall back to monthly — the only two real billing options that exist. */
+function subPlanPricing(planId) {
+  if (planId === "yearly") {
+    return { planId: "yearly", price: SUB_PRICE_YEARLY, period: "year", days: 365, productId: "premium-yearly" };
+  }
+  return { planId: "monthly", price: SUB_PRICE, period: "month", days: 30, productId: "premium-monthly" };
+}
+
+/** Which plan a Google Play product id represents. */
+function subPlanForProductId(productId) {
+  return productId === "premium-yearly" ? "yearly" : "monthly";
+}
 
 // --- Google Play Billing (the Play-Store-native way to subscribe) ---
 // Requires a Google Play service account key + the app's package name, and
 // the matching subscription product must exist in Play Console.
 const GOOGLE_PLAY_PACKAGE_NAME = process.env.GOOGLE_PLAY_PACKAGE_NAME || "";
 const GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || "";
-const GOOGLE_PLAY_SUBSCRIPTION_IDS = String(process.env.GOOGLE_PLAY_SUBSCRIPTION_IDS || "premium-monthly")
+const GOOGLE_PLAY_SUBSCRIPTION_IDS = String(process.env.GOOGLE_PLAY_SUBSCRIPTION_IDS || "premium-monthly,premium-yearly")
   .split(",").map(s => s.trim()).filter(Boolean);
 const googlePlayBillingReady = Boolean(GOOGLE_PLAY_PACKAGE_NAME) && Boolean(GOOGLE_PLAY_SERVICE_ACCOUNT_JSON);
 
@@ -63,6 +84,10 @@ app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" })
       const data = vBody && vBody.data;
       if (vRes.ok && data && data.status === "success") {
         const googleSub = data.metadata && data.metadata.google_sub;
+        // Which plan the user chose at checkout ("monthly" | "yearly"),
+        // passed through Paystack metadata — defaults to monthly for older
+        // clients or transactions started before this field existed.
+        const paidPlan = data.metadata && data.metadata.plan === "yearly" ? "yearly" : "monthly";
         const amount = typeof data.amount === "number" ? data.amount : null;
         const currency = data.currency || SUB_CURRENCY;
         if (pool && googleSub) {
@@ -82,9 +107,10 @@ app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" })
               `UPDATE users
                  SET is_premium = true,
                      premium_started_at = COALESCE(premium_started_at, now()),
-                     premium_platform = 'paystack'
+                     premium_platform = 'paystack',
+                     premium_plan = $2
                WHERE id = $1`,
-              [rows[0].id]
+              [rows[0].id, paidPlan]
             );
             console.log(`[subscription] premium activated for google_sub ${googleSub} (ref ${data.reference})`);
             // Confirmation the moment activation is real: email + in-app +
@@ -505,6 +531,7 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_product_id TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_purchase_token TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_plan TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS community_joined_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ;
@@ -2436,6 +2463,8 @@ app.get("/api/subscription/plans", async (_req, res) => {
       {
         id: "premium",
         name: "Premium",
+        // Kept for older app builds that only read a single price/period —
+        // the monthly figure, same as before.
         price: SUB_PRICE,
         period: "month",
         features: [
@@ -2445,6 +2474,29 @@ app.get("/api/subscription/plans", async (_req, res) => {
           "Full Daily Signals history",
           "Full community access",
           "Everything in Free"
+        ],
+        // Two real billing choices — Monthly and Yearly (10% cheaper than
+        // paying monthly for 12 months). Both are backed by an actually
+        // charge-able path: Paystack always, Google Play once its matching
+        // product id is live in Play Console (see paymentMethods.googlePlay).
+        billingOptions: [
+          {
+            id: "monthly",
+            label: "Monthly",
+            price: SUB_PRICE,
+            period: "month",
+            productId: "premium-monthly"
+          },
+          {
+            id: "yearly",
+            label: "Yearly",
+            price: SUB_PRICE_YEARLY,
+            period: "year",
+            productId: "premium-yearly",
+            discountPercent: SUB_YEARLY_DISCOUNT_PERCENT,
+            monthlyEquivalent: Math.round((SUB_PRICE_YEARLY / 12) * 100) / 100,
+            savingsLabel: `Save ${SUB_YEARLY_DISCOUNT_PERCENT}%`
+          }
         ]
       }
     ]
@@ -2469,6 +2521,10 @@ app.post("/api/subscription/checkout", requireAuth, async (req, res) => {
     if (!rows.length || !rows[0].email) {
       return res.status(400).json({ error: "No email address on your account \u2014 needed for secure checkout." });
     }
+    // Which plan the user picked on the Subscribe screen — "monthly" (default,
+    // for older clients too) or "yearly".
+    const requestedPlan = (req.body && req.body.plan) === "yearly" ? "yearly" : "monthly";
+    const pricing = subPlanPricing(requestedPlan);
     const reference = `msa-${req.session.sub.slice(0, 12)}-${Date.now()}`;
     const initRes = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
@@ -2480,11 +2536,11 @@ app.post("/api/subscription/checkout", requireAuth, async (req, res) => {
       },
       body: JSON.stringify({
         email: rows[0].email,
-        amount: Math.round(SUB_PRICE * 100), // Paystack uses minor units
+        amount: Math.round(pricing.price * 100), // Paystack uses minor units
         currency: SUB_CURRENCY,
         reference,
         callback_url: `${SUBSCRIBE_URL}?payment=done`,
-        metadata: { google_sub: req.session.sub }
+        metadata: { google_sub: req.session.sub, plan: pricing.planId }
       })
     });
     const body = await initRes.json().catch(() => ({}));
@@ -2586,11 +2642,15 @@ app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) =
     }
 
     // Verified active subscription — record the payment and activate.
+    // Google's own subscriptionState/expiryTime already carries the real
+    // renewal cadence, whichever product (monthly or yearly) was purchased.
+    const verifiedPlan = subPlanForProductId(productId);
+    const verifiedPricing = subPlanPricing(verifiedPlan);
     await pool.query(
       `INSERT INTO subscription_payments (user_id, reference, amount, currency, status, paid_at)
        VALUES ($1, $2, $3, $4, 'success', now())
        ON CONFLICT (reference) DO NOTHING`,
-      [user.id, purchaseToken, Math.round(SUB_PRICE * 100), SUB_CURRENCY]
+      [user.id, purchaseToken, Math.round(verifiedPricing.price * 100), SUB_CURRENCY]
     );
     const wasPremium = Boolean(user.is_premium);
     await pool.query(
@@ -2600,9 +2660,10 @@ app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) =
              premium_product_id = $2,
              premium_purchase_token = $3,
              premium_expires_at = $4,
+             premium_plan = $5,
              premium_started_at = COALESCE(premium_started_at, now())
        WHERE id = $1`,
-      [user.id, productId, purchaseToken, premiumUntil.toISOString()]
+      [user.id, productId, purchaseToken, premiumUntil.toISOString(), verifiedPlan]
     );
     console.log(`[subscription] Google Play premium activated for google_sub ${req.session.sub} (product ${productId}, until ${premiumUntil.toISOString()})`);
     if (!wasPremium) {
@@ -2627,13 +2688,13 @@ app.get("/api/subscription/status", requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT is_premium, premium_expires_at, trial_started_at, trial_expired_email_sent_at FROM users WHERE google_sub = $1`,
+      `SELECT is_premium, premium_expires_at, premium_plan, trial_started_at, trial_expired_email_sent_at FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
       return res.status(404).json({ error: "User not found" });
     }
-    return res.json(trialInfo(rows[0]));
+    return res.json({ ...trialInfo(rows[0]), premiumPlan: rows[0].premium_plan || null });
   } catch (err) {
     return res.status(500).json({ error: "Could not load subscription status", detail: String(err.message || err) });
   }
@@ -2881,7 +2942,7 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT id, trial_started_at, is_premium, premium_expires_at, premium_platform, premium_purchase_token FROM users WHERE google_sub = $1`,
+      `SELECT id, trial_started_at, is_premium, premium_expires_at, premium_platform, premium_purchase_token, premium_plan FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) {
@@ -2920,6 +2981,7 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
       return res.json({
         ...trial,
         plan,
+        premiumPlan: rows[0].premium_plan || null,
         premiumSource: rows[0].is_premium ? "subscription" : grant ? "admin_grant" : "trial",
         adminGrant: grant ? {
           kind: grant.duration_type,
