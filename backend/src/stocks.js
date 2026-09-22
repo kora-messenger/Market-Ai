@@ -103,6 +103,102 @@ function bestMatch(matches, query) {
   return ranked.length ? ranked[0].m : null;
 }
 
+
+function plainText(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#8217;|&rsquo;/gi, "'")
+    .replace(/&#8211;|&ndash;/gi, "-")
+    .replace(/&#8358;|&naira;/gi, "N")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const firstMatch = (text, re) => {
+  const m = String(text || "").match(re);
+  return m ? m[1].trim() : null;
+};
+const amountNumber = (s) => {
+  if (!s) return null;
+  const n = Number(String(s).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Discover a currently open Nigerian IPO from NGX's official publication
+ * feed. This covers the gap before a new issue receives a trading ticker and
+ * appears in TradingView. Only ngxgroup.com is queried; returned facts retain
+ * the official source URL and no live-price history is fabricated. */
+async function searchNgxIpo(query) {
+  const text = String(query || "").trim();
+  if (!text) return null;
+  const url = `https://ngxgroup.com/wp-json/wp/v2/posts?search=${encodeURIComponent(text)}&per_page=10`;
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA, Accept: "application/json" } }, 10_000);
+  if (!res.ok) throw new Error(`NGX IPO search HTTP ${res.status}`);
+  const posts = await res.json();
+  if (!Array.isArray(posts)) return null;
+  const qTokens = significantWords(text);
+  const ranked = posts.map((post) => {
+    const title = plainText(post?.title?.rendered);
+    const body = plainText(post?.content?.rendered);
+    const haystack = `${title} ${body}`;
+    const coverage = tokenCoverage(haystack, qTokens);
+    const isOffer = /\b(initial public offering|\bipo\b|public offer)\b/i.test(haystack);
+    const termSignals = [
+      /per share/i, /subscription window/i, /ordinary shares/i, /offer price/i,
+      /scheduled to close/i, /minimum subscription/i, /profit after tax/i,
+      /implied market capitalisation/i
+    ].filter((re) => re.test(body)).length;
+    const hasTerms = termSignals > 0;
+    return {
+      post, title, body, coverage,
+      score: (isOffer ? 3 : 0) + (hasTerms ? 2 : 0) + coverage * 5 + termSignals * 0.75
+    };
+  }).filter((x) => x.coverage >= (qTokens.length >= 2 ? 0.75 : 1) && x.score >= 7)
+    .sort((a, b) => b.score - a.score || String(b.post.date).localeCompare(String(a.post.date)));
+  if (!ranked.length) return null;
+
+  const { post, title, body } = ranked[0];
+  const company = firstMatch(body, /Initial Public Offering of\s+(.+?)\s+(?:commenced|opened|has opened)/i)
+    || firstMatch(body, /(?:IPO|public offer) of\s+(.+?)(?:\.|,|\s+opened)/i)
+    || text.replace(/\bIPO\b/gi, "").trim();
+  const offerPriceText = firstMatch(body, /(?:offered at|offer price(?: of| at)?|subscription price(?: of| at)?)\s*(?:N|₦)\s*([\d,.]+)\s*per share/i)
+    || firstMatch(body, /(?:N|₦)\s*([\d,.]+)\s*per share/i);
+  const sharesText = firstMatch(body, /([\d,.]+\s*(?:billion|million))\s+ordinary shares/i);
+  const minimumText = firstMatch(body, /minimum subscription of\s+([\d,.]+\s+shares[^.]{0,100})/i);
+  const openedAt = firstMatch(body, /(?:subscription window|offer) opened on\s+((?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s*)?[A-Z][a-z]+\s+\d{1,2},\s*\d{4})/i);
+  const closesAt = firstMatch(body, /(?:scheduled to close|closes?) on\s+((?:(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s*)?[A-Z][a-z]+\s+\d{1,2},\s*\d{4})/i);
+  const offerSize = firstMatch(body, /(?:formally open(?:ed)?|open(?:ed)?)\s+(?:the\s+)?((?:N|₦)[\d,.]+\s*(?:tn|trillion|bn|billion))\s+IPO/i)
+    || firstMatch(body, /((?:N|₦)[\d,.]+\s*(?:tn|trillion|bn|billion))\s+(?:IPO|public offer)/i);
+  const revenue = firstMatch(body, /generated approximately\s+((?:N|₦)[\d,.]+\s*(?:tn|trillion|bn|billion))\s+in revenue/i);
+  const profitAfterTax = firstMatch(body, /profit after tax stood at\s+((?:N|₦)[\d,.]+\s*(?:tn|trillion|bn|billion))/i);
+  const impliedMarketCap = firstMatch(body, /implied market capitalisation of about\s+((?:N|₦)[\d,.]+\s*(?:tn|trillion|bn|billion))/i);
+
+  return {
+    kind: "ipo",
+    company,
+    exchange: "NGX",
+    ticker: null,
+    offerPrice: amountNumber(offerPriceText),
+    currency: "NGN",
+    sharesOffered: sharesText,
+    minimumSubscription: minimumText,
+    openedAt,
+    closesAt,
+    offerSize,
+    revenue,
+    profitAfterTax,
+    impliedMarketCap,
+    announcedAt: post.date || null,
+    sourceTitle: title,
+    sourceUrl: post.link,
+    slug: post.slug || String(post.id)
+  };
+}
+
 /** The performance snapshot we feed the AI — all real market numbers. */
 const SCAN_COLUMNS = [
   "close", "name", "description", "change", "currency",
@@ -168,4 +264,4 @@ async function fetchStockStats(tvSymbol) {
   };
 }
 
-module.exports = { searchStock, bestMatch, fetchStockStats };
+module.exports = { searchStock, bestMatch, fetchStockStats, searchNgxIpo };

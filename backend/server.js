@@ -19,7 +19,7 @@ const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
 const { fetchWatchlist, WATCHLIST } = require("./src/markets");
 const { fetchCandles, INTERVALS } = require("./src/candles");
 const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
-const { searchStock, bestMatch, fetchStockStats } = require("./src/stocks");
+const { searchStock, bestMatch, fetchStockStats, searchNgxIpo } = require("./src/stocks");
 const r2 = require("./src/r2");
 
 const app = express();
@@ -3308,6 +3308,41 @@ function stockMarketFallback(stats) {
   };
 }
 
+function ipoMarketFallback(offer) {
+  const price = Number(offer.offerPrice);
+  const hasPrice = Number.isFinite(price) && price > 0;
+  const round = (n) => Number(n.toFixed(price >= 100 ? 2 : 4));
+  return {
+    direction: "NO_TRADE",
+    recommendation: "HOLD",
+    confidence: 62,
+    entryZone: hasPrice ? { low: price, high: price } : { low: 0, high: 0 },
+    stopLoss: hasPrice ? round(price * 0.90) : 0,
+    takeProfits: hasPrice ? [1.10, 1.20, 1.30].map((m) => round(price * m)) : [],
+    riskReward: 0,
+    estimatedDuration: "IPO subscription and post-listing review",
+    thesis: `${offer.company} is currently an open NGX public offer, not yet a normally traded stock with an established market-price history. The official offer price is ${hasPrice ? `NGN ${price}` : "not stated"} per share${offer.sharesOffered ? ` for ${offer.sharesOffered}` : ""}${offer.offerSize ? `, with an announced offer size of ${offer.offerSize}` : ""}. ${offer.revenue ? `The official NGX announcement cites ${offer.revenue} in revenue` : "The announcement provides no standardized historical market return data"}${offer.profitAfterTax ? ` and ${offer.profitAfterTax} profit after tax` : ""}. Because there is no post-listing price action, liquidity record, or 52-week range yet, a technical BUY/SELL call would be misleading. Review the prospectus and reassess after the ticker begins trading and reliable market data becomes available.`,
+    invalidation: "Reassess this view when NGX publishes the trading ticker and live post-listing price history becomes available.",
+    keyLevels: hasPrice ? [price] : []
+  };
+}
+
+const IPO_SYSTEM_PROMPT = `You are evaluating a newly opened Nigerian Exchange IPO using facts retrieved from an official NGX publication. This is NOT yet an ordinarily traded stock and has no genuine post-listing price history. Never invent a ticker, chart trend, technical indicator, 52-week range or market return. Evaluate the offer terms and disclosed operating figures conservatively. Use BUY only if the supplied official facts justify subscribing at the offer price; otherwise use HOLD/NO_TRADE and explain what prospectus or post-listing evidence is still needed.
+Respond with STRICT JSON only (no markdown fences), shape:
+{
+  "direction": "LONG" | "NO_TRADE",
+  "recommendation": "BUY" | "HOLD",
+  "confidence": 0-100,
+  "entryZone": {"low": number, "high": number},
+  "stopLoss": number,
+  "takeProfits": [number, number, number],
+  "riskReward": number,
+  "estimatedDuration": "short human-readable timeframe",
+  "thesis": "4-6 factual sentences that clearly state this is an IPO-stage assessment",
+  "invalidation": "what would invalidate this view",
+  "keyLevels": [number]
+}`;
+
 app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
     return res.status(503).json({ error: "Analysis engine is not configured yet." });
@@ -3401,32 +3436,50 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
     return res.status(422).json({ error: "We couldn't identify a stock from that screenshot. Please type the stock name instead." });
   }
 
-  // --- Resolve the query to a REAL listed stock with live performance data ---
+  // --- Resolve either a traded stock or a newly opened official NGX IPO. ---
   let stats;
   let match;
+  let ipoOffer = null;
   try {
     const matches = await searchStock(resolvedQuery);
-    if (!matches.length) {
-      return res.status(422).json({
-        error: `We couldn't find a stock called "${resolvedQuery}". Check the spelling or try its ticker symbol.`,
-        stockNotFound: true
-      });
-    }
     match = bestMatch(matches, resolvedQuery);
-    if (!match) {
-      return res.status(422).json({
-        error: `We found similar listed companies, but not an exact stock match for "${resolvedQuery}". Please enter the official ticker symbol once it is listed.`,
-        stockNotFound: true
-      });
-    }
-    stats = await fetchStockStats(match.symbol);
+    if (match) stats = await fetchStockStats(match.symbol);
   } catch (err) {
-    console.error("[analyze/stock] market data fetch failed:", err && err.message, err && err.stack);
-    return res.status(502).json({ error: "We couldn't reach the stock market data right now. Please try again in a moment." });
+    // TradingView can lag a brand-new NGX issue or be briefly unavailable.
+    // Continue to the official NGX offer feed before failing the request.
+    console.error("[analyze/stock] traded-stock lookup failed; checking NGX IPO feed:", String(err.message || err));
   }
-  if (!stats) {
+  if (!match || !stats) {
+    try {
+      ipoOffer = await searchNgxIpo(resolvedQuery);
+    } catch (err) {
+      console.error("[analyze/stock] NGX IPO lookup failed:", String(err.message || err));
+    }
+  }
+  if (ipoOffer) {
+    const ipoKey = String(ipoOffer.slug || resolvedQuery).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toUpperCase();
+    match = {
+      symbol: `NGXIPO:${ipoKey}`,
+      ticker: null,
+      description: ipoOffer.company,
+      exchange: ipoOffer.exchange || "NGX",
+      currency: ipoOffer.currency || "NGN"
+    };
+    stats = {
+      company: ipoOffer.company,
+      ticker: "IPO",
+      currency: ipoOffer.currency || "NGN",
+      price: ipoOffer.offerPrice,
+      changePctToday: null,
+      perf1W: null, perf1M: null, perf3M: null, perf6M: null, perf1Y: null, perfYTD: null,
+      high52w: null, low52w: null, volume: null, avgVolume10d: null,
+      dailyVolatilityPct: null, marketCap: null, rsi: null, tvRecommendation: null,
+      peRatio: null, eps: null, sector: "Energy"
+    };
+  }
+  if (!match || !stats) {
     return res.status(422).json({
-      error: `We couldn't load live market data for "${match.description}". Please try the ticker symbol instead.`,
+      error: `We couldn't verify an exact listed stock or active NGX public offer for "${resolvedQuery}". Check the official company name or ticker symbol.`,
       stockNotFound: true
     });
   }
@@ -3436,8 +3489,9 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
     const userContent = [
       {
         type: "text",
-        text:
-          `Stock: ${stats.company} (${stats.ticker}), listed on ${match.exchange}. Currency: ${stats.currency || "local"}.` +
+        text: ipoOffer
+          ? `Official NGX IPO: ${ipoOffer.company}. Offer price: ${ipoOffer.offerPrice != null ? `${ipoOffer.currency} ${ipoOffer.offerPrice} per share` : "not stated"}. Shares offered: ${ipoOffer.sharesOffered || "not stated"}. Minimum subscription: ${ipoOffer.minimumSubscription || "not stated"}. Offer size: ${ipoOffer.offerSize || "not stated"}. Subscription opened: ${ipoOffer.openedAt || "not stated"}; closes: ${ipoOffer.closesAt || "not stated"}. Disclosed revenue: ${ipoOffer.revenue || "not stated"}; profit after tax: ${ipoOffer.profitAfterTax || "not stated"}; implied market capitalization: ${ipoOffer.impliedMarketCap || "not stated"}. Official source: ${ipoOffer.sourceUrl}. There is no live post-listing trading history yet. Evaluate the public offer without inventing technical market data.` + (traderProfile || "")
+          : `Stock: ${stats.company} (${stats.ticker}), listed on ${match.exchange}. Currency: ${stats.currency || "local"}.` +
           ` REAL live market data fetched moments ago: current price ${stats.price}${stats.changePctToday != null ? ` (today ${stats.changePctToday > 0 ? "+" : ""}${stats.changePctToday}%)` : ""}` +
           (stats.perf1W != null ? `, 1-week ${stats.perf1W}%` : "") +
           (stats.perf1M != null ? `, 1-month ${stats.perf1M}%` : "") +
@@ -3474,7 +3528,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: STOCK_SYSTEM_PROMPT },
+        { role: "system", content: ipoOffer ? IPO_SYSTEM_PROMPT : STOCK_SYSTEM_PROMPT },
         { role: "user", content: userContent }
       ]
     }, "stock-analysis", { premium }).catch((err) => ({
@@ -3502,12 +3556,12 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       console.error(`[analyze/stock] AI unavailable (${orResult.status || 0}) — using live-market fallback:`, String(orResult.detail || "").slice(0, 300));
     }
     if (!analysis) {
-      analysis = stockMarketFallback(stats);
+      analysis = ipoOffer ? ipoMarketFallback(ipoOffer) : stockMarketFallback(stats);
       usedMarketFallback = true;
     }
 
     const result = {
-      instrument: `${stats.company} (${stats.ticker})`,
+      instrument: ipoOffer ? `${stats.company} (NGX IPO)` : `${stats.company} (${stats.ticker})`,
       instrumentId: match.symbol,
       mode: "stock",
       model: usedMarketFallback ? "live-market-fallback" : (premium ? OPENAI_MODEL : ANALYSIS_MODEL),
@@ -3523,14 +3577,28 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
         exchange: match.exchange, volume: stats.volume, avgVolume10d: stats.avgVolume10d,
         dailyVolatilityPct: stats.dailyVolatilityPct, marketCap: stats.marketCap,
         rsi: stats.rsi, peRatio: stats.peRatio, eps: stats.eps, sector: stats.sector,
-        tvRecommendation: stats.tvRecommendation
+        tvRecommendation: stats.tvRecommendation,
+        isIpo: Boolean(ipoOffer),
+        ipo: ipoOffer ? {
+          offerPrice: ipoOffer.offerPrice,
+          sharesOffered: ipoOffer.sharesOffered,
+          minimumSubscription: ipoOffer.minimumSubscription,
+          openedAt: ipoOffer.openedAt,
+          closesAt: ipoOffer.closesAt,
+          offerSize: ipoOffer.offerSize,
+          revenue: ipoOffer.revenue,
+          profitAfterTax: ipoOffer.profitAfterTax,
+          impliedMarketCap: ipoOffer.impliedMarketCap,
+          sourceTitle: ipoOffer.sourceTitle,
+          sourceUrl: ipoOffer.sourceUrl
+        } : null
       },
       analyzedAt: new Date().toISOString()
     };
 
     // --- Auto-enroll monitoring: when the AI says BUY, it keeps watching the
     // stock for this trader and pushes updates (keep vs sell) as it moves. ---
-    if (analysis && analysis.recommendation === "BUY" &&
+    if (!ipoOffer && analysis && analysis.recommendation === "BUY" &&
         typeof analysis.stopLoss === "number" && Array.isArray(analysis.takeProfits)) {
       try {
         const tps = analysis.takeProfits.filter((t) => typeof t === "number");
