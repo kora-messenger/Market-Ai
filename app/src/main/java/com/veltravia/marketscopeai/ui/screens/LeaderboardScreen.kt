@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import com.veltravia.marketscopeai.util.optStringOrNull
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Verified
@@ -77,7 +78,7 @@ private fun parseStandings(json: JSONObject): List<StandingsEntry> {
         StandingsEntry(
             rank = o.optInt("rank"),
             name = o.optString("name").ifBlank { "Trader" },
-            username = o.optString("username").ifBlank { null },
+            username = o.optStringOrNull("username"),
             email = o.optString("email"),
             score = o.optInt("score"),
             posts = o.optInt("posts"),
@@ -136,7 +137,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                         name = o.optString("name").ifBlank { "Trader" },
                         email = o.optString("email"),
                         score = o.optInt("score"),
-                        username = o.optString("username").ifBlank { null },
+                        username = o.optStringOrNull("username"),
                         isPremium = o.optBoolean("isPremium", false),
                         posts = 0, comments = 0, reactionsReceived = 0, reactionsGiven = 0, pollVotes = 0
                     )

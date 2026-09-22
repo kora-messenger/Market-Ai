@@ -336,6 +336,17 @@ object ApiClient {
             request(request)
         }
 
+    /** Remove my own vote on a poll — tapping the option I already picked again. */
+    suspend fun unvotePoll(sessionToken: String, postId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/community/posts/$postId/vote")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .delete()
+                .build()
+            request(request)
+        }
+
     /** Weekly competition standings: { weekStart, nextReset, standings, myRank, myScore, lastWeekWinners }. */
     suspend fun fetchLeaderboard(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

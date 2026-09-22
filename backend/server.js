@@ -4734,7 +4734,7 @@ app.get("/api/daily-signals/:id/comments", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT c.id, c.user_id, c.author_name, c.body, c.approved, c.created_at,
               EXISTS(SELECT 1 FROM signal_comment_images i WHERE i.comment_id = c.id) AS has_image,
-              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), '') AS author_picture,
               COALESCE((SELECT u.role FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), 'user') AS author_role
@@ -4922,7 +4922,7 @@ app.get("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) => 
       `SELECT t.id, t.author_name, t.author_email, t.comment, t.status, t.created_at,
               (t.user_id = $2::uuid) AS is_mine,
               EXISTS(SELECT 1 FROM signal_testimonial_images i WHERE i.testimonial_id = t.id) AS has_image,
-              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END) AS avatar_url, u.role
+              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END) AS avatar_url, u.role
        FROM signal_testimonials t
        LEFT JOIN users u ON u.id = t.user_id
        WHERE t.signal_id = $1::uuid AND (t.status = 'approved' OR t.user_id = $2::uuid OR $3)
@@ -5071,7 +5071,7 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
                 WHERE g.user_id = u.id AND g.revoked_at IS NULL
                   AND (g.expires_at IS NULL OR g.expires_at > now())
               ), false) AS author_is_premium,
-              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END) AS avatar_url
+              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END) AS avatar_url
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
        LEFT JOIN users u ON u.id = t.user_id
@@ -5118,7 +5118,7 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
                 WHERE g.user_id = u.id AND g.revoked_at IS NULL
                   AND (g.expires_at IS NULL OR g.expires_at > now())
               ), false) AS author_is_premium,
-              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END) AS avatar_url
+              (CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END) AS avatar_url
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
        LEFT JOIN users u ON u.id = t.user_id
@@ -5254,9 +5254,9 @@ app.get("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT s.id, s.parent_id, s.author_name, s.body, s.created_at,
               COALESCE(
-                NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+                NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END FROM users u
                         WHERE lower(u.email) = lower(s.author_email) LIMIT 1), ''),
-                NULLIF((SELECT CASE WHEN u2.avatar_key IS NOT NULL THEN 'avatar:' || u2.id ELSE u2.picture END FROM users u2
+                NULLIF((SELECT CASE WHEN u2.avatar_key IS NOT NULL THEN 'avatar:' || u2.id ELSE NULL END FROM users u2
                         ORDER BY u2.created_at ASC LIMIT 1), '')
               ) AS author_picture
        FROM signal_updates s
@@ -5297,8 +5297,11 @@ app.post("/api/daily-signals/:id/updates", requireAuth, async (req, res) => {
       [req.params.id, parentId, authorName, String(req.session.email || ""), body.slice(0, 500)]
     );
     const u = rows[0];
-    const me = await pool.query(`SELECT picture FROM users WHERE google_sub = $1 AND COALESCE(picture,'') <> ''`, [req.session.sub]);
-    res.status(201).json({ update: { id: u.id, authorName: u.author_name, authorPicture: (me.rows[0] || {}).picture || "", body: u.body, createdAt: u.created_at, replies: [] } });
+    // Never the raw Google photo — same rule as everywhere else: an uploaded
+    // MarketScope AI avatar or nothing (client shows the default icon).
+    const me = await pool.query(`SELECT id, avatar_key FROM users WHERE google_sub = $1`, [req.session.sub]);
+    const authorPicture = (me.rows[0] && me.rows[0].avatar_key) ? `avatar:${me.rows[0].id}` : "";
+    res.status(201).json({ update: { id: u.id, authorName: u.author_name, authorPicture, body: u.body, createdAt: u.created_at, replies: [] } });
   } catch (err) {
     res.status(500).json({ error: "Could not post the update", detail: String(err.message || err) });
   }
@@ -5804,7 +5807,7 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
     const { rows: posts } = await pool.query(
       `SELECT p.*, (SELECT COUNT(*)::int FROM community_post_images i WHERE i.post_id = p.id) AS image_count,
               (SELECT COUNT(*)::int FROM post_views v WHERE v.post_id = p.id) AS view_count,
-              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END FROM users u
                       WHERE lower(u.email) = lower(p.author_email) LIMIT 1), '') AS author_picture,
               NULLIF((SELECT u.username FROM users u
                       WHERE lower(u.email) = lower(p.author_email) LIMIT 1), '') AS author_username,
@@ -5978,6 +5981,38 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
       [me.id, me.name || "Trader", me.email || "", body, isTeam, postType, JSON.stringify(pollOptions), allowComments, outcomeTag]
     );
     const row = rows[0];
+    // The feed query joins these live from `users` (username/role/premium/
+    // avatar), but INSERT...RETURNING * on community_posts alone never has
+    // them — without this, the response right after posting showed "@null",
+    // no Mentor/Admin badge and the default icon until the next feed
+    // refetch filled them in. Fetch once here so the immediate response is
+    // already correct.
+    const { rows: authorProfileRows } = await pool.query(
+      `SELECT u.username, u.role,
+              (u.is_premium OR EXISTS (
+                SELECT 1 FROM premium_grants g
+                WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                  AND (g.expires_at IS NULL OR g.expires_at > now())
+              )) AS is_premium,
+              CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END AS avatar_url
+       FROM users u WHERE u.id = $1`,
+      [me.id]
+    );
+    const authorProfile = authorProfileRows[0] || {};
+    row.author_username = authorProfile.username || null;
+    row.author_role = authorProfile.role || "user";
+    row.author_is_premium = authorProfile.is_premium || false;
+    row.author_picture = authorProfile.avatar_url || "";
+    // This week's top-5 badge (weekly competition) — same lookup the feed
+    // uses, so a badge holder's own fresh post shows the trophy right away.
+    const nowForBadge = new Date();
+    const { weekStart: thisWeekStartForBadge } = isoWeekBounds(nowForBadge);
+    const lastWeekForBadge = isoWeekBounds(new Date(thisWeekStartForBadge.getTime() - 3 * 86400000));
+    const badgeRowsForNewPost = (await weeklyScores(lastWeekForBadge.weekStart, lastWeekForBadge.weekEnd))
+      .filter((r) => r.score > 0).slice(0, 5);
+    const isTopContributorForNewPost = badgeRowsForNewPost.some(
+      (r) => (r.email || "").toLowerCase() === (me.email || "").toLowerCase()
+    );
     for (let i = 0; i < imageList.length; i++) {
       const dataUrl = String(imageList[i]);
       const m = dataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,/);
@@ -6017,7 +6052,7 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
         row.link_preview = linkPreview;
       }
     }
-    const post = postToApi({ ...row, image_count: imageList.length }, [], 0, poll, null, false, 0);
+    const post = postToApi({ ...row, image_count: imageList.length }, [], 0, poll, null, isTopContributorForNewPost, 0);
     return res.json({ post });
   } catch (err) {
     return res.status(500).json({ error: "Could not publish the post", detail: String(err.message || err) });
@@ -6060,6 +6095,38 @@ app.post("/api/community/posts/:id/vote", requireAuth, async (req, res) => {
     return res.json({ optionId, counts, totalVotes, myVote: optionId });
   } catch (err) {
     return res.status(500).json({ error: "Could not record the vote", detail: String(err.message || err) });
+  }
+});
+
+// Remove the caller's own poll vote — tapping the option you already picked
+// again clears it (unvote), matching a normal poll's expectations.
+app.delete("/api/community/posts/:id/vote", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found" });
+    const postId = req.params.id;
+    const { rows: posts } = await pool.query(
+      `SELECT id, post_type FROM community_posts WHERE id = $1::uuid`,
+      [postId]
+    );
+    if (!posts.length || posts[0].post_type !== "poll") {
+      return res.status(404).json({ error: "Poll not found" });
+    }
+    await pool.query(
+      `DELETE FROM post_poll_votes WHERE poll_id = $1::uuid AND user_id = $2::uuid`,
+      [postId, me.id]
+    );
+    const { rows: votes } = await pool.query(
+      `SELECT option_id, COUNT(*)::int AS c FROM post_poll_votes WHERE poll_id = $1::uuid GROUP BY option_id`,
+      [postId]
+    );
+    const counts = {};
+    let totalVotes = 0;
+    for (const v of votes) { counts[v.option_id] = v.c; totalVotes += v.c; }
+    return res.json({ counts, totalVotes, myVote: null });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not remove the vote", detail: String(err.message || err) });
   }
 });
 
@@ -6329,7 +6396,7 @@ app.get("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.id, c.author_name, c.author_email, c.body, c.parent_id, c.created_at,
-              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE u.picture END FROM users u
+              NULLIF((SELECT CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), '') AS author_picture,
               NULLIF((SELECT u.username FROM users u
                       WHERE lower(u.email) = lower(c.author_email) LIMIT 1), '') AS author_username,
@@ -6451,7 +6518,7 @@ app.get("/api/dm/threads", requireAuth, async (req, res) => {
               -- as unread on MY OWN inbox instead of theirs).
               CASE WHEN lower(t.user_email) = $1 THEN t.user_unread ELSE t.mentor_unread END AS unread,
               cu.name AS counterpart_name, cu.role AS counterpart_role,
-              CASE WHEN cu.avatar_key IS NOT NULL AND cu.avatar_key <> '' THEN 'avatar:' || cu.id ELSE cu.picture END AS counterpart_avatar
+              CASE WHEN cu.avatar_key IS NOT NULL AND cu.avatar_key <> '' THEN 'avatar:' || cu.id ELSE NULL END AS counterpart_avatar
        FROM dm_threads t
        LEFT JOIN users cu
          ON lower(cu.email) = lower(CASE WHEN lower(t.user_email) = $1 THEN t.mentor_email ELSE t.user_email END)

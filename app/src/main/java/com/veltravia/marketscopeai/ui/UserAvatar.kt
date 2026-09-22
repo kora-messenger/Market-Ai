@@ -13,9 +13,10 @@ import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.R
 
 /**
- * A user's avatar: their Google account photo when we have one, otherwise the
- * shared MarketScope AI branded default illustration (the same one for every
- * account, like the reference app). Never renders initials or a gray
+ * A user's avatar: their uploaded MarketScope AI profile photo when they have
+ * one, otherwise the shared branded default illustration. We never fall back
+ * to a Google account photo here or anywhere else in the app — that's a
+ * deliberate product rule, not a bug. Never renders initials or a gray
  * silhouette — there is always a real image.
  */
 @Composable

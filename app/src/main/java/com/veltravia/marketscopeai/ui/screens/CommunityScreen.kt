@@ -110,6 +110,7 @@ import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.RoleBadge
+import com.veltravia.marketscopeai.util.optStringOrNull
 import com.veltravia.marketscopeai.ui.UserAvatar
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.components.PremiumGradientBrush
@@ -240,7 +241,7 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
         CommunityPost(
             id = p.optString("id"),
             authorName = p.optString("authorName").ifBlank { "Trader" },
-            authorUsername = p.optString("authorUsername").ifBlank { null },
+            authorUsername = p.optStringOrNull("authorUsername"),
             authorEmail = p.optString("authorEmail"),
             authorPicture = ApiClient.resolveAvatarUrl(p.optString("authorPicture")) ?: "",
             authorRole = p.optString("authorRole", "user"),
@@ -278,7 +279,7 @@ private fun parseComments(json: JSONArray): List<CommunityComment> =
             id = c.optString("id"),
             parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
             authorName = c.optString("author_name").ifBlank { "Trader" },
-            authorUsername = c.optString("author_username").ifBlank { null },
+            authorUsername = c.optStringOrNull("author_username"),
             authorPicture = ApiClient.resolveAvatarUrl(c.optString("author_picture")) ?: "",
             authorRole = c.optString("author_role", "user"),
             authorIsPremium = c.optBoolean("authorIsPremium", c.optBoolean("author_is_premium", false)),
@@ -348,7 +349,7 @@ private fun parseTopProofs(leaderboard: JSONObject): List<ProofPost> {
         ProofPost(
             postId = o.optString("postId"),
             authorName = o.optString("authorName").ifBlank { "Trader" },
-            authorUsername = o.optString("authorUsername").ifBlank { null },
+            authorUsername = o.optStringOrNull("authorUsername"),
             authorIsPremium = o.optBoolean("authorIsPremium", false),
             body = o.optString("body"),
             imageCount = o.optInt("imageCount", 0),
@@ -632,7 +633,29 @@ fun CommunityScreen(
     fun votePoll(post: CommunityPost, optionId: String) {
         if (token == null) return
         val wasMyVote = post.poll?.myVote == optionId
-        if (wasMyVote) return // tapping your own choice does nothing
+        if (wasMyVote) {
+            // Tapping the option you already picked removes your vote.
+            posts = posts.map {
+                if (it.id == post.id && it.poll != null && it.poll.myVote != null) {
+                    val newCounts = it.poll.counts.toMutableMap()
+                    newCounts[optionId] = ((newCounts[optionId] ?: 0) - 1).coerceAtLeast(0)
+                    it.copy(poll = it.poll.copy(
+                        counts = newCounts,
+                        totalVotes = (it.poll.totalVotes - 1).coerceAtLeast(0),
+                        myVote = null
+                    ))
+                } else it
+            }
+            scope.launch {
+                try {
+                    ApiClient.unvotePoll(token, post.id)
+                } catch (e: Exception) {
+                    error = e.message ?: "Could not remove your vote"
+                    load(reset = true)
+                }
+            }
+            return
+        }
         // optimistic update
         posts = posts.map {
             if (it.id == post.id && it.poll != null) {
@@ -1025,7 +1048,11 @@ fun CommunityScreen(
             post = post,
             myName = me?.name ?: "You",
             myUsername = me?.username,
-            myPicture = me?.picture ?: "",
+            // Never the raw Google photo here either — same rule as the rest
+            // of the app. The optimistic preview shows the default icon
+            // briefly; the server response (which resolves the real
+            // uploaded avatar_key, if any) confirms moments later.
+            myPicture = "",
             onDismiss = { openPost = null },
             onCountChange = { newCount ->
                 posts = posts.map { if (it.id == post.id) it.copy(commentCount = newCount) else it }
@@ -1743,7 +1770,9 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
-                    .clickable(enabled = !mine) { onVote(option.id) }
+                    // Tapping your own picked option again removes your vote —
+                    // it must stay clickable, not disabled once voted.
+                    .clickable { onVote(option.id) }
             ) {
                 Box {
                     // result fill once you've voted
@@ -1802,8 +1831,8 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
             when {
                 poll.totalVotes == 0 -> "No votes yet — be the first"
                 poll.totalVotes == 1 -> "1 vote"
-                else -> "$poll.totalVotes votes"
-            } + if (poll.myVote != null) " · tap another option to switch" else "",
+                else -> "${poll.totalVotes} votes"
+            } + if (poll.myVote != null) " · tap your vote again to remove it, or another option to switch" else "",
             fontSize = 11.sp,
             color = TextMuted
         )
@@ -1900,7 +1929,7 @@ private fun CommentsSheet(
                         id = c.optString("id"),
                         parentId = if (c.isNull("parentId") || !c.has("parentId")) null else c.optString("parentId"),
                         authorName = c.optString("author_name").ifBlank { myName },
-                        authorUsername = c.optString("author_username").ifBlank { myUsername },
+                        authorUsername = c.optStringOrNull("author_username") ?: myUsername,
                         authorPicture = ApiClient.resolveAvatarUrl(c.optString("author_picture")) ?: myPicture,
                         authorRole = c.optString("author_role", "user"),
                         authorIsPremium = c.optBoolean("authorIsPremium", c.optBoolean("author_is_premium", false)),

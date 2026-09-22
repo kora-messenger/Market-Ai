@@ -58,6 +58,7 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
+import com.veltravia.marketscopeai.util.optStringOrNull
 
 @Composable
 fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
@@ -166,7 +167,7 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
                                                 ?: credential.user.name,
                                             picture = verifiedUser?.optString("picture")?.ifBlank { null }
                                                 ?: credential.user.picture,
-                                            username = verifiedUser?.optString("username")?.ifBlank { null }
+                                            username = verifiedUser?.optStringOrNull("username")
                                         ),
                                         sessionToken = verified.optString("sessionToken").ifBlank { null },
                                         communityJoined = verifiedUser?.optBoolean("communityJoined", false)
