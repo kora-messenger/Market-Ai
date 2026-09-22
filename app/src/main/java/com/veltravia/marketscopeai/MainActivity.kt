@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
         // Shake-to-report-bug: registered fresh every foreground while the
         // pref is on, so toggling it takes effect on the next app open even
         // if the in-session start/stop was missed.
-        com.veltravia.marketscopeai.shake.ShakeBugReporter.start(applicationContext)
+        com.veltravia.marketscopeai.shake.ShakeBugReporter.start(this)
     }
 
     /**
@@ -122,7 +122,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         presenceHandler.removeCallbacks(presenceTick)
-        com.veltravia.marketscopeai.shake.ShakeBugReporter.stop(applicationContext)
+        com.veltravia.marketscopeai.shake.ShakeBugReporter.stop(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

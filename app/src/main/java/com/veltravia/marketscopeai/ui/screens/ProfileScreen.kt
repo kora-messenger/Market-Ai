@@ -391,16 +391,14 @@ fun ProfileScreen(
                 icon = Icons.Filled.Vibration,
                 tint = GoldAmber,
                 label = "Shake to report a bug",
-                helper = "Firmly shake your phone anywhere in the app to open the bug report screen.",
+                helper = "Shaking your phone always copies a screenshot to your clipboard. Turn this on to also jump straight to the bug report screen.",
                 checked = shakeToReport,
                 onChecked = { enabled ->
+                    // The screenshot-on-shake sensor itself is always registered
+                    // from the Activity lifecycle — this switch only decides
+                    // whether the same shake ALSO opens the bug report screen.
                     shakeToReport = enabled
                     SessionManager.setShakeToReportBug(context, enabled)
-                    if (enabled) {
-                        com.veltravia.marketscopeai.shake.ShakeBugReporter.start(context)
-                    } else {
-                        com.veltravia.marketscopeai.shake.ShakeBugReporter.stop(context)
-                    }
                 }
             )
             SettingsRow(

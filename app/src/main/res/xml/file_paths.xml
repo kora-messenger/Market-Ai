@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Cache-backed images shared via the clipboard: copied viewer images
+         and shake-to-screenshot captures. -->
+    <cache-path name="shared_images" path="shared_images/" />
+    <cache-path name="screenshots" path="screenshots/" />
+</paths>

@@ -19,6 +19,17 @@
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="${ADMOB_APP_ID}" />
         <!-- Ad services config not required for this app's audience (adults only). -->
+        <!-- Exposes cache-backed images (viewer copy + shake screenshots) as
+             content:// URIs for the clipboard/share sheet, no storage permission needed. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"

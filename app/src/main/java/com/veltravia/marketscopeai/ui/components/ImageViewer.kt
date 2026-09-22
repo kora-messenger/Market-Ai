@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +58,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -65,8 +67,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
+import coil.imageLoader
+import coil.request.ImageRequest
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import com.veltravia.marketscopeai.util.ClipboardImage
 
 /**
  * Full-screen image viewer used everywhere the app shows an image that can
@@ -88,6 +93,7 @@ fun ImageViewerDialog(
     if (urls.isEmpty()) { onDismiss(); return }
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // FxLens-style dismiss physics, in pixels.
     val dismissDistancePx = with(density) { 150.dp.toPx() }
@@ -183,6 +189,35 @@ fun ImageViewerDialog(
                 Icon(Icons.Filled.Close, contentDescription = "Close image", tint = Color.White, modifier = Modifier.size(18.dp))
             }
 
+            // Copy button, top-right — puts the currently viewed image on the
+            // system clipboard as a real image so it can be pasted straight
+            // into WhatsApp, Notes, an email, anywhere.
+            IconButton(
+                onClick = {
+                    val url = urls[pagerState.currentPage]
+                    scope.launch {
+                        val bitmap = loadBitmapForClipboard(context, url)
+                        val ok = bitmap != null && ClipboardImage.copy(context, bitmap, "marketscope_image")
+                        android.widget.Toast.makeText(
+                            context,
+                            if (ok) "Image copied — paste it anywhere to share" else "Could not copy this image",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(end = 16.dp, top = 10.dp)
+                    .size(40.dp)
+                    .graphicsLayer { alpha = controlsAlpha }
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+            ) {
+                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy image", tint = Color.White, modifier = Modifier.size(16.dp))
+            }
+
             // Counter pill + dots, only when there is more than one image.
             if (urls.size > 1) {
                 Surface(
@@ -267,8 +302,11 @@ private fun ViewerPage(
 
     suspend fun resetZoom() = animateZoomTo(1f, 0f, 0f)
 
-    fun maxOffsetX() = (scale - 1f) * boxSize.width / 2f
-    fun maxOffsetY() = (scale - 1f) * boxSize.height / 2f
+    // coerceAtLeast(0f): scale can dip slightly below 1x mid-animation (e.g.
+    // settling out of a pinch or a double-tap zoom-out), which would make this
+    // negative and crash coerceIn(-max, max) with "maximum < minimum".
+    fun maxOffsetX() = ((scale - 1f) * boxSize.width / 2f).coerceAtLeast(0f)
+    fun maxOffsetY() = ((scale - 1f) * boxSize.height / 2f).coerceAtLeast(0f)
 
     // Dismiss drag only while the page is un-zoomed; while zoomed the pan
     // transform handler owns every gesture and the pager is disabled.
@@ -383,5 +421,21 @@ private fun ViewerPage(
             }
             else -> {}
         }
+    }
+}
+
+/**
+ * Resolves the on-screen image to a Bitmap for the clipboard copy action.
+ * Coil already decoded and cached this exact URL to show it in the pager, so
+ * this call almost always resolves straight from Coil's memory cache with no
+ * new network request.
+ */
+private suspend fun loadBitmapForClipboard(context: android.content.Context, url: String): android.graphics.Bitmap? {
+    return try {
+        val request = ImageRequest.Builder(context).data(url).allowHardware(false).build()
+        val result = context.imageLoader.execute(request)
+        (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+    } catch (_: Exception) {
+        null
     }
 }
