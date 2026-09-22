@@ -3413,6 +3413,12 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       });
     }
     match = bestMatch(matches, resolvedQuery);
+    if (!match) {
+      return res.status(422).json({
+        error: `We found similar listed companies, but not an exact stock match for "${resolvedQuery}". Please enter the official ticker symbol once it is listed.`,
+        stockNotFound: true
+      });
+    }
     stats = await fetchStockStats(match.symbol);
   } catch (err) {
     console.error("[analyze/stock] market data fetch failed:", err && err.message, err && err.stack);

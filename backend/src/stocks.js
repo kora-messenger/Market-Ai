@@ -48,20 +48,59 @@ async function searchStock(query) {
     }));
 }
 
-/** Pick the best match for the user's query (exact > startswith > contains). */
+const COMPANY_STOPWORDS = new Set([
+  "the", "and", "of", "for", "with", "company", "co", "corp", "corporation",
+  "inc", "incorporated", "limited", "ltd", "plc", "holdings", "holding", "group",
+  "sa", "ag", "nv", "adr", "stock", "share", "shares", "equity", "listed"
+]);
+const INTENT_STOPWORDS = new Set(["ipo", "preipo", "pre", "offer", "offering", "listing"]);
+
+const compact = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const words = (s) => String(s || "").toLowerCase().match(/[a-z0-9]+/g) || [];
+const significantWords = (s) => words(s)
+  .filter((w) => w.length >= 3 && !COMPANY_STOPWORDS.has(w) && !INTENT_STOPWORDS.has(w));
+const sameStem = (a, b) => a === b || (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a)));
+
+function tokenCoverage(candidateText, queryTokens) {
+  const candidateTokens = words(candidateText);
+  if (!queryTokens.length) return 0;
+  const matched = queryTokens.filter((q) => candidateTokens.some((c) => sameStem(c, q))).length;
+  return matched / queryTokens.length;
+}
+
+/** Pick the best match only when it is a faithful stock match.
+ *  TradingView's symbol search is intentionally fuzzy. A query like
+ *  "Dangote Petroleum Refinery IPO" can return "Dangote Sugar Refinery PLC"
+ *  because both contain Dangote/refinery. We must not silently substitute a
+ *  different company, so multi-word company queries require full significant
+ *  token coverage unless the ticker or normalized description is exact. */
 function bestMatch(matches, query) {
   if (!matches.length) return null;
-  const q = String(query).trim().toLowerCase();
+  const q = String(query || "").trim();
+  const qCompact = compact(q);
+  const qTokens = significantWords(q);
   const score = (m) => {
-    const t = (m.ticker || "").toLowerCase();
-    const d = (m.description || "").toLowerCase();
-    if (t === q || d === q) return 100;
-    if (t.replace(/[^a-z0-9]/g, "") === q.replace(/[^a-z0-9]/g, "")) return 95;
-    if (t.startsWith(q) || d.startsWith(q)) return 80;
-    if (t.includes(q) || d.includes(q)) return 60;
-    return 10;
+    const ticker = m.ticker || "";
+    const description = m.description || "";
+    const t = ticker.toLowerCase();
+    const d = description.toLowerCase();
+    const tCompact = compact(ticker);
+    const dCompact = compact(description);
+    if (t === q.toLowerCase() || d === q.toLowerCase()) return 100;
+    if (tCompact === qCompact || dCompact === qCompact) return 98;
+    if (qTokens.length >= 2 && tokenCoverage(`${ticker} ${description}`, qTokens) < 1) return -1;
+    if (qTokens.length === 1 && tokenCoverage(`${ticker} ${description}`, qTokens) < 1 && !tCompact.startsWith(qCompact)) return -1;
+    if (tCompact.startsWith(qCompact)) return 92;
+    if (dCompact.startsWith(qCompact)) return 88;
+    if (qTokens.length && tokenCoverage(`${ticker} ${description}`, qTokens) === 1) return 82;
+    if (tCompact.includes(qCompact) || dCompact.includes(qCompact)) return 65;
+    return -1;
   };
-  return matches.reduce((best, m) => (score(m) > score(best) ? m : best), matches[0]);
+  const ranked = matches
+    .map((m) => ({ m, s: score(m) }))
+    .filter((x) => x.s >= 0)
+    .sort((a, b) => b.s - a.s);
+  return ranked.length ? ranked[0].m : null;
 }
 
 /** The performance snapshot we feed the AI — all real market numbers. */
