@@ -214,6 +214,7 @@ private fun TradeAnalysisBody(
     onOpenBrokerInfo: (() -> Unit)?
 ) {
     val isStock = mode.equals("stock", ignoreCase = true)
+    val isIpo = isStock && marketData?.optBoolean("isIpo", false) == true
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var showBrokerCard by remember { mutableStateOf(true) }
@@ -390,7 +391,7 @@ private fun TradeAnalysisBody(
     // forex card. ---
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         if (isStock) {
-            val ticker = instrumentDisplay.substringAfterLast('(').substringBefore(')').ifBlank { instrumentDisplay }
+            val ticker = if (isIpo) "PENDING" else instrumentDisplay.substringAfterLast('(').substringBefore(')').ifBlank { instrumentDisplay }
             val exchange = marketData?.optString("exchange", "")?.ifBlank { "—" } ?: "—"
             InfoChip("TICKER", ticker, Modifier.weight(1f))
             InfoChip("EXCHANGE", exchange, Modifier.weight(1f))
@@ -416,7 +417,9 @@ private fun TradeAnalysisBody(
         Icon(Icons.Filled.Info, contentDescription = null, tint = GoldAmber, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(10.dp))
         Text(
-            if (isStock)
+            if (isIpo)
+                "IPO-stage analysis uses the official offer terms. Live chart performance becomes available only after NGX assigns the ticker and trading begins."
+            else if (isStock)
                 "Tip: once this stock reaches your first take profit, consider moving your stop to break-even so this position can no longer turn into a loss."
             else
                 "Tip: when price reaches your first take profit, consider moving your stop to break-even so the trade can no longer turn into a loss.",
@@ -508,7 +511,8 @@ private fun TradeAnalysisBody(
     // --- MARKET PERFORMANCE (stocks only, real exchange data) — this is what
     // makes a stock result feel like a stock, not a reskinned forex card. ---
     if (isStock && marketData != null) {
-        MarketPerformanceSection(marketData, copy)
+        if (isIpo) IpoOfferSection(marketData.optJSONObject("ipo"), copy)
+        else MarketPerformanceSection(marketData, copy)
         Spacer(Modifier.height(16.dp))
     }
 
@@ -727,6 +731,48 @@ private fun LotSizeSheet(
 }
 
 private data class LotResult(val lots: Double, val units: Double, val riskAmount: Double)
+
+@Composable
+private fun IpoOfferSection(ipo: JSONObject?, copy: (String) -> Unit) {
+    if (ipo == null) return
+    SectionHeader("OFFICIAL IPO TERMS")
+    Spacer(Modifier.height(10.dp))
+
+    fun value(key: String): String = ipo.optString(key, "").takeUnless { it.isBlank() || it == "null" } ?: "—"
+    val price = ipo.optDouble("offerPrice", Double.NaN)
+    val priceText = if (price.isNaN()) "—" else "NGN ${trimNum(price)}"
+    val shares = value("sharesOffered")
+    val closes = value("closesAt")
+    val offerSize = value("offerSize")
+    val revenue = value("revenue")
+    val profit = value("profitAfterTax")
+    val marketCap = value("impliedMarketCap")
+
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard("OFFER PRICE", priceText, BullGreen, 1f) { copy(priceText) }
+        SnapshotCard("SHARES OFFERED", shares, weight = 1f, onCopy = { copy(shares) })
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard("OFFER SIZE", offerSize, weight = 1f, onCopy = { copy(offerSize) })
+        SnapshotCard("CLOSES", closes, weight = 1f, onCopy = { copy(closes) })
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard("REVENUE", revenue, weight = 1f, onCopy = { copy(revenue) })
+        SnapshotCard("PROFIT AFTER TAX", profit, weight = 1f, onCopy = { copy(profit) })
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(modifier = Modifier.fillMaxWidth()) {
+        SnapshotCard("IMPLIED MARKET CAP", marketCap, weight = 1f, onCopy = { copy(marketCap) })
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "Verified from the official Nigerian Exchange announcement. No post-listing chart history exists yet.",
+        style = MaterialTheme.typography.bodySmall,
+        color = TextMuted
+    )
+}
 
 // ---------------------------------------------------------------------------
 // Market Performance — real exchange data (TradingView-sourced), stock only.
