@@ -3407,9 +3407,11 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
           (traderProfile || "")
       }
     ];
-    if (hasImage) {
-      userContent.push({ type: "image_url", image_url: { url: image } });
-    }
+    // The screenshot was already validated above and, when needed, its
+    // company/ticker was extracted into resolvedQuery. Do NOT send the same
+    // large image through the final analysis call again: the recommendation
+    // is grounded in the real exchange snapshot we just fetched, and a second
+    // vision pass only adds latency/cost (and can time out on fallback models).
 
     const orResult = await callAI({
       model: ANALYSIS_MODEL,
