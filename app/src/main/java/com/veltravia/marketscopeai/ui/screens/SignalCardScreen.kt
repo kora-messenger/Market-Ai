@@ -749,7 +749,7 @@ private fun IpoOfferSection(ipo: JSONObject?, copy: (String) -> Unit) {
     val marketCap = value("impliedMarketCap")
 
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        SnapshotCard("OFFER PRICE", priceText, BullGreen, 1f) { copy(priceText) }
+        SnapshotCard("OFFER PRICE", priceText, BullGreen, 1f, onCopy = { copy(priceText) })
         SnapshotCard("SHARES OFFERED", shares, weight = 1f, onCopy = { copy(shares) })
     }
     Spacer(Modifier.height(10.dp))
