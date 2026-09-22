@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +72,7 @@ import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -86,6 +88,16 @@ import java.util.Locale
 fun WallOfWinsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    var canRepost by remember { mutableStateOf(false) }
+    var reposting by remember { mutableStateOf(false) }
+    var repostError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        val token = SessionManager.sessionToken(context)
+        if (token != null) {
+            canRepost = runCatching { ApiClient.fetchSignalAccess(token).optBoolean("canRepost") }.getOrDefault(false)
+        }
+    }
     var stats by remember { mutableStateOf<JSONObject?>(null) }
     val wins = remember { mutableStateListOf<JSONObject>() }
     var loading by remember { mutableStateOf(true) }
@@ -230,6 +242,31 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
                 onCopy = {
                     clipboardManager.setText(AnnotatedString(buildWinShareText(d)))
                     android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                canRepost = canRepost,
+                reposting = reposting,
+                repostError = repostError,
+                onRepost = {
+                    val token = SessionManager.sessionToken(context)
+                    if (token != null && !reposting) {
+                        reposting = true
+                        repostError = null
+                        scope.launch {
+                            try {
+                                ApiClient.repostWinToCommunity(token, d.optString("id"))
+                                d.put("isReposted", true)
+                                val idx = wins.indexOfFirst { it.optString("id") == d.optString("id") }
+                                if (idx >= 0) wins[idx] = d
+                                detail = null
+                                android.widget.Toast.makeText(context, "Reposted to Community", android.widget.Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                repostError = e.message ?: "Could not repost this win"
+                                if (repostError?.contains("already", ignoreCase = true) == true) {
+                                    d.put("isReposted", true)
+                                }
+                            } finally { reposting = false }
+                        }
+                    }
                 }
             )
         }
@@ -317,7 +354,10 @@ private fun WallWinCard(w: JSONObject, onClick: () -> Unit, onOpenImage: () -> U
 /** The full proof: image at size, full comment, author, reshare (tap = sheet, long-press = copy). */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun WinDetailSheet(win: JSONObject, onReshare: () -> Unit, onCopy: () -> Unit, onOpenImage: () -> Unit) {
+private fun WinDetailSheet(
+    win: JSONObject, onReshare: () -> Unit, onCopy: () -> Unit, onOpenImage: () -> Unit,
+    canRepost: Boolean, reposting: Boolean, repostError: String?, onRepost: () -> Unit
+) {
     val isLong = win.optString("direction", "long").equals("long", ignoreCase = true)
     val hasImage = win.optBoolean("hasImage", false)
     val exitPrice = win.optDouble("exitPrice", Double.NaN)
@@ -382,6 +422,14 @@ private fun WinDetailSheet(win: JSONObject, onReshare: () -> Unit, onCopy: () ->
         }
         Spacer(Modifier.height(6.dp))
         Text("Long-press to copy instead", fontSize = 10.sp, color = TextMuted)
+        if (canRepost) {
+            Spacer(Modifier.height(14.dp))
+            Button(onClick = onRepost, enabled = !reposting && !win.optBoolean("isReposted"),
+                colors = ButtonDefaults.buttonColors(containerColor = BullGreen)) {
+                Text(if (win.optBoolean("isReposted")) "Already reposted" else if (reposting) "Reposting..." else "Repost to Community")
+            }
+            if (repostError != null) Text(repostError, color = BearRed, fontSize = 12.sp)
+        }
     }
 }
 

@@ -166,6 +166,9 @@ data class CommunityPost(
     val poll: CommunityPoll?,
     val reactions: List<CommunityReaction>,
     val outcomeTag: String? = null,
+    val selfTag: String? = null,
+    val isRepost: Boolean = false,
+    val repostedByName: String? = null,
     val viewCount: Int = 0,
     val linkPreview: LinkPreview? = null,
     val isNew: Boolean = false
@@ -256,7 +259,10 @@ private fun parseFeed(json: JSONObject): List<CommunityPost> {
             allowComments = p.optBoolean("allowComments", true),
             postType = p.optString("postType", "text"),
             poll = parsePoll(p),
-            outcomeTag = p.optString("outcomeTag").takeIf { it.isNotBlank() && it != "null" },
+            outcomeTag = p.optStringOrNull("outcomeTag"),
+            selfTag = p.optStringOrNull("selfTag"),
+            isRepost = p.optBoolean("isRepost"),
+            repostedByName = p.optStringOrNull("repostedByName"),
             viewCount = p.optInt("viewCount", 0),
             linkPreview = parseLinkPreview(p),
             isNew = p.optBoolean("isNew", false),
@@ -397,7 +403,7 @@ fun CommunityScreen(
     var proofViewerUrl by remember { mutableStateOf<String?>(null) }
     var isAdmin by remember { mutableStateOf(false) }
     var canCompose by remember { mutableStateOf(false) }
-    var composerOutcomeTag by remember { mutableStateOf<String?>(null) }
+    var composerSelfTag by remember { mutableStateOf<String?>(null) }
     var composerOpen by remember { mutableStateOf(false) }
     var composeFabOpen by remember { mutableStateOf(false) }
 
@@ -576,7 +582,7 @@ fun CommunityScreen(
                 val resp = if (composerMode == "text") {
                     ApiClient.createCommunityPost(
                         token, text, pickedImages.map { it.dataUrl },
-                        outcomeTag = if (pickedImages.isNotEmpty()) composerOutcomeTag else null
+                        selfTag = composerSelfTag
                     )
                 } else {
                     ApiClient.createCommunityPoll(
@@ -590,7 +596,7 @@ fun CommunityScreen(
                 totalPosts += 1
                 composerText = TextFieldValue("")
                 pickedImages.clear()
-                composerOutcomeTag = null
+                composerSelfTag = null
                 pollOptions.clear()
                 pollOptions.addAll(listOf(TextFieldValue(""), TextFieldValue("")))
                 composerMode = "text"
@@ -809,10 +815,22 @@ fun CommunityScreen(
                 }
                 else -> {
                     val listState = rememberLazyListState()
+                    // Chat-style feed: newest post sits at the BOTTOM (near the
+                    // composer), oldest loaded post near the top, exactly like a
+                    // Kora/WhatsApp thread — not a Twitter-style newest-at-top feed.
+                    // `posts` stays newest-first internally (index 0 = newest,
+                    // unchanged pagination math); reverseLayout alone flips how
+                    // that maps onto the screen, so a freshly published post
+                    // (prepended at index 0) lands at the bottom automatically.
                     val endReached by remember {
                         derivedStateOf {
-                            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()
-                            last != null && last.index >= listState.layoutInfo.totalItemsCount - 3
+                            // Older history lives at the END of `posts` (unaffected
+                            // by reverseLayout) — trigger on proximity to THAT
+                            // boundary, not the combined item count (which now also
+                            // includes the header items appended after the posts).
+                            val lastPostIdxVisible = listState.layoutInfo.visibleItemsInfo
+                                .map { it.index }.filter { it < posts.size }.maxOrNull() ?: -1
+                            posts.isNotEmpty() && lastPostIdxVisible >= posts.size - 3
                         }
                     }
                     LaunchedEffect(endReached) {
@@ -822,53 +840,19 @@ fun CommunityScreen(
                     }
                     LazyColumn(
                         state = listState,
+                        reverseLayout = true,
                         contentPadding = PaddingValues(
                             start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (pinnedPosts.isNotEmpty()) {
-                            item {
-                                PinnedPostsWidget(
-                                    pinned = pinnedPosts,
-                                    index = pinnedIndex,
-                                    onIndexChange = { pinnedIndex = it },
-                                    expanded = showPinnedList,
-                                    onToggleExpanded = { showPinnedList = !showPinnedList },
-                                    onOpenTop5 = onOpenLeaderboard,
-                                    onOpenPinned = { pinnedId ->
-                                        showPinnedList = false
-                                        val idx = posts.indexOfFirst { it.id == pinnedId }
-                                        if (idx >= 0) {
-                                            // Header items before `items(posts)`: pinned widget, proof row,
-                                            // weekly-competition card, composer — count only the ones present.
-                                            val headerCount = (if (pinnedPosts.isNotEmpty()) 1 else 0) +
-                                                (if (proofPosts.isNotEmpty()) 1 else 0) + 2
-                                            scope.launch { listState.animateScrollToItem(idx + headerCount) }
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                        if (proofPosts.isNotEmpty()) {
-                            item {
-                                FeaturedProofRow(
-                                    proofs = proofPosts,
-                                    onOpenImage = { proof ->
-                                        proofViewerUrl = ApiClient.communityImageUrl(proof.postId, 0)
-                                    }
-                                )
-                            }
-                        }
-                        item {
-                            WeeklyCompetitionCard(onOpen = onOpenLeaderboard)
-                        }
-                        item {
-                            postComposerBlock()
-                        }
                         itemsIndexed(posts, key = { _, post -> post.id }) { idx, post ->
-                            val showDayHeader = idx == 0 ||
-                                dayGroupLabel(post.createdAt) != dayGroupLabel(posts[idx - 1].createdAt)
+                            // Divider goes above the OLDEST post of each day group —
+                            // in reverseLayout that's the post whose OLDER neighbor
+                            // (idx + 1, since the array stays newest-first) is a
+                            // different day, or the very last post we've loaded.
+                            val showDayHeader = idx == posts.lastIndex ||
+                                dayGroupLabel(post.createdAt) != dayGroupLabel(posts[idx + 1].createdAt)
                             Column {
                                 if (showDayHeader) {
                                     DayGroupHeader(dayGroupLabel(post.createdAt))
@@ -898,6 +882,48 @@ fun CommunityScreen(
                                 Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
                                     CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                                 }
+                            }
+                        }
+                        // Headers below this point are added LAST, so with
+                        // reverseLayout they render at the very TOP of the screen —
+                        // group info sits above the oldest loaded message, same as
+                        // any real chat thread.
+                        item {
+                            postComposerBlock()
+                        }
+                        item {
+                            WeeklyCompetitionCard(onOpen = onOpenLeaderboard)
+                        }
+                        if (proofPosts.isNotEmpty()) {
+                            item {
+                                FeaturedProofRow(
+                                    proofs = proofPosts,
+                                    onOpenImage = { proof ->
+                                        proofViewerUrl = ApiClient.communityImageUrl(proof.postId, 0)
+                                    }
+                                )
+                            }
+                        }
+                        if (pinnedPosts.isNotEmpty()) {
+                            item {
+                                PinnedPostsWidget(
+                                    pinned = pinnedPosts,
+                                    index = pinnedIndex,
+                                    onIndexChange = { pinnedIndex = it },
+                                    expanded = showPinnedList,
+                                    onToggleExpanded = { showPinnedList = !showPinnedList },
+                                    onOpenTop5 = onOpenLeaderboard,
+                                    onOpenPinned = { pinnedId ->
+                                        showPinnedList = false
+                                        val idx = posts.indexOfFirst { it.id == pinnedId }
+                                        // Posts occupy their own true index in `posts` —
+                                        // no header offset needed now that headers are
+                                        // appended after the post items, not before.
+                                        if (idx >= 0) {
+                                            scope.launch { listState.animateScrollToItem(idx) }
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
@@ -984,8 +1010,8 @@ fun CommunityScreen(
             onAllowCommentsChange = { allowComments = it },
             pickedImages = pickedImages,
             imageProcessing = imageProcessing,
-            outcomeTag = composerOutcomeTag,
-            onOutcomeTagChange = { composerOutcomeTag = it },
+            selfTag = composerSelfTag,
+            onSelfTagChange = { composerSelfTag = it },
             onPickImage = {
                 pickImage.launch(
                     androidx.activity.result.PickVisualMediaRequest(
@@ -1381,6 +1407,15 @@ private fun PostCard(
         Spacer(Modifier.width(8.dp))
 
         Column(Modifier.weight(1f)) {
+            // A repost is independently reviewed and unmistakable. A member's
+            // self-reported TP/SL is displayed differently and never repostable.
+            if (post.isRepost && post.outcomeTag == "win") {
+                Surface(color = BullGreen.copy(alpha = 0.13f), shape = RoundedCornerShape(8.dp)) {
+                    Text("PROFIT HIT · TEAM REPOST", color = BullGreen, fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+                Spacer(Modifier.height(4.dp))
+            }
             // Sender line — like any messaging app: handle, badges, NEW marker.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -1455,15 +1490,17 @@ private fun PostCard(
                                 onNonLinkTap = { expanded = !expanded }
                             )
                         }
-                        if (post.outcomeTag != null) {
+                        if (post.isRepost && post.repostedByName != null) {
+                            Spacer(Modifier.height(6.dp))
+                            Text("Reposted by ${post.repostedByName}", fontSize = 10.sp, color = TextMuted)
+                        }
+                        if (post.selfTag == "tp" || post.selfTag == "sl") {
                             Spacer(Modifier.height(8.dp))
-                            val tint = if (post.outcomeTag == "win") BullGreen else BearRed
+                            val tint = if (post.selfTag == "tp") BullGreen else BearRed
                             Surface(color = tint.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp)) {
-                                Text(
-                                    if (post.outcomeTag == "win") "\uD83C\uDFC6 Profited \u2014 author\u2019s tag" else "\uD83D\uDCDA Lesson learned \u2014 author\u2019s tag",
+                                Text(if (post.selfTag == "tp") "TP hit · trader's note" else "SL hit · trader's note",
                                     fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = tint,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                             }
                         }
                         if (linkPreview != null) {

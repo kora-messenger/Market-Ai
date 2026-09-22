@@ -78,6 +78,7 @@ fun ShareWinSheet(
     direction: String,
     entry: Double,
     exitPrice: Double,
+    isStopLoss: Boolean = false,
     onDismiss: () -> Unit,
     onSubmitted: () -> Unit
 ) {
@@ -131,7 +132,7 @@ fun ShareWinSheet(
                 onSubmitted()
                 onDismiss()
             } catch (e: Exception) {
-                errorMsg = e.message ?: "Could not share your win"
+                errorMsg = e.message ?: "Could not post your result"
             } finally {
                 sending = false
             }
@@ -143,7 +144,7 @@ fun ShareWinSheet(
         val entryTxt = if (entry.isFinite()) entry.toString() else "-"
         val exitTxt = if (exitPrice.isFinite()) exitPrice.toString() else "-"
         val text = buildString {
-            append("Took this $instrument $dir signal with MarketScope AI - entry $entryTxt, closed at $exitTxt. Target hit.")
+            append("Took this $instrument $dir signal with MarketScope AI - entry $entryTxt, closed at $exitTxt. ${if (isStopLoss) "Stop loss hit." else "Target hit."}")
             if (input.text.isNotBlank()) {
                 append("\n\n")
                 append(input.text.trim())
@@ -187,7 +188,7 @@ fun ShareWinSheet(
                 }
             }
             Text(
-                "$instrument ${if (direction.equals("long", true)) "LONG" else "SHORT"} - take profit hit",
+                "$instrument ${if (direction.equals("long", true)) "LONG" else "SHORT"} - ${if (isStopLoss) "stop loss hit" else "take profit hit"}",
                 fontSize = 12.sp,
                 color = BullGreen,
                 fontWeight = FontWeight.Medium
@@ -267,7 +268,7 @@ fun ShareWinSheet(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "Proofs are reviewed by the mentor desk before they appear publicly.",
+                if (isStopLoss) "Your SL result is reviewed and stays on this signal. It will not be reposted as a win." else "TP proofs are reviewed before they appear publicly. Only the team can repost approved wins.",
                 fontSize = 11.sp,
                 color = TextMuted
             )

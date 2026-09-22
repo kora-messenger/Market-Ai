@@ -494,8 +494,10 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false, onOpenDe
     var commentCount by remember(id) { mutableStateOf(item.optInt("commentCount", 0)) }
     var showComments by remember(id) { mutableStateOf(false) }
 
-    // "Share your win" + "I took this signal" — only exist on closed, won signals.
+    // Members can submit their own TP or SL result for review. Only the
+    // team/mentor may repost an APPROVED TP to Community, never the member.
     val isWon = status == "closed" && outcome == "successful"
+    val isStopped = status == "closed" && outcome == "invalidated_sl"
     var taken by remember(id) { mutableStateOf<Boolean?>(null) }
     var takerCount by remember(id) { mutableStateOf(0) }
     var showShareWin by remember(id) { mutableStateOf(false) }
@@ -759,10 +761,11 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false, onOpenDe
             )
         }
 
-        if (isWon) {
+        if (isWon || isStopped) {
             Spacer(Modifier.height(12.dp))
-            // --- Win actions: I took this signal + Share your win ---
+            // --- TP/SL result submission; signal-take applies only to TP. ---
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isWon) {
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -788,11 +791,12 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false, onOpenDe
                         fontSize = 11.5.sp
                     )
                 }
+                }
                 Row(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(BullGreen)
+                        .background(if (isWon) BullGreen else BearRed)
                         .clickable { showShareWin = true }
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -800,7 +804,7 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false, onOpenDe
                 ) {
                     Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("Share your win", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp)
+                    Text(if (isWon) "Post my TP" else "Post my SL", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 11.5.sp)
                 }
             }
         }
@@ -842,6 +846,7 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false, onOpenDe
             direction = direction,
             entry = entry,
             exitPrice = exitPrice,
+            isStopLoss = isStopped,
             onDismiss = { showShareWin = false },
             onSubmitted = { }
         )

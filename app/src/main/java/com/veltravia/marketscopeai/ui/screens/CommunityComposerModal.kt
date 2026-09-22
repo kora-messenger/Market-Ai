@@ -211,8 +211,8 @@ fun PublishComposerModal(
     onAllowCommentsChange: (Boolean) -> Unit,
     pickedImages: SnapshotStateList<PickedPostImage>,
     imageProcessing: Boolean,
-    outcomeTag: String?,
-    onOutcomeTagChange: (String?) -> Unit,
+    selfTag: String?,
+    onSelfTagChange: (String?) -> Unit,
     onPickImage: () -> Unit,
     onRemoveImage: (Int) -> Unit,
     publishing: Boolean,
@@ -532,17 +532,17 @@ fun PublishComposerModal(
                         // --- outcome tag (our own feature) ----------------------------------
                         if (pickedImages.isNotEmpty()) {
                             Spacer(Modifier.height(12.dp))
-                            Text("Tag the outcome (optional)", fontSize = 11.5.sp, color = TextMuted)
+                            Text("Your trade note (not reviewed)", fontSize = 11.5.sp, color = TextMuted)
                             Spacer(Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("win" to "Profited", "loss" to "Lesson learned").forEach { (tag, label) ->
-                                    val selected = outcomeTag == tag
-                                    val tint = if (tag == "win") BullGreen else BearRed
+                                listOf("tp" to "TP hit", "sl" to "SL hit").forEach { (tag, label) ->
+                                    val selected = selfTag == tag
+                                    val tint = if (tag == "tp") BullGreen else BearRed
                                     Surface(
                                         color = if (selected) tint.copy(alpha = 0.14f) else Color(0xFFF8FAFC),
                                         shape = RoundedCornerShape(10.dp),
                                         border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) tint else Color(0xFFE2E8F0)),
-                                        onClick = { onOutcomeTagChange(if (selected) null else tag) }
+                                        onClick = { onSelfTagChange(if (selected) null else tag) }
                                     ) {
                                         Text(
                                             label,

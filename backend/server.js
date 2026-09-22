@@ -663,6 +663,12 @@ async function initDb() {
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS self_tag TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS community_posts_repost_unique
       ON community_posts(repost_of_testimonial_id) WHERE repost_of_testimonial_id IS NOT NULL;
+    -- Remove only the exact synthetic proof made during the 2026-09-22
+    -- endpoint smoke test (its repost was already deleted). Keep this in
+    -- the first deployment only; no real member record matches both guards.
+    DELETE FROM signal_testimonials
+      WHERE id = '271a5193-3b2d-4f3b-b1f3-f6adb8748329'::uuid
+        AND comment = 'TEST: verifying the new repost pipeline end-to-end (will be cleaned up).';
     -- Server-side scraped OpenGraph cards (title/description/og:image),
     -- cached per URL — the same "pasted link becomes a preview card"
     -- behavior the reference app shows on its community posts.
@@ -1601,7 +1607,7 @@ app.get("/api/community/wins/public", async (req, res) => {
               s.instrument_display, s.direction, s.outcome
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
-       WHERE t.status = 'approved'
+       WHERE t.status = 'approved' AND s.outcome = 'successful'
          AND t.comment IS NOT NULL AND length(trim(t.comment)) > 0
        ORDER BY t.created_at DESC
        LIMIT 8`
@@ -5267,8 +5273,8 @@ app.post("/api/daily-signals/:id/testimonials", requireAuth, async (req, res) =>
     );
     if (!signalRows.length) return res.status(404).json({ error: "Signal not found" });
     const s = signalRows[0];
-    if (s.status !== "closed" || s.outcome !== "successful") {
-      return res.status(422).json({ error: "You can only share wins on signals that closed at a profit." });
+    if (s.status !== "closed" || !["successful", "invalidated_sl"].includes(s.outcome)) {
+      return res.status(422).json({ error: "You can only share a TP or SL result from a settled signal." });
     }
     const { rows } = await pool.query(
       `INSERT INTO signal_testimonials (signal_id, user_id, author_name, author_email, comment, status)
@@ -5360,7 +5366,7 @@ app.get("/api/daily-signals/testimonials/featured", requireAuth, async (req, res
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
        LEFT JOIN users u ON u.id = t.user_id
-       WHERE t.status = 'approved'
+       WHERE t.status = 'approved' AND s.outcome = 'successful'
        ORDER BY t.created_at DESC
        LIMIT 10`
     );
@@ -5409,7 +5415,7 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
        LEFT JOIN users u ON u.id = t.user_id
-       WHERE t.status = 'approved'
+       WHERE t.status = 'approved' AND s.outcome = 'successful'
        ORDER BY t.created_at DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
@@ -5418,7 +5424,7 @@ app.get("/api/wins/wall", requireAuth, async (req, res) => {
       `SELECT COUNT(*)::int AS total,
               COUNT(*) FILTER (WHERE t.created_at >= now() - interval '7 days')::int AS this_week,
               COUNT(DISTINCT t.user_id)::int AS traders
-       FROM signal_testimonials t WHERE t.status = 'approved'`
+       FROM signal_testimonials t JOIN daily_signals s ON s.id = t.signal_id WHERE t.status = 'approved' AND s.outcome = 'successful'`
     );
     const st = statRows[0] || { total: 0, this_week: 0, traders: 0 };
     res.json({
@@ -6255,7 +6261,7 @@ app.post("/api/community/posts", requireAuth, async (req, res) => {
   // commentary, never mentor-reviewed and never repostable.
   const outcomeTag = null;
   let selfTag = String(req.body.selfTag || "").toLowerCase();
-  if (!["tp", "sl"].includes(selfTag)) selfTag = null;
+  if (!["tp", "sl"].includes(selfTag) || postType !== "text") selfTag = null;
 
   try {
     const me = await currentUser(req);
@@ -6366,6 +6372,7 @@ app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(testimonialId)) return res.status(400).json({ error: "A valid testimonialId is required." });
 
+  let createdPostId = null;
   try {
     const { rows: meRows } = await pool.query(
       `SELECT id, name, email, role FROM users WHERE google_sub = $1`,
@@ -6380,7 +6387,7 @@ app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
 
     const { rows: tRows } = await pool.query(
       `SELECT t.id, t.user_id, t.author_name, t.author_email, t.comment, t.status,
-              s.instrument_display, s.direction, s.exit_price
+              s.instrument_display, s.direction, s.exit_price, s.outcome
        FROM signal_testimonials t
        JOIN daily_signals s ON s.id = t.signal_id
        WHERE t.id = $1::uuid`,
@@ -6388,8 +6395,8 @@ app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
     );
     if (!tRows.length) return res.status(404).json({ error: "Win not found." });
     const t = tRows[0];
-    if (t.status !== "approved") {
-      return res.status(422).json({ error: "Only a reviewed, approved win can be reposted." });
+    if (t.status !== "approved" || t.outcome !== "successful") {
+      return res.status(422).json({ error: "Only a reviewed, approved TP win can be reposted." });
     }
 
     const { rows: existing } = await pool.query(
@@ -6414,6 +6421,7 @@ app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
       [t.user_id, t.author_name || "Trader", t.author_email || "", body, testimonialId, me.name || "Team", me.email || ""]
     );
     const row = postRows[0];
+    createdPostId = row.id;
 
     const { rows: imgRows } = await pool.query(
       `SELECT content_type, data_base64, r2_key FROM signal_testimonial_images WHERE testimonial_id = $1::uuid LIMIT 1`,
@@ -6422,9 +6430,14 @@ app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
     let imageCount = 0;
     if (imgRows.length) {
       const img = imgRows[0];
+      // Never share an R2 key with the original testimonial: deletion of
+      // either record must not break the other record's proof image.
+      const repostR2Key = img.r2_key
+        ? await r2.copyImage(img.r2_key, img.content_type || "image/jpeg", "posts")
+        : null;
       await pool.query(
         `INSERT INTO community_post_images (post_id, position, content_type, data_base64, r2_key) VALUES ($1::uuid, 0, $2, $3, $4)`,
-        [row.id, img.content_type || "image/jpeg", img.data_base64 || "", img.r2_key || null]
+        [row.id, img.content_type || "image/jpeg", img.data_base64 || "", repostR2Key]
       );
       imageCount = 1;
     }
@@ -6441,6 +6454,10 @@ app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
     const post = postToApi({ ...row, image_count: imageCount }, [], 0, null, null, false, 0);
     return res.json({ post });
   } catch (err) {
+    // On proof-copy failure, never leave a broken "repost" in the feed.
+    if (createdPostId) {
+      await pool.query(`DELETE FROM community_posts WHERE id = $1::uuid`, [createdPostId]).catch(() => {});
+    }
     if (String(err && err.code) === "23505") {
       return res.status(409).json({ error: "This win has already been reposted to Community.", alreadyReposted: true });
     }
@@ -6577,13 +6594,14 @@ app.delete("/api/community/posts/:id", requireAuth, async (req, res) => {
   if (!pool) return res.status(503).json({ error: "Database is not configured." });
   try {
     const { rows: found } = await pool.query(
-      `SELECT id, author_email FROM community_posts WHERE id = $1::uuid`,
+      `SELECT id, author_email, is_repost, reposted_by_email FROM community_posts WHERE id = $1::uuid`,
       [req.params.id]
     );
     if (!found.length) return res.status(404).json({ error: "Post not found" });
     const me = await currentUser(req);
     const isAdmin = (await isAdminRequest(req)) || ADMIN_EMAILS.includes(String((me.email || "")).toLowerCase());
-    const isAuthor = String(found[0].author_email || "").toLowerCase() === String((me.email || "")).toLowerCase();
+    const deletableEmail = found[0].is_repost ? found[0].reposted_by_email : found[0].author_email;
+    const isAuthor = String(deletableEmail || "").toLowerCase() === String((me.email || "")).toLowerCase();
     if (!isAuthor && !isAdmin) {
       return res.status(403).json({ error: "Only the author or the MarketScope AI team can delete a post." });
     }

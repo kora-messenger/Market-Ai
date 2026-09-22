@@ -102,7 +102,8 @@ private data class SignalTestimonial(
     val status: String,
     val createdAt: String,
     val isMine: Boolean = false,
-    val hasImage: Boolean = false
+    val hasImage: Boolean = false,
+    val isReposted: Boolean = false
 )
 
 private fun signalTestimonialFromJson(t: JSONObject): SignalTestimonial = SignalTestimonial(
@@ -113,7 +114,8 @@ private fun signalTestimonialFromJson(t: JSONObject): SignalTestimonial = Signal
     status = t.optString("status", "approved"),
     createdAt = t.optString("createdAt", ""),
     isMine = t.optBoolean("isMine", false),
-    hasImage = t.optBoolean("hasImage", false)
+    hasImage = t.optBoolean("hasImage", false),
+    isReposted = t.optBoolean("isReposted", false)
 )
 
 private data class SignalComment(
@@ -176,6 +178,13 @@ fun SignalCommentsSheet(
     var sending by remember { mutableStateOf(false) }
     var viewerImage by remember { mutableStateOf<String?>(null) } // full-screen comment screenshot
     var testimonials by remember { mutableStateOf<List<SignalTestimonial>>(emptyList()) }
+    var canRepost by remember { mutableStateOf(false) }
+    var repostingId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(token, isWin) {
+        if (isWin && token != null) {
+            canRepost = runCatching { ApiClient.fetchSignalAccess(token).optBoolean("canRepost") }.getOrDefault(false)
+        }
+    }
 
     // Admin-only inline composer for mentor-desk live updates.
     var showUpdateComposer by remember { mutableStateOf(false) }
@@ -499,7 +508,7 @@ fun SignalCommentsSheet(
                             Spacer(Modifier.height(8.dp))
                             if (testimonials.isEmpty()) {
                                 Text(
-                                    "No win proofs shared yet — tap Share your win on the signal card to be the first.",
+                                    "No trade results shared yet. Use Post my TP or Post my SL on the signal card.",
                                     fontSize = 11.5.sp, color = TextMuted
                                 )
                             } else {
@@ -509,7 +518,7 @@ fun SignalCommentsSheet(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(12.dp))
                                             .background(SurfaceLight)
-                                            .border(1.dp, if (t.status == "approved") BullGreen.copy(alpha = 0.25f) else BorderSubtle, RoundedCornerShape(12.dp))
+                                            .border(1.dp, if (t.status == "approved") (if (isWin) BullGreen else BearRed).copy(alpha = 0.25f) else BorderSubtle, RoundedCornerShape(12.dp))
                                             .padding(12.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -524,7 +533,7 @@ fun SignalCommentsSheet(
                                             } else if (t.status == "rejected") {
                                                 Text("Not approved", fontSize = 10.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
                                             } else {
-                                                Text("Trader proof", fontSize = 10.sp, color = BullGreen, fontWeight = FontWeight.SemiBold)
+                                                Text(if (isWin) "TP result" else "SL result", fontSize = 10.sp, color = if (isWin) BullGreen else BearRed, fontWeight = FontWeight.SemiBold)
                                             }
                                         }
                                         if (t.comment.isNotBlank()) {
@@ -542,6 +551,33 @@ fun SignalCommentsSheet(
                                                     .height(150.dp)
                                                     .clip(RoundedCornerShape(10.dp))
                                                     .clickable { viewerImage = ApiClient.signalTestimonialImageUrl(t.id) }
+                                            )
+                                        }
+                                        if (isWin && canRepost && t.status == "approved") {
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                if (t.isReposted) "Already reposted" else if (repostingId == t.id) "Reposting..." else "Repost to Community",
+                                                color = BullGreen,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.clickable(enabled = !t.isReposted && repostingId == null) {
+                                                    if (token != null) {
+                                                        repostingId = t.id
+                                                        scope.launch {
+                                                            try {
+                                                                ApiClient.repostWinToCommunity(token, t.id)
+                                                                testimonials = testimonials.map { if (it.id == t.id) it.copy(isReposted = true) else it }
+                                                                android.widget.Toast.makeText(context, "Reposted to Community", android.widget.Toast.LENGTH_SHORT).show()
+                                                            } catch (e: Exception) {
+                                                                if (e.message?.contains("already", ignoreCase = true) == true) {
+                                                                    testimonials = testimonials.map { if (it.id == t.id) it.copy(isReposted = true) else it }
+                                                                } else {
+                                                                    android.widget.Toast.makeText(context, e.message ?: "Repost failed", android.widget.Toast.LENGTH_LONG).show()
+                                                                }
+                                                            } finally { repostingId = null }
+                                                        }
+                                                    }
+                                                }
                                             )
                                         }
                                     }

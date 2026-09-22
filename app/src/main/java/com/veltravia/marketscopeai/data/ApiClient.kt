@@ -446,21 +446,35 @@ object ApiClient {
         request(request)
     }
 
-    /** Publish a text post to the community. [outcomeTag] ("win"/"loss") is optional and
-     * only meaningful when [images] is non-empty — it's the author's own self-reported
-     * trade outcome, never inferred by the app. Returns { post: {...} }. */
+    /** Publish a text post to the community. A community post is discussion only —
+     * it can never self-declare a trade outcome; the green win tag only ever comes
+     * from an admin/mentor repost (see repostWinToCommunity). Returns { post: {...} }. */
     suspend fun createCommunityPost(
         sessionToken: String,
         body: String,
         images: List<String> = emptyList(),
-        outcomeTag: String? = null
+        selfTag: String? = null
     ): JSONObject =
         withContext(Dispatchers.IO) {
             val payload = JSONObject().put("body", body)
             if (images.isNotEmpty()) payload.put("images", JSONArray().apply { images.forEach { put(it) } })
-            if (outcomeTag != null) payload.put("outcomeTag", outcomeTag)
+            if (selfTag != null) payload.put("selfTag", selfTag)
             val request = Request.Builder()
                 .url("${ApiConfig.BASE_URL}/api/community/posts")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Admin/mentor: repost a mentor-reviewed, approved win testimonial into the
+     * Community feed. The resulting post displays under the ORIGINAL trader's name.
+     * Throws MarketAiException("...", ) with alreadyReposted-style messages on 403/409/422. */
+    suspend fun repostWinToCommunity(sessionToken: String, testimonialId: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("testimonialId", testimonialId)
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/community/posts/repost")
                 .addHeader("Authorization", "Bearer $sessionToken")
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
                 .build()
