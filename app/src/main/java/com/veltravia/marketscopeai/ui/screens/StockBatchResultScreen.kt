@@ -50,10 +50,20 @@ fun StockBatchResultScreen(
         return
     }
 
+    if (ids.size == 1) {
+        SignalCardScreen(
+            analysisId = ids.first(),
+            onBack = onBack,
+            continueCta = continueCta,
+            onOpenBrokerInfo = onOpenBrokerInfo,
+            title = "Stock Analysis"
+        )
+        return
+    }
+
     val pagerState = rememberPagerState { ids.size }
     Column(modifier = Modifier.fillMaxSize()) {
-        if (ids.size > 1) {
-            Text(
+        Text(
                 "${pagerState.currentPage + 1} of ${ids.size} stock results  ·  Swipe to compare",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextMuted,
@@ -75,7 +85,6 @@ fun StockBatchResultScreen(
                     )
                 }
             }
-        }
 
         HorizontalPager(
             state = pagerState,
@@ -87,7 +96,7 @@ fun StockBatchResultScreen(
                 onBack = onBack,
                 continueCta = continueCta,
                 onOpenBrokerInfo = onOpenBrokerInfo,
-                title = if (ids.size > 1) "Stock ${page + 1} Analysis" else "Stock Analysis"
+                title = "Stock ${page + 1} Analysis"
             )
         }
     }
