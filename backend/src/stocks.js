@@ -69,11 +69,10 @@ function tokenCoverage(candidateText, queryTokens) {
 }
 
 /** Pick the best match only when it is a faithful stock match.
- *  TradingView's symbol search is intentionally fuzzy. A query like
- *  "Dangote Petroleum Refinery IPO" can return "Dangote Sugar Refinery PLC"
- *  because both contain Dangote/refinery. We must not silently substitute a
- *  different company, so multi-word company queries require full significant
- *  token coverage unless the ticker or normalized description is exact. */
+ * TradingView's symbol search is intentionally fuzzy and can return a
+ * similarly named but different issuer. We must never silently substitute a
+ * company, so multi-word company queries require full significant-token
+ * coverage unless the ticker or normalized description is exact. */
 function bestMatch(matches, query) {
   if (!matches.length) return null;
   const q = String(query || "").trim();

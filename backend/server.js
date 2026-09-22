@@ -3474,7 +3474,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       perf1W: null, perf1M: null, perf3M: null, perf6M: null, perf1Y: null, perfYTD: null,
       high52w: null, low52w: null, volume: null, avgVolume10d: null,
       dailyVolatilityPct: null, marketCap: null, rsi: null, tvRecommendation: null,
-      peRatio: null, eps: null, sector: "Energy"
+      peRatio: null, eps: null, sector: null
     };
   }
   if (!match || !stats) {
@@ -3564,7 +3564,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       instrument: ipoOffer ? `${stats.company} (NGX IPO)` : `${stats.company} (${stats.ticker})`,
       instrumentId: match.symbol,
       mode: "stock",
-      model: usedMarketFallback ? "live-market-fallback" : (premium ? OPENAI_MODEL : ANALYSIS_MODEL),
+      model: usedMarketFallback ? (ipoOffer ? "official-offer-fallback" : "live-market-fallback") : (premium ? OPENAI_MODEL : ANALYSIS_MODEL),
       livePrice: stats.price,
       marketVerified: true,
       chartValidated: true,
