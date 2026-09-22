@@ -663,12 +663,13 @@ async function initDb() {
     ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS self_tag TEXT;
     CREATE UNIQUE INDEX IF NOT EXISTS community_posts_repost_unique
       ON community_posts(repost_of_testimonial_id) WHERE repost_of_testimonial_id IS NOT NULL;
-    -- Remove only the exact synthetic proof made during the 2026-09-22
-    -- endpoint smoke test (its repost was already deleted). Keep this in
-    -- the first deployment only; no real member record matches both guards.
-    DELETE FROM signal_testimonials
-      WHERE id = '271a5193-3b2d-4f3b-b1f3-f6adb8748329'::uuid
-        AND comment = 'TEST: verifying the new repost pipeline end-to-end (will be cleaned up).';
+    -- Legacy, unreviewed author outcome tags must never be mistaken for
+    -- team-reviewed wins. Preserve the author's note, but keep featured
+    -- proof listings restricted to real reviewed reposts.
+    UPDATE community_posts
+       SET self_tag = COALESCE(self_tag, CASE outcome_tag WHEN 'win' THEN 'tp' WHEN 'loss' THEN 'sl' END),
+           outcome_tag = NULL
+     WHERE is_repost = false AND outcome_tag IN ('win', 'loss');
     -- Server-side scraped OpenGraph cards (title/description/og:image),
     -- cached per URL — the same "pasted link becomes a preview card"
     -- behavior the reference app shows on its community posts.
@@ -6119,7 +6120,7 @@ app.get("/api/community/feed", requireAuth, async (req, res) => {
                 WHERE lower(u.email) = lower(p.author_email) LIMIT 1
               ), false) AS author_is_premium
        FROM community_posts p
-       ORDER BY p.is_pinned DESC, p.created_at DESC
+       ORDER BY p.created_at DESC, p.id DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
@@ -6451,7 +6452,20 @@ app.post("/api/community/posts/repost", requireAuth, async (req, res) => {
       }).catch(() => {});
     }
 
-    const post = postToApi({ ...row, image_count: imageCount }, [], 0, null, null, false, 0);
+    // INSERT RETURNING does not include the author profile joins supplied by
+    // /feed. Enrich the immediate response so the repost displays identically
+    // before and after a refresh (and never shows a placeholder @null).
+    const { rows: authors } = await pool.query(
+      `SELECT u.username AS author_username, u.role AS author_role,
+              CASE WHEN u.avatar_key IS NOT NULL THEN 'avatar:' || u.id ELSE NULL END AS author_picture,
+              (u.is_premium OR EXISTS (
+                SELECT 1 FROM premium_grants g WHERE g.user_id = u.id AND g.revoked_at IS NULL
+                  AND (g.expires_at IS NULL OR g.expires_at > now())
+              )) AS author_is_premium
+       FROM users u WHERE lower(u.email) = lower($1) LIMIT 1`,
+      [t.author_email || ""]
+    );
+    const post = postToApi({ ...row, ...(authors[0] || {}), image_count: imageCount }, [], 0, null, null, false, 0);
     return res.json({ post });
   } catch (err) {
     // On proof-copy failure, never leave a broken "repost" in the feed.

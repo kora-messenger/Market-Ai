@@ -822,15 +822,16 @@ fun CommunityScreen(
                     // unchanged pagination math); reverseLayout alone flips how
                     // that maps onto the screen, so a freshly published post
                     // (prepended at index 0) lands at the bottom automatically.
-                    val endReached by remember {
+                    // The non-composer note is a real row beside the newest post
+                    // at the bottom; team/mentors use the floating compose button.
+                    val composerRows = if (canCompose) 0 else 1
+                    val endReached by remember(listState, composerRows) {
                         derivedStateOf {
-                            // Older history lives at the END of `posts` (unaffected
-                            // by reverseLayout) — trigger on proximity to THAT
-                            // boundary, not the combined item count (which now also
-                            // includes the header items appended after the posts).
                             val lastPostIdxVisible = listState.layoutInfo.visibleItemsInfo
-                                .map { it.index }.filter { it < posts.size }.maxOrNull() ?: -1
-                            posts.isNotEmpty() && lastPostIdxVisible >= posts.size - 3
+                                .map { it.index }
+                                .filter { it >= composerRows && it < posts.size + composerRows }
+                                .maxOrNull() ?: -1
+                            posts.isNotEmpty() && lastPostIdxVisible >= posts.size + composerRows - 3
                         }
                     }
                     LaunchedEffect(endReached) {
@@ -846,6 +847,9 @@ fun CommunityScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        if (!canCompose) {
+                            item(key = "composer-note") { postComposerBlock() }
+                        }
                         itemsIndexed(posts, key = { _, post -> post.id }) { idx, post ->
                             // Divider goes above the OLDEST post of each day group —
                             // in reverseLayout that's the post whose OLDER neighbor
@@ -860,9 +864,9 @@ fun CommunityScreen(
                                 PostCard(
                                     post = post,
                                     isAdmin = isAdmin,
-                                    canDelete = isAdmin || post.authorEmail.equals(
+                                    canDelete = isAdmin || (!post.isRepost && post.authorEmail.equals(
                                         SessionManager.currentUser(context)?.email, ignoreCase = true
-                                    ),
+                                    )),
                                     onDelete = { deleteTarget = post },
                                     onReact = { emoji -> toggleReaction(post, emoji) },
                                     onVote = { optionId -> votePoll(post, optionId) },
@@ -884,16 +888,9 @@ fun CommunityScreen(
                                 }
                             }
                         }
-                        // Headers below this point are added LAST, so with
-                        // reverseLayout they render at the very TOP of the screen —
-                        // group info sits above the oldest loaded message, same as
-                        // any real chat thread.
-                        item {
-                            postComposerBlock()
-                        }
-                        item {
-                            WeeklyCompetitionCard(onOpen = onOpenLeaderboard)
-                        }
+                        // Info panels follow the older posts in the DSL, so in
+                        // reverseLayout they sit above the chat-like feed.
+                        item { WeeklyCompetitionCard(onOpen = onOpenLeaderboard) }
                         if (proofPosts.isNotEmpty()) {
                             item {
                                 FeaturedProofRow(
@@ -916,11 +913,10 @@ fun CommunityScreen(
                                     onOpenPinned = { pinnedId ->
                                         showPinnedList = false
                                         val idx = posts.indexOfFirst { it.id == pinnedId }
-                                        // Posts occupy their own true index in `posts` —
-                                        // no header offset needed now that headers are
-                                        // appended after the post items, not before.
+                                        // The member note occupies index 0 only for
+                                        // non-composers; all post indices follow it.
                                         if (idx >= 0) {
-                                            scope.launch { listState.animateScrollToItem(idx) }
+                                            scope.launch { listState.animateScrollToItem(idx + composerRows) }
                                         }
                                     }
                                 )
