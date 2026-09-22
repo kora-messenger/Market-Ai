@@ -3262,6 +3262,52 @@ Hard rules: LONG pairs with recommendation BUY; SHORT with SELL; NO_TRADE with H
 Critical: if the 3-month, 6-month, 1-year or YTD performance is strongly positive (double digits) but you are NOT recommending BUY, the FIRST sentence of your thesis MUST explicitly reconcile that apparent tension — e.g. explain the rally already looks priced in, that short-term momentum has stalled versus the longer-term trend, that you'd want a pullback before entering, or a valuation concern — so a trader skimming the performance numbers immediately understands why you are not chasing an already-strong stock rather than seeing a contradiction.
 If a trader profile is provided with the request it is BINDING, not a suggestion: shape the holding-period estimate (estimatedDuration) toward their declared style and preferred timeframes, respect their stated risk per trade and capital when framing position risk, obey their own entry criteria, and pitch the explanation to their experience level. A declared day trader should not be handed a 6-month buy-and-hold — if the profile conflicts with the setup, choose NO_TRADE/HOLD and say the mismatch plainly. If their active trade plan is included, the recommendation must comply with its risk rules and avoided conditions or it is NO_TRADE with the broken rule named.`;
 
+/** Conservative, fully data-backed stock result used only when every AI
+ * provider is unavailable or too slow. It never invents fundamentals: the
+ * score is derived from the real performance snapshot fetched above. */
+function stockMarketFallback(stats) {
+  const price = Number(stats.price);
+  const values = [stats.perf1W, stats.perf1M, stats.perf3M, stats.perf6M, stats.perf1Y, stats.perfYTD]
+    .filter((v) => Number.isFinite(Number(v))).map(Number);
+  let score = values.reduce((sum, v) => sum + (v > 2 ? 1 : v < -2 ? -1 : 0), 0);
+  if (Number.isFinite(Number(stats.tvRecommendation))) score += Number(stats.tvRecommendation) * 2;
+  if (Number.isFinite(Number(stats.rsi))) {
+    const rsi = Number(stats.rsi);
+    if (rsi > 72) score -= 1;
+    else if (rsi < 28) score += 1;
+  }
+  const recommendation = score >= 3 ? "BUY" : score <= -3 ? "SELL" : "HOLD";
+  const direction = recommendation === "BUY" ? "LONG" : recommendation === "SELL" ? "SHORT" : "NO_TRADE";
+  const dailyVol = Number.isFinite(Number(stats.dailyVolatilityPct)) ? Number(stats.dailyVolatilityPct) : 2;
+  const riskPct = Math.max(0.03, Math.min(0.10, dailyVol * 0.03));
+  const round = (n) => Number(n.toFixed(price >= 100 ? 2 : 4));
+  const entryZone = { low: round(price * 0.995), high: round(price * 1.005) };
+  const stopLoss = round(direction === "SHORT" ? price * (1 + riskPct) : price * (1 - riskPct));
+  const takeProfits = direction === "SHORT"
+    ? [0.96, 0.92, 0.88].map((m) => round(price * m))
+    : [1.04, 1.08, 1.12].map((m) => round(price * m));
+  const fmt = (v) => Number.isFinite(Number(v)) ? `${Number(v).toFixed(1)}%` : "unavailable";
+  const trend = score >= 3 ? "positive" : score <= -3 ? "negative" : "mixed";
+  const confidence = Math.max(52, Math.min(78, Math.round(55 + Math.abs(score) * 4)));
+  return {
+    direction,
+    recommendation,
+    confidence,
+    entryZone,
+    stopLoss,
+    takeProfits,
+    riskReward: 2,
+    estimatedDuration: "Several weeks to 3 months",
+    thesis: `The live market snapshot is ${trend}: one-week performance is ${fmt(stats.perf1W)}, one-month is ${fmt(stats.perf1M)}, three-month is ${fmt(stats.perf3M)}, and year-to-date is ${fmt(stats.perfYTD)}. The stock is trading at ${price} within a 52-week range of ${stats.low52w ?? "unavailable"} to ${stats.high52w ?? "unavailable"}. ${recommendation === "BUY" ? "Momentum is sufficiently broad to support a measured long setup." : recommendation === "SELL" ? "Weakness across the measured periods argues against holding a new long position." : "The timeframes are not aligned strongly enough for a high-conviction entry, so waiting is safer."} This conservative result is calculated from the current exchange data while the primary AI provider is temporarily unavailable.`,
+    invalidation: recommendation === "BUY"
+      ? `A sustained move below ${stopLoss} invalidates the bullish setup.`
+      : recommendation === "SELL"
+        ? `A sustained move above ${stopLoss} invalidates the bearish setup.`
+        : "Reassess when short- and medium-term momentum align clearly.",
+    keyLevels: [round(price), stopLoss, ...takeProfits]
+  };
+}
+
 app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
     return res.status(503).json({ error: "Analysis engine is not configured yet." });
@@ -3413,9 +3459,11 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
     // is grounded in the real exchange snapshot we just fetched, and a second
     // vision pass only adds latency/cost (and can time out on fallback models).
 
-    const orResult = await callAI({
+    // A free fallback model can occasionally stream forever after returning
+    // HTTP 200. Cap this stage so the user still gets a real, data-backed
+    // result instead of waiting 90 seconds and seeing a generic failure.
+    const aiAttempt = callAI({
       model: ANALYSIS_MODEL,
-      // See chart-analysis note above — same OpenRouter credit-ceiling fix.
       max_tokens: 1800,
       reasoning: { effort: "low" },
       response_format: { type: "json_object" },
@@ -3423,31 +3471,40 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
         { role: "system", content: STOCK_SYSTEM_PROMPT },
         { role: "user", content: userContent }
       ]
-    }, "stock-analysis", { premium });
+    }, "stock-analysis", { premium }).catch((err) => ({
+      ok: false, status: 0, detail: String(err.message || err)
+    }));
+    const orResult = await Promise.race([
+      aiAttempt,
+      new Promise((resolve) => setTimeout(
+        () => resolve({ ok: false, status: 0, detail: "AI analysis timed out after 25 seconds" }),
+        25000
+      ))
+    ]);
 
-    if (!orResult.ok) {
-      const billingIssue = orResult.status === 402;
-      if (billingIssue) {
-        console.error("[analyze/stock] OPENROUTER ACCOUNT OUT OF CREDIT — top up at https://openrouter.ai/settings/credits (or set OPENAI_API_KEY as the primary provider)");
+    let analysis;
+    let usedMarketFallback = false;
+    if (orResult.ok) {
+      try {
+        const data = await orResult.response.json();
+        const text = data.choices?.[0]?.message?.content || "";
+        analysis = extractJson(text);
+      } catch (err) {
+        console.error("[analyze/stock] AI response parsing failed — using live-market fallback:", String(err.message || err));
       }
-      return res.status(502).json({
-        error: billingIssue
-          ? "Our AI analysis service is briefly unavailable. We're on it — please try again shortly."
-          : "Our AI analysis service had a temporary hiccup. Please tap Analyze again.",
-        status: orResult.status,
-        detail: orResult.detail.slice(0, 400)
-      });
+    } else {
+      console.error(`[analyze/stock] AI unavailable (${orResult.status || 0}) — using live-market fallback:`, String(orResult.detail || "").slice(0, 300));
     }
-
-    const data = await orResult.response.json();
-    const text = data.choices?.[0]?.message?.content || "";
-    const analysis = extractJson(text);
+    if (!analysis) {
+      analysis = stockMarketFallback(stats);
+      usedMarketFallback = true;
+    }
 
     const result = {
       instrument: `${stats.company} (${stats.ticker})`,
       instrumentId: match.symbol,
       mode: "stock",
-      model: premium ? OPENAI_MODEL : ANALYSIS_MODEL,
+      model: usedMarketFallback ? "live-market-fallback" : (premium ? OPENAI_MODEL : ANALYSIS_MODEL),
       livePrice: stats.price,
       marketVerified: true,
       chartValidated: true,
