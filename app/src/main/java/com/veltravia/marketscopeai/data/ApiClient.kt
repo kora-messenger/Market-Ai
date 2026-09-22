@@ -54,6 +54,13 @@ object ApiClient {
     /** Thrown when a free-tier user exhausts the daily chart-analysis allowance. */
     class DailyLimitException(message: String) : Exception(message)
 
+    /** The whole multi-stock request costs more analyses than remain today. */
+    class InsufficientDailyTradesException(
+        val requested: Int,
+        val remaining: Int,
+        message: String
+    ) : Exception(message)
+
     suspend fun analyze(
         sessionToken: String,
         instrumentId: String,
@@ -97,6 +104,74 @@ object ApiClient {
      * stock, fetches its live performance and returns a BUY/SELL/HOLD
      * verdict with a confidence percentage. Same trial/limit semantics.
      */
+    /**
+     * Checks the entire stock batch before any analysis starts. The backend
+     * counts each stock as one daily analysis and rejects an unaffordable
+     * batch as a whole, so free users never receive a partial quota surprise.
+     */
+    suspend fun preflightStockBatch(sessionToken: String, count: Int): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("count", count)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/analyze/stock/preflight")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (response.code == 429 && json.optBoolean("insufficientDailyTrades", false)) {
+                throw InsufficientDailyTradesException(
+                    requested = json.optInt("requestedCount", count),
+                    remaining = json.optInt("remaining", 0),
+                    message = json.optString("error", "Insufficient daily trades for this stock batch.")
+                )
+            }
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Could not verify daily analysis allowance."))
+            }
+            json
+        }
+    }
+
+    suspend fun identifyStockImage(
+        sessionToken: String,
+        imageDataUrl: String,
+        existingNames: List<String>
+    ): String = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("image", imageDataUrl)
+            .put("existingNames", JSONArray(existingNames.take(3)))
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/analyze/stock/identify")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string() ?: "{}"
+            val json = JSONObject(body)
+            if (!response.isSuccessful) {
+                throw MarketAiException(json.optString("error", "Could not identify the stock screenshot."))
+            }
+            json.optString("query", "").takeIf { it.isNotBlank() }
+                ?: throw MarketAiException("No company or ticker was visible in that screenshot.")
+        }
+    }
+
+    suspend fun analyzeStockBatch(
+        sessionToken: String,
+        names: List<String>,
+        imageDataUrl: String?
+    ): List<JSONObject> = withContext(Dispatchers.IO) {
+        val cleanNames = names.map { it.trim() }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }
+        require(cleanNames.size <= 3) { "You can enter up to 3 stock names." }
+        val requestedCount = cleanNames.size + if (imageDataUrl != null) 1 else 0
+        require(requestedCount in 1..4) { "Add at least one stock and no more than four total inputs." }
+        preflightStockBatch(sessionToken, requestedCount)
+        val imageQuery = imageDataUrl?.let { identifyStockImage(sessionToken, it, cleanNames) }
+        val allQueries = cleanNames + listOfNotNull(imageQuery)
+        allQueries.map { analyzeStock(sessionToken, it, null) }
+    }
+
     suspend fun analyzeStock(
         sessionToken: String,
         name: String,

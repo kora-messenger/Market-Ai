@@ -30,7 +30,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CurrencyBitcoin
 import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -86,6 +90,7 @@ fun AnalyzeFlow(
     onAnalysisComplete: (String) -> Unit,
     onTrialExpired: () -> Unit,
     onUpgradeRequired: () -> Unit = onTrialExpired,
+    onStockAnalysesComplete: ((List<String>) -> Unit)? = null,
     // Main flow arrives from Home's watchlist with a preselected instrument -
     // the flow opens on the matching tab with it preselected.
     initialInstrumentId: String? = null,
@@ -109,7 +114,7 @@ fun AnalyzeFlow(
     var crImageH4 by remember { mutableStateOf<Uri?>(null) }
     var crImageM15 by remember { mutableStateOf<Uri?>(null) }
     var mode by rememberSaveable { mutableStateOf("scalp") }
-    var stockName by rememberSaveable { mutableStateOf("") }
+    var stockNames by rememberSaveable { mutableStateOf(listOf("")) }
     var stockImage by remember { mutableStateOf<Uri?>(null) }
     var loading by remember { mutableStateOf(false) }
     var fxError by remember { mutableStateOf<String?>(null) }
@@ -121,6 +126,7 @@ fun AnalyzeFlow(
     var limitSheetError by remember { mutableStateOf<String?>(null) }
     var rewardBusy by remember { mutableStateOf(false) }
     var pendingRetry by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var insufficientBatchMessage by remember { mutableStateOf<String?>(null) }
 
     val pickFxH4 = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { fxImageH4 = it } }
     val pickFxM15 = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let { fxImageM15 = it } }
@@ -184,9 +190,14 @@ fun AnalyzeFlow(
         }
     }
 
-    /** Stock analysis (stocks page) - typed name or screenshot, real data. */
-    fun doStockAnalysis(name: String, image: Uri?, onError: (String?) -> Unit) {
-        if (name.isBlank() && image == null) return
+    /** Stock analysis: up to three typed stocks plus one separate screenshot. */
+    fun doStockAnalysis(names: List<String>, image: Uri?, onError: (String?) -> Unit) {
+        val cleanNames = names.map { it.trim() }.filter { it.isNotBlank() }
+        if (cleanNames.isEmpty() && image == null) return
+        if (cleanNames.map { it.lowercase() }.distinct().size != cleanNames.size) {
+            onError("Each stock name must be different.")
+            return
+        }
         loading = true
         onError(null)
         scope.launch {
@@ -198,17 +209,21 @@ fun AnalyzeFlow(
                     return@launch
                 }
                 val imageData = image?.let { ApiClient.prepareChartImage(context, it) }
-                val result = ApiClient.analyzeStock(token, name.trim(), imageData)
-                val id = result.optString("id", "")
+                val results = ApiClient.analyzeStockBatch(token, cleanNames, imageData)
+                val ids = results.mapNotNull { it.optString("id", "").takeIf(String::isNotBlank) }
                 loading = false
-                if (id.isNotEmpty()) onAnalysisComplete(id)
-                else onError("Analysis completed but was not saved")
+                if (ids.size == results.size && ids.isNotEmpty()) {
+                    (onStockAnalysesComplete ?: { batch: List<String> -> onAnalysisComplete(batch.first()) })(ids)
+                } else onError("One or more stock results could not be saved.")
+            } catch (e: ApiClient.InsufficientDailyTradesException) {
+                loading = false
+                insufficientBatchMessage = e.message
             } catch (e: ApiClient.TrialExpiredException) {
                 loading = false
                 onTrialExpired()
             } catch (e: ApiClient.DailyLimitException) {
                 loading = false
-                maybeOfferRewarded { doStockAnalysis(name, image, onError) }
+                maybeOfferRewarded { doStockAnalysis(names, image, onError) }
             } catch (e: Exception) {
                 loading = false
                 onError(e.message ?: "Analysis failed")
@@ -323,33 +338,58 @@ fun AnalyzeFlow(
                 ) {
                     AnalyzeTabInfo(
                         icon = { Icon(Icons.Filled.TrendingUp, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp)) },
-                        text = "Take a screenshot or input the name of the Stock you want MarketScope AI to analyze for you. We research its real market performance and tell you whether to buy — with a confidence rate."
+                        text = "Enter up to 3 stock names and optionally attach 1 screenshot of a different stock. Each stock receives its own market research, recommendation and confidence score."
                     )
                     Spacer(Modifier.height(20.dp))
                     AnalyzeSectionLabel("Which stock?")
                     Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = stockName,
-                        onValueChange = { stockName = it },
-                        placeholder = {
-                            Text(
-                                "e.g. Accesscorp, AAPL, Dangote Sugar",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary
-                            )
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentCyan,
-                            unfocusedBorderColor = BorderSubtle,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        modifier = Modifier.fillMaxWidth()
+                    stockNames.forEachIndexed { index, value ->
+                        OutlinedTextField(
+                            value = value,
+                            onValueChange = { next ->
+                                stockNames = stockNames.toMutableList().also { it[index] = next }
+                            },
+                            placeholder = {
+                                Text(
+                                    if (index == 0) "e.g. Accesscorp, AAPL, Dangote Sugar" else "Stock ${index + 1} name or ticker",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondary
+                                )
+                            },
+                            trailingIcon = {
+                                if (stockNames.size > 1 || value.isNotBlank()) {
+                                    IconButton(onClick = {
+                                        stockNames = if (stockNames.size == 1) listOf("")
+                                        else stockNames.toMutableList().also { it.removeAt(index) }
+                                    }) { Icon(Icons.Filled.Close, contentDescription = "Remove stock ${index + 1}") }
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = AccentCyan,
+                                unfocusedBorderColor = BorderSubtle,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (index < stockNames.lastIndex) Spacer(Modifier.height(10.dp))
+                    }
+                    if (stockNames.size < 3) {
+                        TextButton(onClick = { stockNames = stockNames + "" }) {
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Add another stock", color = AccentCyan)
+                        }
+                    }
+                    Text(
+                        "${stockNames.count { it.isNotBlank() }} of 3 stock names",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
                     )
                     Spacer(Modifier.height(24.dp))
-                    AnalyzeSectionLabel("Optional — stock screenshot")
+                    AnalyzeSectionLabel("Optional — 1 different stock screenshot")
                     Spacer(Modifier.height(10.dp))
                     AnalyzeSingleChartTile(
                         imageUri = stockImage,
@@ -364,15 +404,17 @@ fun AnalyzeFlow(
                         Spacer(Modifier.height(10.dp))
                     }
                     GradientPrimaryButton(
-                        text = ctaLabel,
-                        enabled = !loading && (stockName.isNotBlank() || stockImage != null),
+                        text = (stockNames.count { it.isNotBlank() } + if (stockImage != null) 1 else 0).let { count ->
+                            if (count > 1) "Analyze $count Stocks" else ctaLabel
+                        },
+                        enabled = !loading && (stockNames.any { it.isNotBlank() } || stockImage != null),
                         loading = loading,
                         height = 54.dp,
-                        onClick = { doStockAnalysis(stockName, stockImage) { stkError = it } }
+                        onClick = { doStockAnalysis(stockNames, stockImage) { stkError = it } }
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        "MarketScope AI researches live exchange data — current price, performance from 1 week to 1 year, the 52-week range and more — before recommending a BUY, SELL or HOLD with a confidence percentage.",
+                        "Each stock counts as one daily analysis. Results open in a stock-only swipe view, with one complete result page for every company.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -380,6 +422,28 @@ fun AnalyzeFlow(
                 }
             }
         }
+    }
+
+    if (insufficientBatchMessage != null) {
+        AlertDialog(
+            onDismissRequest = { insufficientBatchMessage = null },
+            title = { Text("Insufficient daily trades") },
+            text = {
+                Text(
+                    insufficientBatchMessage ?: "You do not have enough daily analyses remaining for every stock in this request.",
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    insufficientBatchMessage = null
+                    onUpgradeRequired()
+                }) { Text("Subscribe", color = AccentViolet, fontWeight = FontWeight.SemiBold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { insufficientBatchMessage = null }) { Text("Maybe later") }
+            }
+        )
     }
 
     // --- Rewarded unlock sheet (free tier, daily limit reached) ---

@@ -31,6 +31,7 @@ fun ChartUploadScreen(
     instrumentId: String,
     onBack: () -> Unit,
     onAnalysisComplete: (String) -> Unit,
+    onStockAnalysesComplete: ((List<String>) -> Unit)? = null,
     // Free tier exhausted its daily analyses (429) — offer the real upgrade path.
     onUpgradeRequired: () -> Unit = {}
 ) {
@@ -68,6 +69,7 @@ fun ChartUploadScreen(
             onAnalysisComplete = onAnalysisComplete,
             onTrialExpired = onUpgradeRequired,
             onUpgradeRequired = onUpgradeRequired,
+            onStockAnalysesComplete = onStockAnalysesComplete,
             initialInstrumentId = instrumentId,
             modifier = Modifier.weight(1f)
         )

@@ -3343,6 +3343,107 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "keyLevels": [number]
 }`;
 
+// Resolve the one optional screenshot before batch quota preflight. This
+// prevents an image of the same issuer as a typed entry from consuming another
+// daily analysis, and lets the final stock analyses run name-only against live
+// market data instead of sending the image through the model twice.
+app.post("/api/analyze/stock/identify", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
+    return res.status(503).json({ error: "Analysis engine is not configured yet." });
+  }
+  const image = req.body?.image;
+  const existingNames = Array.isArray(req.body?.existingNames)
+    ? req.body.existingNames.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 3)
+    : [];
+  const isDataUrl = (v) => typeof v === "string" && /^data:image\/(png|jpe?g|webp);base64,/.test(v);
+  if (!isDataUrl(image)) return res.status(400).json({ error: "Attach one valid stock screenshot." });
+
+  let premium = false;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    premium = paidPremiumActive(rows[0]) || Boolean(await getActivePremiumGrant(rows[0].id));
+  } catch (err) {
+    return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
+  }
+
+  const prompt = `Validate this screenshot for a stock-analysis batch. It must genuinely relate to one publicly traded company (stock chart, quote page, broker page, or official public offer). Identify the company or ticker. The user already typed these entries: ${JSON.stringify(existingNames)}. Mark duplicate true when the screenshot represents the same issuer as any typed entry, even if one uses a ticker and the other uses a company name. Respond ONLY with JSON: {"isStockRelated": boolean, "companyOrTicker": string, "duplicate": boolean, "reason": string}.`;
+  try {
+    const ai = await callAI({
+      model: ANALYSIS_MODEL,
+      max_tokens: 250,
+      reasoning: { effort: "low" },
+      response_format: { type: "json_object" },
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: image, detail: "low" } }
+        ]
+      }]
+    }, "stock-batch-image-identify", { premium });
+    if (!ai.ok) {
+      return res.status(502).json({ error: "We couldn't read that stock screenshot right now. Please type its company name instead." });
+    }
+    const body = await ai.response.json();
+    const parsed = extractJson(body.choices?.[0]?.message?.content || "");
+    const query = String(parsed.companyOrTicker || "").trim();
+    if (!parsed.isStockRelated || !query) {
+      return res.status(422).json({ error: parsed.reason || "That image does not show an identifiable stock." });
+    }
+    if (parsed.duplicate) {
+      return res.status(409).json({
+        error: "The screenshot shows a stock you already entered. Attach a different stock or remove the duplicate image.",
+        duplicateStock: true
+      });
+    }
+    return res.json({ query, reason: parsed.reason || "Stock identified" });
+  } catch (err) {
+    return res.status(502).json({ error: "We couldn't read that stock screenshot. Please type its company name instead.", detail: String(err.message || err) });
+  }
+});
+
+// Batch-stock quota preflight. Each requested stock produces its own saved
+// analysis row, so each one consumes one free daily analysis. Reject the whole
+// batch before any model work when the account cannot afford every result.
+app.post("/api/analyze/stock/preflight", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const requestedCount = Number(req.body?.count);
+  if (!Number.isInteger(requestedCount) || requestedCount < 1 || requestedCount > 4) {
+    return res.status(400).json({ error: "Stock analysis count must be between 1 and 4." });
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, trial_started_at, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    const user = rows[0];
+    const premium = paidPremiumActive(user) || Boolean(await getActivePremiumGrant(user.id));
+    const trial = trialInfo(user);
+    if (premium || trial.trialActive) {
+      return res.json({ allowed: true, requestedCount, unlimited: true, remaining: null });
+    }
+    const usage = await analysisUsage(user.id);
+    if (usage.remaining < requestedCount) {
+      return res.status(429).json({
+        error: `Insufficient daily trades. This request needs ${requestedCount} analyses, but you have ${usage.remaining} remaining today. Subscribe for unlimited stock analysis.`,
+        insufficientDailyTrades: true,
+        dailyLimitReached: true,
+        requestedCount,
+        ...usage
+      });
+    }
+    return res.json({ allowed: true, requestedCount, unlimited: false, ...usage });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not verify daily analysis allowance", detail: String(err.message || err) });
+  }
+});
+
 app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   if (!OPENAI_API_KEY && !OPENROUTER_API_KEY) {
     return res.status(503).json({ error: "Analysis engine is not configured yet." });

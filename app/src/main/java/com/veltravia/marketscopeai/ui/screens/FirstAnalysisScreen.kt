@@ -39,6 +39,7 @@ import com.veltravia.marketscopeai.ui.theme.TextSecondary
 @Composable
 fun FirstAnalysisScreen(
     onAnalysisComplete: (String) -> Unit,
+    onStockAnalysesComplete: ((List<String>) -> Unit)? = null,
     onTrialExpired: () -> Unit = {},
     onSkip: () -> Unit = {}
 ) {
@@ -134,6 +135,7 @@ fun FirstAnalysisScreen(
             ctaLabel = "Analyze Now!",
             onAnalysisComplete = onAnalysisComplete,
             onTrialExpired = onTrialExpired,
+            onStockAnalysesComplete = onStockAnalysesComplete,
             modifier = Modifier.weight(1f)
         )
     }

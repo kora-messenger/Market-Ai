@@ -99,7 +99,8 @@ fun SignalCardScreen(
     analysisId: String,
     onBack: () -> Unit,
     continueCta: Pair<String, () -> Unit>? = null,
-    onOpenBrokerInfo: (() -> Unit)? = null
+    onOpenBrokerInfo: (() -> Unit)? = null,
+    title: String = "Trade Analysis"
 ) {
     val context = LocalContext.current
     var record by remember { mutableStateOf<JSONObject?>(null) }
@@ -132,7 +133,7 @@ fun SignalCardScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
-                "Trade Analysis",
+                title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center)

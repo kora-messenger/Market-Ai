@@ -88,6 +88,7 @@ import com.veltravia.marketscopeai.ui.screens.ChartUploadScreen
 import com.veltravia.marketscopeai.ui.screens.FirstAnalysisScreen
 import com.veltravia.marketscopeai.ui.screens.SubscribeScreen
 import com.veltravia.marketscopeai.ui.screens.SignalCardScreen
+import com.veltravia.marketscopeai.ui.screens.StockBatchResultScreen
 import com.veltravia.marketscopeai.ui.screens.ProfileScreen
 import com.veltravia.marketscopeai.ui.screens.ScreenshotGuideScreen
 import com.veltravia.marketscopeai.ui.screens.QuestionnaireScreen
@@ -385,6 +386,11 @@ fun MarketAiApp() {
                         popUpTo("first_analysis")
                     }
                 },
+                onStockAnalysesComplete = { ids ->
+                    navController.navigate("first_stock_results?ids=${ids.joinToString(",")}") {
+                        popUpTo("first_analysis")
+                    }
+                },
                 onTrialExpired = {
                     // 402 from the backend: the 7-day trial is over — take the
                     // user straight to the real Subscribe screen.
@@ -398,6 +404,21 @@ fun MarketAiApp() {
                     navController.navigate("main") {
                         popUpTo(0) { inclusive = true }
                     }
+                }
+            )
+        }
+        composable(
+            "first_stock_results?ids={ids}",
+            arguments = listOf(navArgument("ids") { type = NavType.StringType; defaultValue = "" })
+        ) { entry ->
+            StockBatchResultScreen(
+                analysisIds = entry.arguments?.getString("ids").orEmpty().split(",").filter(String::isNotBlank),
+                onBack = {
+                    navController.navigate("main") { popUpTo(0) { inclusive = true } }
+                },
+                onOpenBrokerInfo = { navController.navigate("broker_info") },
+                continueCta = "Continue to MarketScope AI" to {
+                    navController.navigate("main") { popUpTo(0) { inclusive = true } }
                 }
             )
         }
@@ -563,6 +584,11 @@ fun MarketAiApp() {
                         popUpTo("main")
                     }
                 },
+                onStockAnalysesComplete = { ids ->
+                    navController.navigate("stock_results?ids=${ids.joinToString(",")}") {
+                        popUpTo("main")
+                    }
+                },
                 onUpgradeRequired = { navController.navigate("subscribe") }
             )
         }
@@ -570,6 +596,20 @@ fun MarketAiApp() {
             DailySignalDetailScreen(
                 signalId = entry.arguments?.getString("id") ?: "",
                 onBack = { navController.popBackStack() }
+            )
+        }
+        composable(
+            "stock_results?ids={ids}",
+            arguments = listOf(navArgument("ids") { type = NavType.StringType; defaultValue = "" })
+        ) { entry ->
+            val adContext = androidx.compose.ui.platform.LocalContext.current
+            StockBatchResultScreen(
+                analysisIds = entry.arguments?.getString("ids").orEmpty().split(",").filter(String::isNotBlank),
+                onBack = {
+                    com.veltravia.marketscopeai.monetization.AdManager
+                        .maybeShowInterstitialAfterAnalysis(adContext) { navController.popBackStack() }
+                },
+                onOpenBrokerInfo = { navController.navigate("broker_info") }
             )
         }
         composable("signal/{analysisId}") { entry ->
