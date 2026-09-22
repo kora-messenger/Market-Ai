@@ -380,8 +380,9 @@ async function callAI(payload, label, opts = {}) {
 const GOOGLE_WEB_CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID || "";
 const JWT_SECRET = process.env.SESSION_JWT_SECRET || "";
 const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL || "google/gemini-3.8-flash";
-// Comma-separated admin emails (e.g. "a@gmail.com,b@gmail.com"); the
-// first account ever created also stays admin as a fallback.
+// Explicit owner email(s). When configured these are the only accounts with
+// backend role-management authority. Oldest-account fallback is used only
+// when this setting is empty, for first-run recovery.
 const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
@@ -1706,8 +1707,9 @@ app.post("/api/presence/ping", requireAuth, async (req, res) => {
 
 /** Admin: list members with roles + presence (for the mentor manager). */
 // --- Admin Premium Management ----------------------------------------------
-// Only authenticated MarketScope AI administrators (isAdminRequest — env email
-// list + role system) may search, inspect, grant or revoke Premium. Grants are
+// Only the explicitly configured owner account (isAdminRequest) may search,
+// inspect, grant or revoke Premium. Premium entitlement never changes a
+// community role and never grants posting or role-management permissions. Grants are
 // database-backed entitlements (premium_grants), fully separate from paid
 // subscriptions (users.is_premium / Paystack) — revoking a grant never touches
 // a paid subscription; effective access is always recalculated from ALL
@@ -1716,7 +1718,7 @@ app.post("/api/presence/ping", requireAuth, async (req, res) => {
 /** Shared: build a user's full premium status snapshot for the admin UI. */
 async function premiumStatusSnapshot(userId) {
   const { rows } = await pool.query(
-    `SELECT id, google_sub, email, name, picture, is_premium, premium_expires_at, premium_platform, trial_started_at, created_at
+    `SELECT id, google_sub, email, name, picture, role, is_premium, premium_expires_at, premium_platform, trial_started_at, created_at
      FROM users WHERE id = $1`,
     [userId]
   );
@@ -1745,6 +1747,8 @@ async function premiumStatusSnapshot(userId) {
     name: u.name || u.email || "User",
     picture: u.picture || null,
     joinedAt: u.created_at,
+    communityRole: u.role || "member",
+    canComposeCommunity: canComposeCommunity(u.role),
     paidSubscription: { active: paid, payments: payRows[0].c },
     trial: { active: trial.trialActive, endsAt: trial.trialEndsAt, daysRemaining: trial.trialDaysRemaining },
     adminGrant: grant ? {
@@ -4136,18 +4140,34 @@ app.delete("/api/ai-trade-plans/:id", requireAuth, async (req, res) => {
 // AUTOMATIC outcome resolution via live price checks.
 // ============================================================
 
-/** Resolves the admin/owner: ADMIN_EMAIL env override, else the first account ever created. */
+/**
+ * Resolves the platform owner. When ADMIN_EMAIL is configured it is the sole
+ * source of owner authority; the oldest-account fallback exists only for a
+ * brand-new deployment where no owner email has been configured yet.
+ */
 async function getAdminSub() {
+  if (ADMIN_EMAILS.length) {
+    const { rows } = await pool.query(
+      `SELECT google_sub, email FROM users
+       WHERE lower(email) = ANY($1::text[])
+       ORDER BY array_position($1::text[], lower(email)) NULLS LAST
+       LIMIT 1`,
+      [ADMIN_EMAILS]
+    );
+    return rows.length ? String(rows[0].google_sub) : null;
+  }
   const { rows } = await pool.query(
     `SELECT google_sub, email FROM users ORDER BY created_at ASC LIMIT 1`
   );
-  if (!rows.length) return null;
-  return String(rows[0].google_sub);
+  return rows.length ? String(rows[0].google_sub) : null;
 }
 
 async function isAdminRequest(req) {
   if (!pool) return false;
-  if (ADMIN_EMAILS.includes(String((req.session && req.session.email) || "").toLowerCase())) return true;
+  const email = String((req.session && req.session.email) || "").toLowerCase();
+  // Once an explicit owner email exists, no role label, Premium grant,
+  // subscription, or oldest-account fallback can confer backend admin rights.
+  if (ADMIN_EMAILS.length) return ADMIN_EMAILS.includes(email);
   const adminSub = await getAdminSub();
   return !!adminSub && String((req.session && req.session.sub) || "") === adminSub;
 }
@@ -7366,11 +7386,7 @@ async function requireCronOrAdmin(req, res) {
   try {
     const session = jwt.verify(authHeader.slice(7), JWT_SECRET);
     req.session = session;
-    let isAdmin = ADMIN_EMAILS.includes(String(session.email || "").toLowerCase());
-    if (!isAdmin) {
-      const { rows } = await pool.query(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`);
-      isAdmin = rows.length > 0 && rows[0].id === session.userId;
-    }
+    const isAdmin = await isAdminRequest(req);
     if (!isAdmin) {
       res.status(403).json({ error: "Admin access required" });
       return false;
