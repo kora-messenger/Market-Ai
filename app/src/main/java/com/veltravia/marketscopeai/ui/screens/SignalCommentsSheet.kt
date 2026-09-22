@@ -599,7 +599,10 @@ fun SignalCommentsSheet(
                     AsyncImage(
                         model = attachedImage,
                         contentDescription = "Attached screenshot",
-                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { viewerImage = attachedImage }
                     )
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {

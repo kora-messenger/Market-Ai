@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.Instrument
 import com.veltravia.marketscopeai.data.InstrumentCatalog
+import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
@@ -266,6 +267,13 @@ private fun AnalyzeChartTile(
     onPick: () -> Unit,
     onClear: () -> Unit
 ) {
+    var viewingImage by remember(imageUri) { mutableStateOf(false) }
+    if (viewingImage && imageUri != null) {
+        ImageViewerDialog(
+            urls = listOf(imageUri.toString()),
+            onDismiss = { viewingImage = false }
+        )
+    }
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
@@ -276,7 +284,9 @@ private fun AnalyzeChartTile(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clickable(enabled = imageUri == null) { onPick() },
+                .clickable {
+                    if (imageUri == null) onPick() else viewingImage = true
+                },
             contentAlignment = Alignment.Center
         ) {
             if (imageUri == null) {

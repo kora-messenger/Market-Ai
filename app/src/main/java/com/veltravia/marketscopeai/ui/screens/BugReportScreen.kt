@@ -63,6 +63,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.PremiumGradientBrush
 import com.veltravia.marketscopeai.ui.components.pressScale
+import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import kotlinx.coroutines.launch
@@ -87,6 +88,15 @@ fun BugReportScreen(onBack: () -> Unit) {
     var sending by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
+
+    viewerIndex?.let { index ->
+        ImageViewerDialog(
+            urls = pickedImages.toList(),
+            initialIndex = index,
+            onDismiss = { viewerIndex = null }
+        )
+    }
 
     val pickImage = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -275,6 +285,7 @@ fun BugReportScreen(onBack: () -> Unit) {
                                                         .height(92.dp)
                                                         .clip(RoundedCornerShape(16.dp))
                                                         .background(Color(0xFFF1F5F9))
+                                                        .clickable { viewerIndex = idx }
                                                 )
                                                 Surface(
                                                     color = Color(0x8C000000),

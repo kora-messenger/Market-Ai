@@ -55,6 +55,7 @@ import coil.compose.AsyncImage
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
+import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
@@ -89,6 +90,14 @@ fun ShareWinSheet(
     var attachedImage by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var viewingProof by remember { mutableStateOf(false) }
+
+    if (viewingProof && attachedImage != null) {
+        ImageViewerDialog(
+            urls = listOf(attachedImage!!),
+            onDismiss = { viewingProof = false }
+        )
+    }
 
     val pickImage = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
@@ -220,7 +229,9 @@ fun ShareWinSheet(
                         model = attachedImage,
                         contentDescription = "Trader proof",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable { viewingProof = true }
                     )
                     IconButton(
                         onClick = { attachedImage = null },

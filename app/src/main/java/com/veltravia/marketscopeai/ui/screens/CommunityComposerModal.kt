@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 import com.veltravia.marketscopeai.ui.components.PremiumGradientBrush
 import com.veltravia.marketscopeai.ui.components.pressScale
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
@@ -218,6 +219,15 @@ fun PublishComposerModal(
     onPublish: () -> Unit
 ) {
     val isPoll = mode == "poll"
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
+
+    viewerIndex?.let { index ->
+        ImageViewerDialog(
+            urls = pickedImages.map { it.dataUrl },
+            initialIndex = index,
+            onDismiss = { viewerIndex = null }
+        )
+    }
 
     Dialog(onDismissRequest = { if (!publishing) onDismiss() }) {
         Surface(
@@ -463,6 +473,7 @@ fun PublishComposerModal(
                                                                 .height(92.dp)
                                                                 .clip(RoundedCornerShape(16.dp))
                                                                 .background(Color(0xFFF1F5F9))
+                                                                .clickable { viewerIndex = idx }
                                                         )
                                                         Surface(
                                                             color = Color(0x8C000000),
