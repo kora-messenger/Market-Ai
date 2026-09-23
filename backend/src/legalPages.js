@@ -8,7 +8,7 @@
  * or admin accounts here.
  */
 
-const EFFECTIVE_DATE = "September 11, 2026";
+const EFFECTIVE_DATE = "September 23, 2026";
 const CONTACT_EMAIL = "support@marketscopeai.com";
 const CONTACT_HREF = "mailto:support@marketscopeai.com";
 
@@ -58,8 +58,8 @@ const TERMS_SECTIONS = [
     heading: "5. Free Tier, Trial, Subscriptions & Payments",
     blocks: [
       { type: "p", text: "New accounts receive a free trial of premium features. When the trial ends, the account moves to the free tier (a limited number of AI analyses per day), or you can upgrade to a paid subscription (\"Pro\") for unrestricted, ad-free access." },
-      { type: "p", text: "Trial terms and any prices are shown in the App before you commit to anything. Subscriptions renew automatically until cancelled. You can cancel at any time; access to Pro features continues until the end of the current billing period. Fees already charged are non-refundable except where required by law." },
-      { type: "p", text: "Subscription payments are processed by our payment processor, Paystack, on behalf of Veltravia Technologies. We never receive or store your full card details — we only receive your name, email, and subscription status. Refund and chargeback handling follows the payment processor's and your bank's standard procedures and applicable law." }
+      { type: "p", text: "Trial terms and any prices are shown in the App before you commit to anything. Subscriptions are billed and renew automatically through Google Play until cancelled. You can cancel at any time from your Google Play subscription settings; access to Pro features continues until the end of the current billing period. Refunds are subject to Google Play policies and applicable law." },
+      { type: "p", text: "All subscription purchases are billed by Google Play, which is the only payment method the App offers. See our Purchase Terms for full billing, renewal, and cancellation details." }
     ]
   },
   {
@@ -176,7 +176,7 @@ const PRIVACY_SECTIONS = [
       { type: "ul", items: [
         "Google — to verify your sign-in, to deliver push notifications to Android devices, and (for free-tier users who consented) to deliver and measure advertising through Google AdMob and its certified ad-network partners.",
         "Our AI analysis provider — receives the chart images and your questionnaire answers to generate each Signal. Images are transmitted for the purpose of generating that Signal only.",
-        "Paystack, our payment processor — handles subscription billing on our behalf. Paystack receives the payment details you enter at checkout; we never receive or store your full card details, only your name, email, and subscription status.",
+        "Google — also handles all subscription billing through Google Play, the only payment method the App offers. Google receives the payment details you enter at checkout; we never receive or store your full card details, only your subscription status and renewal date.",
         "Our hosting, database, and email-delivery providers — store your account, questionnaire answers, analysis history, and send transactional account/security emails on our behalf.",
         "Third-party market-data and news providers — supply prices, charts, news, and calendar data. These are data sources we request data from; no personal data about you is sent to them when you browse market information."
       ] },
@@ -217,6 +217,98 @@ const PRIVACY_SECTIONS = [
   }
 ];
 
+
+/**
+ * Purchase Terms — the dedicated billing/subscription terms for MarketScope
+ * AI Premium, linked from the Subscribe screen.
+ * Google Play Billing is the only payment method the App offers.
+ */
+const PURCHASE_TERMS_SECTIONS = [
+  {
+    heading: "1. Scope of These Purchase Terms",
+    blocks: [
+      { type: "p", text: "These Purchase Terms govern your purchase of a MarketScope AI Premium (\"Premium\") subscription from Veltravia Technologies (\"we\", \"us\"). They supplement, and form part of, our Terms of Service. If there is a conflict between these Purchase Terms and the Terms of Service on billing matters, these Purchase Terms control." },
+      { type: "p", text: "By starting a Premium purchase, you confirm you are authorized to use the selected payment method and you agree to be charged the amounts described below." }
+    ]
+  },
+  {
+    heading: "2. Payment Method",
+    blocks: [
+      { type: "p", emphasis: true, text: "Google Play Billing is the only payment method MarketScope AI offers." },
+      { type: "p", text: "All Premium purchases are billed, processed, and managed through Google Play. We do not process payments directly and never receive or store your card, bank, or other payment instrument details — Google handles that exclusively, subject to Google Play's own terms and privacy practices." },
+      { type: "p", text: "Because billing runs entirely through Google Play, your subscription, payment method, receipts, and cancellation are managed from your Google account (Play Store app → Payments & subscriptions), not from within MarketScope AI." }
+    ]
+  },
+  {
+    heading: "3. Plans & Pricing",
+    blocks: [
+      { type: "p", text: "MarketScope AI Premium is offered in two billing options, shown with final pricing in the App and on the Google Play purchase screen before you confirm:" },
+      { type: "ul", items: [
+        "Monthly — billed every month from the date of purchase.",
+        "Yearly — billed once every 12 months, priced at a discount versus paying monthly for a full year. The exact percentage saved and the equivalent monthly cost are shown on the Subscribe screen at the time of purchase."
+      ] },
+      { type: "p", text: "Prices are shown in your local currency where Google Play supports it and may include applicable taxes. The price you see at checkout is the price you are charged; we do not add any fee on top of what Google Play displays." }
+    ]
+  },
+  {
+    heading: "4. Free Trials",
+    blocks: [
+      { type: "p", text: "New accounts may receive a free trial of Premium features. The account trial does not automatically start a paid Google Play subscription. You will only be charged if you separately confirm a purchase in Google Play. Any promotional billing trial offered by Google Play will show its conversion date and price before you confirm." }
+    ]
+  },
+  {
+    heading: "5. Automatic Renewal",
+    blocks: [
+      { type: "p", text: "Premium subscriptions renew automatically at the end of each billing period (monthly or yearly, matching your selected plan) unless you cancel before the renewal date. Google Play charges your payment method on file for the then-current price of your plan and notifies you per its own renewal-reminder policies." },
+      { type: "p", text: "To avoid being charged for the next billing period, cancel before your renewal date. Your Google Play subscription settings show the renewal date." }
+    ]
+  },
+  {
+    heading: "6. Cancellation",
+    blocks: [
+      { type: "p", text: "You may cancel your subscription at any time from the Google Play Store app (Payments & subscriptions → MarketScope AI Premium → Cancel subscription), or from the Google Play website. Cancelling stops future renewals — it does not end your Premium access immediately." },
+      { type: "p", text: "After cancelling, you keep Premium access until the end of the billing period you already paid for. Your account then reverts to the free tier; no partial-period access is retained beyond that date." }
+    ]
+  },
+  {
+    heading: "7. Refunds",
+    blocks: [
+      { type: "p", text: "All charges are processed and billed by Google Play, so refund requests are handled under Google Play's refund policy. You can request a refund directly through Google Play (Play Store app → Order history → the relevant order → Request a refund)." },
+      { type: "p", text: "Refund eligibility and handling depend on Google Play policies and applicable law. Contact us if you need help identifying a charge." }
+    ]
+  },
+  {
+    heading: "8. Price Changes",
+    blocks: [
+      { type: "p", text: "We may change Premium pricing going forward. If a price increase applies to your existing subscription, Google Play will notify you before the change takes effect and, depending on your region, may require your consent before charging the new price at your next renewal. You can cancel before the new price applies if you do not agree to it." }
+    ]
+  },
+  {
+    heading: "9. Feature Availability",
+    blocks: [
+      { type: "p", text: "The features included in Premium (unlimited AI chart and market analysis, GPT-5-powered analysis, an ad-free experience, full Daily Signals history, and full community access) are described on the Subscribe screen at the time of purchase and may be enhanced over time. We will not remove a materially advertised Premium benefit without reasonable notice in the App." }
+    ]
+  },
+  {
+    heading: "10. Eligibility",
+    blocks: [
+      { type: "p", text: "You must be at least 18 years old, hold a valid Google account in good standing, and be permitted to purchase digital subscriptions in your jurisdiction to buy Premium. Purchases are for your personal, non-commercial use of the App." }
+    ]
+  },
+  {
+    heading: "11. Changes to These Purchase Terms",
+    blocks: [
+      { type: "p", text: "We may update these Purchase Terms from time to time, most often to reflect new billing options or changes required by Google Play. Material changes will update the \"Effective\" date above and, where required by law, be communicated in the App before they apply to your next renewal." }
+    ]
+  },
+  {
+    heading: "12. Contact",
+    blocks: [
+      { type: "p", text: "Questions about a charge, your subscription, or these Purchase Terms? Email us — we respond within a reasonable time." },
+      { type: "link", text: CONTACT_EMAIL, href: CONTACT_HREF }
+    ]
+  }
+];
 
 const COMMUNITY_SECTIONS = [
   {
@@ -269,6 +361,7 @@ const COMMUNITY_SECTIONS = [
 const DOCS = {
   terms: { title: "Terms of Service", sections: TERMS_SECTIONS, path: "/terms" },
   privacy: { title: "Privacy Policy", sections: PRIVACY_SECTIONS, path: "/privacy" },
+  purchase: { title: "Purchase Terms", sections: PURCHASE_TERMS_SECTIONS, path: "/purchase-terms" },
   community: { title: "Community Guidelines", sections: COMMUNITY_SECTIONS, path: "/community-guidelines" }
 };
 
@@ -355,6 +448,7 @@ ${footer}
 
 function termsOfServiceHtml() { return renderDocHtml("terms"); }
 function privacyPolicyHtml() { return renderDocHtml("privacy"); }
+function purchaseTermsHtml() { return renderDocHtml("purchase"); }
 function communityGuidelinesHtml() { return renderDocHtml("community"); }
 
-module.exports = { termsOfServiceHtml, privacyPolicyHtml, communityGuidelinesHtml };
+module.exports = { termsOfServiceHtml, privacyPolicyHtml, purchaseTermsHtml, communityGuidelinesHtml };

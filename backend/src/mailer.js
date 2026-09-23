@@ -308,7 +308,7 @@ async function sendTrialExpiredEmail(user) {
   }
 }
 
-/** Premium: paid subscription activated (Paystack webhook). */
+/** Premium: paid subscription activated after Google Play verification. */
 async function sendPremiumActivatedEmail(user) {
   try {
     if (!configured()) return { ok: false, reason: "Brevo is not configured" };
@@ -331,7 +331,7 @@ async function sendPremiumActivatedEmail(user) {
   }
 }
 
-/** Premium: a subscription payment attempt failed (Paystack charge.failed). */
+/** Legacy payment-failure email helper, retained for prior billing records. */
 async function sendPremiumPaymentFailedEmail(user, { reason } = {}) {
   try {
     if (!configured()) return { ok: false, reason: "Brevo is not configured" };

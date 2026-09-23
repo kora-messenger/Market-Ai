@@ -3,15 +3,14 @@
  * Runs server-side so the app holds zero AI provider keys.
  */
 const express = require("express");
-const crypto = require("crypto");
 const { OAuth2Client, GoogleAuth } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
 const monetization = require("./src/monetization");
 const appVersion = require("./src/appVersion");
-const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumPaymentFailedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
-const { termsOfServiceHtml, privacyPolicyHtml, communityGuidelinesHtml } = require("./src/legalPages");
+const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
+const { termsOfServiceHtml, privacyPolicyHtml, purchaseTermsHtml, communityGuidelinesHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
 const { runAlertCron, holidayForToday } = require("./src/marketAlerts");
@@ -24,11 +23,7 @@ const r2 = require("./src/r2");
 
 const app = express();
 
-// --- Paystack webhook: registered before the global JSON parser because the
-// signature is an HMAC-SHA512 over the RAW request body. Route-level raw
-// body parser only applies if it runs first, which it does here. ---
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
-const SUBSCRIBE_URL = process.env.SUBSCRIBE_URL || "https://market-ai-api-jwfb.onrender.com/subscribe";
+// --- Subscriptions: Google Play Billing is the only payment method. ---
 const SUB_CURRENCY = (process.env.SUB_CURRENCY || "USD").toUpperCase();
 const SUB_PRICE = Number(process.env.SUB_PRICE || "9.99"); // price per month, 2 decimals
 // Yearly Premium — defaults to 10% off the monthly price x 12, e.g.
@@ -53,7 +48,7 @@ function subPlanForProductId(productId) {
   return productId === "premium-yearly" ? "yearly" : "monthly";
 }
 
-// --- Google Play Billing (the Play-Store-native way to subscribe) ---
+// --- Google Play Billing (the only way to subscribe) ---
 // Requires a Google Play service account key + the app's package name, and
 // the matching subscription product must exist in Play Console.
 const GOOGLE_PLAY_PACKAGE_NAME = process.env.GOOGLE_PLAY_PACKAGE_NAME || "";
@@ -61,112 +56,6 @@ const GOOGLE_PLAY_SERVICE_ACCOUNT_JSON = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT
 const GOOGLE_PLAY_SUBSCRIPTION_IDS = String(process.env.GOOGLE_PLAY_SUBSCRIPTION_IDS || "premium-monthly,premium-yearly")
   .split(",").map(s => s.trim()).filter(Boolean);
 const googlePlayBillingReady = Boolean(GOOGLE_PLAY_PACKAGE_NAME) && Boolean(GOOGLE_PLAY_SERVICE_ACCOUNT_JSON);
-
-app.post("/api/subscription/webhook", express.raw({ type: "*/*", limit: "1mb" }), async (req, res) => {
-  if (!PAYSTACK_SECRET_KEY) {
-    // Payments not live yet — nothing to process. Answer 200 so Paystack doesn't retry forever.
-    return res.sendStatus(200);
-  }
-  try {
-    const signature = req.headers["x-paystack-signature"] || "";
-    const expected = crypto.createHmac("sha512", PAYSTACK_SECRET_KEY).update(req.body).digest("hex");
-    if (signature !== expected) {
-      return res.status(401).json({ error: "Invalid signature" });
-    }
-    const event = JSON.parse(req.body.toString("utf8"));
-    if (event.event === "charge.success" && event.data && event.data.reference) {
-      // Never trust the webhook payload alone — verify the transaction with Paystack.
-      const vRes = await fetch(
-        `https://api.paystack.co/transaction/verify/${encodeURIComponent(event.data.reference)}`,
-        { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`, Accept: "application/json" } }
-      );
-      const vBody = await vRes.json().catch(() => ({}));
-      const data = vBody && vBody.data;
-      if (vRes.ok && data && data.status === "success") {
-        const googleSub = data.metadata && data.metadata.google_sub;
-        // Which plan the user chose at checkout ("monthly" | "yearly"),
-        // passed through Paystack metadata — defaults to monthly for older
-        // clients or transactions started before this field existed.
-        const paidPlan = data.metadata && data.metadata.plan === "yearly" ? "yearly" : "monthly";
-        const amount = typeof data.amount === "number" ? data.amount : null;
-        const currency = data.currency || SUB_CURRENCY;
-        if (pool && googleSub) {
-          const { rows } = await pool.query(
-            `SELECT id, email, name, is_premium FROM users WHERE google_sub = $1`,
-            [googleSub]
-          );
-          if (rows.length) {
-            await pool.query(
-              `INSERT INTO subscription_payments (user_id, reference, amount, currency, status, paid_at)
-               VALUES ($1, $2, $3, $4, 'success', now())
-               ON CONFLICT (reference) DO NOTHING`,
-              [rows[0].id, data.reference, amount, currency]
-            );
-            const wasPremium = Boolean(rows[0].is_premium);
-            await pool.query(
-              `UPDATE users
-                 SET is_premium = true,
-                     premium_started_at = COALESCE(premium_started_at, now()),
-                     premium_platform = 'paystack',
-                     premium_plan = $2
-               WHERE id = $1`,
-              [rows[0].id, paidPlan]
-            );
-            console.log(`[subscription] premium activated for google_sub ${googleSub} (ref ${data.reference})`);
-            // Confirmation the moment activation is real: email + in-app +
-            // push. The push deep-links straight into the Notifications
-            // screen, scrolled to this exact message (via notificationId,
-            // attached automatically by notifyUser).
-            if (!wasPremium) {
-              sendPremiumActivatedEmail({ email: rows[0].email, name: rows[0].name }).catch(() => {});
-              notifyUser(rows[0].id, {
-                title: "Premium activated \u2014 welcome to MarketScope AI Premium",
-                body: "Your subscription payment was successful. You now have unlimited AI analysis, the full Daily Signals history and zero ads.",
-                type: "billing",
-                data: { type: "billing", route: "notifications" }
-              }).catch(() => {});
-            }
-          }
-        }
-      }
-    } else if (event.event === "charge.failed" && event.data && event.data.reference) {
-      // A failed charge attempt — no re-verification needed (nothing to
-      // activate), but still confirm the signature-matched payload before
-      // acting on it, which the HMAC check above already did.
-      const data = event.data;
-      const googleSub = data.metadata && data.metadata.google_sub;
-      const amount = typeof data.amount === "number" ? data.amount : null;
-      const currency = data.currency || SUB_CURRENCY;
-      const failReason = data.gateway_response || "The payment was declined.";
-      if (pool && googleSub) {
-        const { rows } = await pool.query(
-          `SELECT id, email, name FROM users WHERE google_sub = $1`,
-          [googleSub]
-        );
-        if (rows.length) {
-          await pool.query(
-            `INSERT INTO subscription_payments (user_id, reference, amount, currency, status, paid_at)
-             VALUES ($1, $2, $3, $4, 'failed', now())
-             ON CONFLICT (reference) DO NOTHING`,
-            [rows[0].id, data.reference, amount, currency]
-          );
-          console.log(`[subscription] payment failed for google_sub ${googleSub} (ref ${data.reference}): ${failReason}`);
-          sendPremiumPaymentFailedEmail({ email: rows[0].email, name: rows[0].name }, { reason: failReason }).catch(() => {});
-          notifyUser(rows[0].id, {
-            title: "Payment failed \u2014 MarketScope AI Premium",
-            body: `Your subscription payment did not go through (${failReason}). No charge was made. You can try again from the Subscribe screen.`,
-            type: "billing",
-            data: { type: "billing", route: "notifications" }
-          }).catch(() => {});
-        }
-      }
-    }
-    return res.sendStatus(200);
-  } catch (err) {
-    console.error("[subscription] webhook error:", String(err.message || err));
-    return res.sendStatus(200); // Paystack retries on non-2xx; log instead of failing
-  }
-});
 
 // CORS for the public marketing site (marketscope-site on GitHub Pages):
 // the site fetches read-only public endpoints (watchlist ticker, community
@@ -858,11 +747,12 @@ async function analysisUsage(userId) {
 }
 
 /**
- * A paid subscription only counts while it hasn't lapsed. Paystack
- * subscriptions (and legacy accounts) have no expiry — sticky forever, as
- * before. Google Play subscriptions carry the Play-provided renewal date in
- * premium_expires_at and lapse when it passes (Play bills the renewal, and
- * the app re-verifies the purchase on resume).
+ * A paid subscription only counts while it hasn't lapsed. Legacy Paystack
+ * subscriptions (kept for existing customers; new subscriptions are Google
+ * Play only) have no expiry — sticky forever, as before. Google Play
+ * subscriptions carry the Play-provided renewal date in premium_expires_at
+ * and lapse when it passes (Play bills the renewal, and the app re-verifies
+ * the purchase on resume).
  */
 function paidPremiumActive(row) {
   if (!row || !row.is_premium) return false;
@@ -887,7 +777,7 @@ function trialInfo(row) {
 
 // --- Central Premium entitlement -----------------------------------------
 // A user has EFFECTIVE Premium when at least ONE of these holds:
-//   * a paid subscription (users.is_premium, set by the Paystack webhook)
+//   * a paid subscription (users.is_premium, set by Google Play verification)
 //   * an active 7-day trial (trialInfo above)
 //   * an active administrator-granted Premium (premium_grants: lifetime =
 //     never expires; months/years = until expires_at)
@@ -951,6 +841,9 @@ app.get("/terms", (_req, res) => {
 });
 app.get("/privacy", (_req, res) => {
   res.set("Content-Type", "text/html; charset=utf-8").send(privacyPolicyHtml());
+});
+app.get("/purchase-terms", (_req, res) => {
+  res.set("Content-Type", "text/html; charset=utf-8").send(purchaseTermsHtml());
 });
 app.get("/community-guidelines", (_req, res) => {
   res.set("Content-Type", "text/html; charset=utf-8").send(communityGuidelinesHtml());
@@ -1769,7 +1662,7 @@ app.post("/api/presence/ping", requireAuth, async (req, res) => {
 // inspect, grant or revoke Premium. Premium entitlement never changes a
 // community role and never grants posting or role-management permissions. Grants are
 // database-backed entitlements (premium_grants), fully separate from paid
-// subscriptions (users.is_premium / Paystack) — revoking a grant never touches
+// subscriptions (users.is_premium) — revoking a grant never touches
 // a paid subscription; effective access is always recalculated from ALL
 // entitlement sources.
 
@@ -2434,12 +2327,9 @@ app.get("/api/subscription/plans", async (_req, res) => {
   const rewardBonus = cfg.rewarded?.bonusPerReward || 1;
   res.json({
     currency: SUB_CURRENCY,
-    paymentsReady: Boolean(PAYSTACK_SECRET_KEY),
-    // How this account can actually pay, so the app can offer exactly what
-    // works right now — Google Play Billing (Play-Store-native) and/or
-    // Paystack (card/bank/USSD in the browser).
+    paymentsReady: googlePlayBillingReady,
+    // Google Play Billing is the only payment method the app offers.
     paymentMethods: {
-      paystack: Boolean(PAYSTACK_SECRET_KEY),
       googlePlay: {
         enabled: googlePlayBillingReady,
         productIds: GOOGLE_PLAY_SUBSCRIPTION_IDS
@@ -2476,9 +2366,9 @@ app.get("/api/subscription/plans", async (_req, res) => {
           "Everything in Free"
         ],
         // Two real billing choices — Monthly and Yearly (10% cheaper than
-        // paying monthly for 12 months). Both are backed by an actually
-        // charge-able path: Paystack always, Google Play once its matching
-        // product id is live in Play Console (see paymentMethods.googlePlay).
+        // paying monthly for 12 months), both purchased through Google Play
+        // Billing once each product id is live in Play Console (see
+        // paymentMethods.googlePlay).
         billingOptions: [
           {
             id: "monthly",
@@ -2503,68 +2393,14 @@ app.get("/api/subscription/plans", async (_req, res) => {
   });
 });
 
-// --- Subscription: start a Paystack checkout (Premium, real payment) ---
-app.post("/api/subscription/checkout", requireAuth, async (req, res) => {
-  if (!PAYSTACK_SECRET_KEY) {
-    return res.status(503).json({
-      error: "Subscriptions are being activated right now. We'll notify you in the app the moment payments go live \u2014 thank you for your patience!"
-    });
-  }
-  if (!pool) {
-    return res.status(503).json({ error: "Database is not configured." });
-  }
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, email FROM users WHERE google_sub = $1`,
-      [req.session.sub]
-    );
-    if (!rows.length || !rows[0].email) {
-      return res.status(400).json({ error: "No email address on your account \u2014 needed for secure checkout." });
-    }
-    // Which plan the user picked on the Subscribe screen — "monthly" (default,
-    // for older clients too) or "yearly".
-    const requestedPlan = (req.body && req.body.plan) === "yearly" ? "yearly" : "monthly";
-    const pricing = subPlanPricing(requestedPlan);
-    const reference = `msa-${req.session.sub.slice(0, 12)}-${Date.now()}`;
-    const initRes = await fetch("https://api.paystack.co/transaction/initialize", {
-      method: "POST",
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify({
-        email: rows[0].email,
-        amount: Math.round(pricing.price * 100), // Paystack uses minor units
-        currency: SUB_CURRENCY,
-        reference,
-        callback_url: `${SUBSCRIBE_URL}?payment=done`,
-        metadata: { google_sub: req.session.sub, plan: pricing.planId }
-      })
-    });
-    const body = await initRes.json().catch(() => ({}));
-    if (!initRes.ok || !(body && body.data && body.data.authorization_url)) {
-      return res.status(502).json({ error: "Could not start checkout right now. Please try again shortly." });
-    }
-    return res.json({
-      authorizationUrl: body.data.authorization_url,
-      reference: body.data.reference
-    });
-  } catch (err) {
-    return res.status(502).json({ error: "Could not start checkout right now.", detail: String(err.message || err) });
-  }
-});
-
 // --- Google Play Billing: verify a Play Store subscription purchase and
 // activate Premium. The app sends the purchase token straight from the
 // Billing Library; the server verifies it against Google's Play Developer
-// API with the service account — the client is never the authority, exactly
-// like the Paystack webhook path.
+// API with the service account — the client is never the authority.
 app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) => {
   if (!googlePlayBillingReady) {
     return res.status(503).json({
-      error: "Google Play subscriptions are being activated right now. You can subscribe with Paystack in the meantime \u2014 thank you for your patience!"
+      error: "Google Play subscriptions are being activated right now. We'll notify you in the app the moment payments go live \u2014 thank you for your patience!"
     });
   }
   if (!pool) {
@@ -2606,8 +2442,11 @@ app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) =
     }
 
     const state = gpBody.subscriptionState;
-    // Active or in grace = keep premium until the current period's expiry.
-    const activeNow = state === "SUBSCRIPTION_STATE_ACTIVE" || state === "SUBSCRIPTION_STATE_IN_GRACE";
+    // A user who canceled renewal keeps Premium through the paid period.
+    // Pending/expired/on-hold subscriptions do not grant access.
+    const activeNow = state === "SUBSCRIPTION_STATE_ACTIVE" ||
+      state === "SUBSCRIPTION_STATE_IN_GRACE" ||
+      state === "SUBSCRIPTION_STATE_CANCELED";
     // Latest period's expiry — lineItems are ordered, last line item's
     // expiryTime is the end of the currently paid period.
     let premiumUntil = null;
@@ -2616,10 +2455,16 @@ app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) =
       if (item.expiryTime) premiumUntil = new Date(item.expiryTime);
     }
 
-    if (!activeNow || !premiumUntil) {
+    // The client-supplied product id cannot determine the plan by itself.
+    // Match it against the subscription returned by Google's own API.
+    if (!items.some(item => item.productId === productId)) {
+      return res.status(400).json({ error: "Purchase does not match the selected Google Play plan." });
+    }
+
+    if (!activeNow || !premiumUntil || Number.isNaN(premiumUntil.getTime()) || premiumUntil.getTime() <= Date.now()) {
       // Purchase exists but isn't active (expired, canceled, pending).
       // If this user's premium came from this Google subscription, lapse it
-      // honestly; never touch Paystack/admin-granted premium.
+      // honestly; never touch legacy Paystack/admin-granted premium.
       if (user.is_premium) {
         const { rows: cur } = await pool.query(
           `SELECT premium_platform, premium_purchase_token FROM users WHERE id = $1`,
@@ -2639,6 +2484,15 @@ app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) =
         }
       }
       return res.json({ active: false, premiumUntil: null });
+    }
+
+    // A purchase token must not grant Premium to more than one account.
+    const existingPurchase = await pool.query(
+      `SELECT user_id FROM subscription_payments WHERE reference = $1 LIMIT 1`,
+      [purchaseToken]
+    );
+    if (existingPurchase.rows.length && String(existingPurchase.rows[0].user_id) !== String(user.id)) {
+      return res.status(409).json({ error: "This subscription is linked to another account. Contact support for help." });
     }
 
     // Verified active subscription — record the payment and activate.
@@ -2950,7 +2804,7 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
     }
     // Google Play subscriptions lapse when their renewal date passes — the
     // moment any request sees an expired one, drop it so the user gets the
-    // honest free tier until they renew. (Paystack rows have no expiry and
+    // honest free tier until they renew. (Legacy Paystack rows have no expiry and
     // stay sticky as before.)
     if (
       rows[0].is_premium &&

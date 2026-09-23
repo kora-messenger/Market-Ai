@@ -1,7 +1,5 @@
 package com.veltravia.marketscopeai.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,8 +40,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -101,6 +105,7 @@ fun SubscribeScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
 
     val sessionToken = remember { SessionManager.sessionToken(context) }
@@ -133,15 +138,10 @@ fun SubscribeScreen(
     var effectivePremium by remember { mutableStateOf(SessionManager.effectivePremium(context)) }
     var planTrailingLabel by remember { mutableStateOf(SessionManager.planLabel(context) ?: "Premium") }
     var statusMessage by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
 
-    // Which payment methods the backend actually has configured — the screen
-    // offers exactly what works right now: Google Play Billing (Play-native,
-    // requires the app to be installed from the Play Store) and/or Paystack
-    // (card/bank/USSD in the browser).
-    var paystackReady by remember { mutableStateOf(false) }
+    // Google Play Billing is the only payment method. It requires a Play
+    // installation and a configured subscription product.
     var googlePlayEnabled by remember { mutableStateOf(false) }
-    var googlePlayProductId by remember { mutableStateOf<String?>(null) }
     var googleBusy by remember { mutableStateOf(false) }
 
     // Google Play Billing wrapper — one instance for this screen's lifetime.
@@ -220,50 +220,27 @@ fun SubscribeScreen(
         val productId = premiumPlan?.billingOptions
             ?.firstOrNull { it.id == selectedBilling }
             ?.productId
-            ?: googlePlayProductId
             ?: return
+        if (!googlePlayEnabled || productId !in allowedGooglePlayIds) return
         val activity = context as? android.app.Activity ?: return
         googleBusy = true
         statusMessage = null
         billingHelper.connect { ready ->
             if (!ready) {
                 googleBusy = false
-                statusMessage = "Google Play billing isn't available on this device or installation. You can pay with Paystack instead."
+                statusMessage = "Google Play billing isn't available on this device or installation. Install the app from Google Play and try again."
                 return@connect
             }
             scope.launch {
                 val details = billingHelper.querySubscription(productId)
                 if (details == null) {
                     googleBusy = false
-                    statusMessage = "The Premium subscription isn't available to you on Google Play yet (it can take a while to appear if the app wasn't installed from the Play Store). You can pay with Paystack instead."
+                    statusMessage = "This Premium plan isn't available in Google Play yet. Check that the app was installed from Google Play, or try again later."
                 } else {
                     // googleBusy stays true until the sheet closes and the
                     // purchase is verified (or the user cancels).
                     billingHelper.launchPurchase(activity, details)
                 }
-            }
-        }
-    }
-
-    // --- Paystack checkout: browser page (card, bank transfer or USSD) ---
-    fun startPaystackCheckout() {
-        val token = sessionToken ?: return
-        busy = true
-        statusMessage = null
-        scope.launch {
-            try {
-                val checkout = ApiClient.startSubscriptionCheckout(token, selectedBilling)
-                val url = checkout.optString("authorizationUrl", "")
-                busy = false
-                if (url.isNotBlank()) {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                } else {
-                    statusMessage = "Checkout could not start. Please try again."
-                }
-            } catch (e: Exception) {
-                busy = false
-                // The server's honest message (e.g. payments not live yet).
-                statusMessage = e.message ?: "Checkout could not start. Please try again."
             }
         }
     }
@@ -274,7 +251,6 @@ fun SubscribeScreen(
             val plans = ApiClient.fetchSubscriptionPlans()
             planCurrency = plans.optString("currency", planCurrency).uppercase()
             val methods = plans.optJSONObject("paymentMethods")
-            paystackReady = methods?.optBoolean("paystack", false) ?: false
             var playIds = setOf<String>()
             methods?.optJSONObject("googlePlay")?.let { gp ->
                 googlePlayEnabled = gp.optBoolean("enabled", false)
@@ -283,7 +259,6 @@ fun SubscribeScreen(
                     (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() && it != "null" }
                 } ?: emptyList()
                 playIds = allIds.toSet()
-                googlePlayProductId = if (googlePlayEnabled) allIds.firstOrNull() else null
             }
             allowedGooglePlayIds = playIds
             val arr = plans.optJSONArray("plans") ?: org.json.JSONArray()
@@ -331,10 +306,7 @@ fun SubscribeScreen(
         }
     }
 
-    // After returning from the Paystack checkout page in the browser, check
-    // whether the payment landed — this is the real confirmation path.
-    // (The webhook already emails + pushes the outcome; this is just the
-    // in-screen state refresh for whoever is still looking at the app.)
+    // Refresh entitlement when the app resumes after Google Play checkout.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -580,51 +552,52 @@ fun SubscribeScreen(
                         val selectedProductId = premiumPlan?.billingOptions
                             ?.firstOrNull { it.id == selectedBilling }
                             ?.productId
-                            ?: googlePlayProductId
                         val playAvailableForSelection = googlePlayEnabled &&
                             selectedProductId != null &&
-                            (allowedGooglePlayIds.isEmpty() || allowedGooglePlayIds.contains(selectedProductId))
+                            selectedProductId in allowedGooglePlayIds
 
-                        // Both methods configured: Google Play as the primary
-                        // (Play-Store-native, billed to the Google account),
-                        // Paystack as the alternative (card/bank/USSD).
                         if (playAvailableForSelection) {
                             GradientPrimaryButton(
                                 text = "Subscribe with Google Play",
-                                enabled = !googleBusy && !busy,
+                                enabled = !googleBusy,
                                 loading = googleBusy,
                                 height = 54.dp,
                                 onClick = { startGooglePlayCheckout() }
                             )
-                            if (paystackReady) {
-                                Spacer(Modifier.height(10.dp))
-                                PremiumSecondaryButton(
-                                    text = "Pay with Paystack (card, bank or USSD)",
-                                    onClick = { startPaystackCheckout() },
-                                    height = 48.dp
-                                )
-                            }
                         } else {
-                            // Google Play not configured on the backend yet —
-                            // the Paystack path (with the server's honest
-                            // message if payments aren't live either).
+                            InfoBox("Google Play billing is not available for this plan yet. No payment will be taken.")
                             GradientPrimaryButton(
-                                text = "Subscribe & pay",
-                                enabled = !busy,
-                                loading = busy,
+                                text = "Subscribe with Google Play",
+                                enabled = false,
+                                loading = false,
                                 height = 54.dp,
-                                onClick = { startPaystackCheckout() }
+                                onClick = {}
                             )
                         }
 
                         Spacer(Modifier.height(10.dp))
 
-                        Text(
-                            "By subscribing, you agree to our Purchaser Terms. Google Play subscriptions renew through your Google account until you cancel in Play Store settings; Paystack subscriptions renew until you cancel. Cancel at least 24 hours before renewal to avoid additional charges. You'll get an email and an in-app notification the moment your payment succeeds or fails.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextMuted,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 4.dp)
+                        val purchasePrefix = "By subscribing, you agree to our "
+                        val purchaseLabel = "Purchase Terms"
+                        val billingNote = buildAnnotatedString {
+                            append(purchasePrefix)
+                            withStyle(SpanStyle(color = AccentViolet, textDecoration = TextDecoration.Underline)) {
+                                append(purchaseLabel)
+                            }
+                            append(". Google Play is our only payment method. Subscriptions renew automatically unless you cancel in Google Play before the next renewal. Google shows the final price before you confirm.")
+                        }
+                        ClickableText(
+                            text = billingNote,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = TextMuted,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            ),
+                            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp, end = 4.dp),
+                            onClick = { offset ->
+                                if (offset in purchasePrefix.length until purchasePrefix.length + purchaseLabel.length) {
+                                    uriHandler.openUri("${com.veltravia.marketscopeai.data.ApiConfig.BASE_URL}/purchase-terms")
+                                }
+                            }
                         )
 
                         Spacer(Modifier.height(12.dp))

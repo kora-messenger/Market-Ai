@@ -22,8 +22,8 @@ import com.android.billingclient.api.queryProductDetails
  * against Google's Play Developer API and activates Premium server-side —
  * then acknowledge the purchase with Google so it isn't refunded.
  *
- * The client is NEVER the authority on Premium: the server verifies every
- * token with Google, exactly like the Paystack webhook verifies every charge.
+ * The client is NEVER the authority on Premium: the server always verifies
+ * every purchase token directly with Google before activating anything.
  */
 class PlayBillingHelper(
     context: Context,

@@ -35,7 +35,7 @@ MarketScope AI Premium is a **central entitlement**, not a flag. A user has effe
 |---|---|---|
 | **Free** | default | 3 chart analyses per rolling 24h after the trial lapses; latest signal only |
 | **Trial** | `users.trial_started_at` (7 days) | Full Premium while active |
-| **Paid Premium** | `users.is_premium` (set by the Paystack `charge.success` webhook, verified server-side) | Full Premium; sticky until changed by the payment system |
+| **Paid Premium** | `users.is_premium` (set after Google Play purchase-token verification) | Full Premium until the verified subscription expires |
 | **Lifetime / Duration Premium** | `premium_grants` table (admin grant) | Full Premium until expiry; `lifetime` never expires until revoked |
 
 ### Database
@@ -53,7 +53,7 @@ All protected endpoints (`/api/trial/status`, `/api/analyze`, `/api/analyze/stoc
 - `GET /api/admin/premium/audit` — recent grant/revoke activity
 
 ### Grant flow
-Admin (Team Console → Premium management) searches a user, picks Lifetime / N months / N years + optional reason, confirms. The backend saves the entitlement, writes the audit row, then notifies the user by **email** (Brevo — "Congratulations, you've been given free Lifetime Premium… Expires: Lifetime / <date>") **and in-app notification + push** (FCM). Revoke notifies the user too, telling them whether they remain Premium. Subscription activation (Paystack) similarly emails "Your MarketScope AI Premium activation was successful" + in-app notification.
+Admin (Team Console → Premium management) searches a user, picks Lifetime / N months / N years + optional reason, confirms. The backend saves the entitlement, writes the audit row, then notifies the user by **email** (Brevo — "Congratulations, you've been given free Lifetime Premium… Expires: Lifetime / <date>") **and in-app notification + push** (FCM). Revoke notifies the user too, telling them whether they remain Premium. Subscription activation (Google Play) similarly emails "Your MarketScope AI Premium activation was successful" + in-app notification.
 
 ### Frontend
 - `AdminPremiumScreen` (route `premium_admin`) — search, user cards, premium status, grant dialog (duration + reason), revoke confirmation, Premium Activity feed. Loading/disabled states throughout; user IDs are never displayed.
