@@ -166,7 +166,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             .padding(horizontal = 20.dp)
     ) {
         TeamConsoleHeader(onBack, selectedTab, onSelectTab = { selectedTab = it })
-        if (selectedTab == 0) {
+        if (selectedTab == 2) {
         // ---------- overview dashboard ----------
         if (overview != null) {
             val ov = overview!!
@@ -367,6 +367,9 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(14.dp))
         }
 
+        } // Team overview & reviews
+
+        if (selectedTab == 0) {
         // ---------- publish form ----------
         Text("Publish new signal", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
         Spacer(Modifier.height(10.dp))
@@ -538,7 +541,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
         }
         Spacer(Modifier.height(28.dp))
 
-        } // Signals & reviews tab
+        } // Signals tab
 
         if (selectedTab == 2) {
         // ---------- members & roles (mentor manager) ----------
@@ -593,7 +596,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
         }
 
-        } // Members & roles tab
+        } // Team tab
         Spacer(Modifier.height(32.dp))
     }
 
@@ -649,9 +652,9 @@ internal fun TeamConsoleHeader(onBack: () -> Unit, selectedTab: Int, onSelectTab
     }
     Text(
         when (selectedTab) {
-            0 -> "Publish signals, review submissions and confirm manual closes."
+            0 -> "Publish signals and confirm manual closes."
             1 -> "Manage Premium grants and review the audit trail."
-            else -> "Find members and manage their community roles."
+            else -> "Overview, submission reviews and community roles."
         },
         style = MaterialTheme.typography.bodySmall,
         color = TextSecondary,
@@ -659,7 +662,7 @@ internal fun TeamConsoleHeader(onBack: () -> Unit, selectedTab: Int, onSelectTab
     )
     Spacer(Modifier.height(16.dp))
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf("Signals", "Premium", "Members").forEachIndexed { index, title ->
+        listOf("Signals", "Premium", "Team").forEachIndexed { index, title ->
             val active = selectedTab == index
             Button(
                 onClick = { onSelectTab(index) },
