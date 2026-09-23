@@ -1347,7 +1347,28 @@ object ApiClient {
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/account/delete-request/cancel")
             .addHeader("Authorization", "Bearer $sessionToken")
-            .post("".toRequestBody(null))
+            .post("{}".toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** My referral code/link plus everyone I've referred, with reward status. */
+    suspend fun fetchReferrals(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/referrals")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Manually applies someone else's invite code to my account (signup grace window only). */
+    suspend fun applyReferralCode(sessionToken: String, code: String): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("code", code)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/referrals/apply")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .build()
         request(request)
     }

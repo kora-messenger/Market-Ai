@@ -114,6 +114,7 @@ fun ProfileScreen(
     onOpenRiskCalculator: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSubscribe: () -> Unit,
+    onOpenReferrals: () -> Unit,
     onOpenBugReport: () -> Unit = {},
     onViewSavedTradePlans: () -> Unit,
     onEditTradingProfile: () -> Unit = {}
@@ -266,16 +267,7 @@ fun ProfileScreen(
                 profileError = null
                 showHandleDialog = true
             },
-            onInvite = {
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(
-                        Intent.EXTRA_TEXT,
-                        "I'm using MarketScope AI to analyze my trades with AI — check it out: ${ApiConfig.BASE_URL}"
-                    )
-                }
-                context.startActivity(Intent.createChooser(send, "Invite friends to MarketScope AI"))
-            },
+            onInvite = onOpenReferrals,
             onUpgrade = onOpenSubscribe
         )
 
@@ -352,16 +344,7 @@ fun ProfileScreen(
                 icon = Icons.Filled.PersonAddAlt,
                 tint = AccentViolet,
                 label = "Invite friends",
-                onClick = {
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(
-                            Intent.EXTRA_TEXT,
-                            "I'm using MarketScope AI to analyze my trades with AI — check it out: ${ApiConfig.BASE_URL}"
-                        )
-                    }
-                    context.startActivity(Intent.createChooser(send, "Invite friends to MarketScope AI"))
-                },
+                onClick = onOpenReferrals,
                 showDivider = false
             )
         }

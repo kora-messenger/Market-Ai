@@ -90,6 +90,7 @@ import com.veltravia.marketscopeai.ui.screens.SubscribeScreen
 import com.veltravia.marketscopeai.ui.screens.SignalCardScreen
 import com.veltravia.marketscopeai.ui.screens.StockBatchResultScreen
 import com.veltravia.marketscopeai.ui.screens.ProfileScreen
+import com.veltravia.marketscopeai.ui.screens.ReferralScreen
 import com.veltravia.marketscopeai.ui.screens.ScreenshotGuideScreen
 import com.veltravia.marketscopeai.ui.screens.QuestionnaireScreen
 import com.veltravia.marketscopeai.ui.screens.MarketViewScreen
@@ -498,6 +499,9 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable("referrals") {
+            ReferralScreen(onBack = { navController.popBackStack() })
+        }
         composable(
             "notifications?highlightId={highlightId}",
             arguments = listOf(
@@ -761,6 +765,7 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
                     onOpenNotifications = { navController.navigate("notifications") },
                     onOpenSubscribe = { navController.navigate("subscribe") },
+                    onOpenReferrals = { navController.navigate("referrals") },
                     onOpenBugReport = { navController.navigate("report_bug") },
                     onViewSavedTradePlans = { currentTab = 3 },
                     onEditTradingProfile = { navController.navigate("questionnaire_edit") }

@@ -21,6 +21,7 @@ const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar")
 const { searchStock, bestMatch, fetchStockStats, searchNgxIpo } = require("./src/stocks");
 const r2 = require("./src/r2");
 const { processExpiredDeletions } = require("./src/accountDeletion");
+const referrals = require("./src/referrals");
 
 const app = express();
 
@@ -398,6 +399,7 @@ async function initDb() {
     console.warn("[db] username unique index skipped:", String(e.message || e));
   }
   await monetization.ensureMonetizationTables(pool);
+  await referrals.ensureReferralColumns(pool);
   await appVersion.ensureAppVersionTable(pool);
   if (introducingQuestionnaire) {
     await pool.query(
@@ -734,6 +736,7 @@ async function initDb() {
   `);
 }
 
+const PUBLIC_API_BASE_URL = process.env.PUBLIC_API_BASE_URL || "https://market-ai-api-jwfb.onrender.com";
 const TRIAL_DAYS = 7;
 
 // Free-tier chart-analysis allowance per rolling 24h once the 7-day trial
@@ -804,11 +807,24 @@ async function hasActivePremiumGrant(userId) {
   return Boolean(await getActivePremiumGrant(userId));
 }
 
+/** Partially hides an email for display to someone who isn't its owner,
+ *  e.g. "john.doe@gmail.com" -> "jo***@gmail.com". */
+function maskEmail(email) {
+  const value = String(email || "");
+  const at = value.indexOf("@");
+  if (at <= 0) return value ? "***" : "";
+  const local = value.slice(0, at);
+  const domain = value.slice(at);
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}***${domain}`;
+}
+
 /** Label for a grant, e.g. "Lifetime Premium", "3 months Premium". */
 function premiumGrantLabel(grant) {
   if (!grant) return null;
   if (grant.duration_type === "lifetime") return "Lifetime Premium";
-  return `${grant.duration_count} ${grant.duration_type === "months" ? (grant.duration_count === 1 ? "month" : "months") : (grant.duration_count === 1 ? "year" : "years")} Premium`;
+  const unit = grant.duration_type === "days" ? "day" : grant.duration_type === "months" ? "month" : "year";
+  return `${grant.duration_count} ${unit}${grant.duration_count === 1 ? "" : "s"} Premium`;
 }
 
 // --- Session auth middleware: verifies the Bearer session JWT issued at /api/auth/google ---
@@ -901,6 +917,7 @@ app.post("/api/auth/google", async (req, res) => {
     });
   }
   const { idToken } = req.body || {};
+  const referralCodeInput = String((req.body && req.body.referralCode) || "").trim();
   if (!idToken || typeof idToken !== "string") {
     return res.status(400).json({ error: "idToken is required" });
   }
@@ -936,6 +953,12 @@ app.post("/api/auth/google", async (req, res) => {
         [payload.sub, user.email, user.name, user.picture]
       );
       isNewUser = Boolean(rows[0].inserted_new);
+      if (isNewUser) {
+        await referrals.assignReferralCode(pool, rows[0].id);
+        if (referralCodeInput) {
+          await referrals.applyReferralCode(pool, { userId: rows[0].id, code: referralCodeInput });
+        }
+      }
       const questionnaireCompleted = rows[0].questionnaire_completed_at != null;
       // Admin emails are promoted to a persistent role (drives the Admin
       // badge in the community and lets admins post links un-checked).
@@ -1287,6 +1310,88 @@ app.get("/api/account/status", requireAuth, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: "Could not load account status", detail: String(err.message || err) });
   }
+});
+
+// --- Referrals ---
+// GET: my code/link + everyone I've referred, with their reward status.
+app.get("/api/referrals", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows: meRows } = await pool.query(`SELECT id, referral_code FROM users WHERE google_sub = $1`, [req.session.sub]);
+    if (!meRows.length) return res.status(404).json({ error: "User not found" });
+    let me = meRows[0];
+    if (!me.referral_code) {
+      me.referral_code = await referrals.assignReferralCode(pool, me.id);
+    }
+    const { rows } = await pool.query(
+      `SELECT id, name, email, picture, created_at, referral_analysis_rewarded_at, referral_subscription_rewarded_at
+       FROM users WHERE referred_by = $1 ORDER BY created_at DESC LIMIT 200`,
+      [me.id]
+    );
+    const referredList = rows.map((r) => ({
+      name: r.name || "Trader",
+      email: maskEmail(r.email),
+      joinedAt: r.created_at,
+      status: r.referral_subscription_rewarded_at ? "subscribed" : r.referral_analysis_rewarded_at ? "analyzed" : "registered",
+      earnedDays: (r.referral_analysis_rewarded_at ? referrals.ANALYSIS_BONUS_DAYS : 0)
+        + (r.referral_subscription_rewarded_at ? referrals.SUBSCRIPTION_BONUS_DAYS : 0)
+    }));
+    return res.json({
+      code: me.referral_code,
+      link: `${PUBLIC_API_BASE_URL}/invite/${me.referral_code}`,
+      analysisBonusDays: referrals.ANALYSIS_BONUS_DAYS,
+      subscriptionBonusDays: referrals.SUBSCRIPTION_BONUS_DAYS,
+      totalReferrals: referredList.length,
+      referrals: referredList
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not load your referrals", detail: String(err.message || err) });
+  }
+});
+
+// POST: manually enter someone else's code (deep-link/App-Link capture that
+// arrives after sign-in, or a user just typing it in). Only works within
+// the signup grace window and only if not already attributed to someone.
+app.post("/api/referrals/apply", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const code = String((req.body && req.body.code) || "").trim();
+  if (!code) return res.status(400).json({ error: "Enter an invite code first." });
+  try {
+    const { rows: meRows } = await pool.query(`SELECT id FROM users WHERE google_sub = $1`, [req.session.sub]);
+    if (!meRows.length) return res.status(404).json({ error: "User not found" });
+    const result = await referrals.applyReferralCode(pool, {
+      userId: meRows[0].id,
+      code,
+      requireWithinSignupWindow: true
+    });
+    if (!result.applied) {
+      const messages = {
+        self: "You can't use your own invite code.",
+        invalid_code: "That invite code doesn't match any account.",
+        already_attributed: "An invite code is already linked to your account.",
+        window_expired: "This code can only be entered within your first 7 days on MarketScope AI.",
+        already_active: "An invite code must be entered before your first analysis or subscription.",
+        empty: "Enter an invite code first.",
+        no_user: "User not found."
+      };
+      return res.status(400).json({ error: messages[result.reason] || "Could not apply that invite code." });
+    }
+    return res.json({ applied: true });
+  } catch (err) {
+    return res.status(500).json({ error: "Could not apply that invite code", detail: String(err.message || err) });
+  }
+});
+
+// Public web landing for a shared invite link (no auth — this is what a
+// browser opens before the app is even installed).
+app.get("/invite/:code", async (req, res) => {
+  const code = String(req.params.code || "").toUpperCase();
+  if (!pool || !/^[2-9A-HJ-NP-Z]{7}$/.test(code)) return res.sendStatus(404);
+  try {
+    const { rowCount } = await pool.query(`SELECT id FROM users WHERE referral_code = $1`, [code]);
+    if (!rowCount) return res.sendStatus(404);
+    res.set("Content-Type", "text/html; charset=utf-8").send(referrals.renderInviteLandingHtml(code));
+  } catch (err) { res.sendStatus(503); }
 });
 
 app.post("/api/account/delete-request", requireAuth, async (req, res) => {
@@ -2556,6 +2661,7 @@ app.post("/api/subscription/google-play/verify", requireAuth, async (req, res) =
         data: { type: "billing", route: "notifications" }
       }).catch(() => {});
     }
+    await referrals.rewardFirstSubscription(pool, user.id);
     return res.json({ active: true, premiumUntil: premiumUntil.toISOString() });
   } catch (err) {
     return res.status(502).json({ error: "Could not verify this purchase right now. Please try again shortly.", detail: String(err.message || err) });
@@ -3210,6 +3316,7 @@ Respond ONLY with JSON:
       [userRow.id, instrument.id, enforcedMode, JSON.stringify(result)]
     );
     if (rows.length) result.id = rows[0].id;
+    await referrals.rewardFirstAnalysis(pool, userRow.id);
 
     return res.json({ ...result, ...trial });
   } catch (err) {
@@ -3713,6 +3820,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       [userRow.id, match.symbol, "stock", JSON.stringify(result)]
     );
     if (rows.length) result.id = rows[0].id;
+    await referrals.rewardFirstAnalysis(pool, userRow.id);
 
     return res.json({ ...result, ...trial });
   } catch (err) {

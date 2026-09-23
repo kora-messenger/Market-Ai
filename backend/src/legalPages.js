@@ -253,7 +253,8 @@ const PURCHASE_TERMS_SECTIONS = [
   {
     heading: "4. Free Trials",
     blocks: [
-      { type: "p", text: "New accounts may receive a free trial of Premium features. The account trial does not automatically start a paid Google Play subscription. You will only be charged if you separately confirm a purchase in Google Play. Any promotional billing trial offered by Google Play will show its conversion date and price before you confirm." }
+      { type: "p", text: "New accounts may receive a free trial of Premium features. The account trial does not automatically start a paid Google Play subscription. You will only be charged if you separately confirm a purchase in Google Play. Any promotional billing trial offered by Google Play will show its conversion date and price before you confirm." },
+      { type: "p", text: "Eligible referral bonuses add time-limited Premium access to the referrer's account: one day after a newly invited member completes their first analysis, and seven days after that member's first verified paid Google Play subscription. Each milestone is credited at most once per referred account. Bonus access never changes Google Play's billing date or cancels a subscription; if you already subscribe, bonus time starts after your current paid access. Promotional access is not cash, cannot be transferred, and does not confer community posting privileges." }
     ]
   },
   {
@@ -267,7 +268,7 @@ const PURCHASE_TERMS_SECTIONS = [
     heading: "6. Cancellation",
     blocks: [
       { type: "p", text: "You may cancel your subscription at any time from the Google Play Store app (Payments & subscriptions → MarketScope AI Premium → Cancel subscription), or from the Google Play website. Cancelling stops future renewals — it does not end your Premium access immediately." },
-      { type: "p", text: "After cancelling, you keep Premium access until the end of the billing period you already paid for. Your account then reverts to the free tier; no partial-period access is retained beyond that date." }
+      { type: "p", text: "After cancelling, you keep Premium access until the end of the billing period you already paid for. You then revert to the free tier unless separate promotional or referral Premium access remains active. No partial-period paid access is retained beyond that date." }
     ]
   },
   {
