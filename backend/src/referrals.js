@@ -74,7 +74,8 @@ async function applyReferralCode(pool, { userId, code, requireWithinSignupWindow
   // completed first analysis or an existing subscription retroactively.
   const { rows: eligibility } = await pool.query(
     `SELECT EXISTS(SELECT 1 FROM analyses WHERE user_id = $1) AS has_analysis,
-            EXISTS(SELECT 1 FROM subscription_payments WHERE user_id = $1 AND status = 'success') AS has_paid
+            (is_premium = true OR premium_started_at IS NOT NULL OR
+             EXISTS(SELECT 1 FROM subscription_payments WHERE user_id = $1 AND status = 'success')) AS has_paid
      FROM users WHERE id = $1`, [userId]
   );
   if (eligibility[0]?.has_analysis || eligibility[0]?.has_paid) return { applied: false, reason: "already_active" };
