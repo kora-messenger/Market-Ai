@@ -436,10 +436,6 @@ private fun TradeAnalysisBody(
         Toast.makeText(context, "Copied \"$value\"", Toast.LENGTH_SHORT).show()
     }
 
-    // --- SNAPSHOT grid ---
-    SectionHeader("SNAPSHOT")
-    Spacer(Modifier.height(10.dp))
-
     val trendLabel = when (direction) {
         "LONG" -> "Bullish"
         "SHORT" -> "Bearish"
@@ -456,58 +452,73 @@ private fun TradeAnalysisBody(
         else -> "Weak"
     }
 
-    // Row 1: TREND + TRADE IDEA
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        SnapshotCard(
-            title = "TREND", value = trendLabel, color = dirColor, weight = 1f, onCopy = { copy(trendLabel) },
-            icon = if (isLong) Icons.Filled.TrendingUp else Icons.Filled.TrendingDown
-        )
-        SnapshotCard(title = "TRADE IDEA", value = ideaLabel, color = dirColor, weight = 1f, onCopy = { copy(ideaLabel) })
-    }
-    Spacer(Modifier.height(10.dp))
-
-    if (!noTrade) {
-        val entryText = if (entryZone != null)
-            "${formatPrice(entryZone.optDouble("low"))} – ${formatPrice(entryZone.optDouble("high"))}"
-        else "—"
-        val initialTp = if (takeProfits != null && takeProfits.length() > 0) formatPrice(takeProfits.optDouble(0)) else "—"
-        val finalTp = if (takeProfits != null && takeProfits.length() > 0) formatPrice(takeProfits.optDouble(takeProfits.length() - 1)) else "—"
-
-        // Row 2: ENTRY + SL
+    if (isStock) {
+        // Stocks get their real exchange performance further down, so the
+        // trade-level snapshot (entry/SL/TP/RR) that forex and crypto rely
+        // on is redundant here — keep only the two verdict cards.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SnapshotCard(title = "ENTRY", value = entryText, weight = 1f, onCopy = { copy(entryText) })
-            SnapshotCard(title = "SL", value = formatPrice(stopLoss), color = BearRed, weight = 1f, onCopy = { copy(formatPrice(stopLoss)) })
-        }
-        Spacer(Modifier.height(10.dp))
-        // Row 3: INITIAL TP + FINAL TP
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SnapshotCard(title = "INITIAL TP", value = initialTp, color = BullGreen, weight = 1f, onCopy = { copy(initialTp) })
-            SnapshotCard(title = "FINAL TP", value = finalTp, color = BullGreen, weight = 1f, onCopy = { copy(finalTp) })
-        }
-        Spacer(Modifier.height(10.dp))
-        // Row 4: RR RATIO + STRENGTH
-        val rrText = if (rr > 0) "1 : ${trimNum(rr)}" else "—"
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SnapshotCard(title = "RR RATIO", value = rrText, weight = 1f, onCopy = { copy(rrText) })
             SnapshotCard(title = "STRENGTH", value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
+            SnapshotCard(title = "TRADE IDEA", value = ideaLabel, color = dirColor, weight = 1f, onCopy = { copy(ideaLabel) })
+        }
+        Spacer(Modifier.height(16.dp))
+    } else {
+        // --- SNAPSHOT grid (forex & crypto) ---
+        SectionHeader("SNAPSHOT")
+        Spacer(Modifier.height(10.dp))
+
+        // Row 1: TREND + TRADE IDEA
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            SnapshotCard(
+                title = "TREND", value = trendLabel, color = dirColor, weight = 1f, onCopy = { copy(trendLabel) },
+                icon = if (isLong) Icons.Filled.TrendingUp else Icons.Filled.TrendingDown
+            )
+            SnapshotCard(title = "TRADE IDEA", value = ideaLabel, color = dirColor, weight = 1f, onCopy = { copy(ideaLabel) })
         }
         Spacer(Modifier.height(10.dp))
-        // Row 5: ESTIMATE (real AI-generated duration)
-        if (estimatedDuration.isNotBlank()) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                SnapshotCard(title = "ESTIMATE", value = estimatedDuration, color = AccentCyan, weight = 1f, onCopy = { copy(estimatedDuration) })
+
+        if (!noTrade) {
+            val entryText = if (entryZone != null)
+                "${formatPrice(entryZone.optDouble("low"))} – ${formatPrice(entryZone.optDouble("high"))}"
+            else "—"
+            val initialTp = if (takeProfits != null && takeProfits.length() > 0) formatPrice(takeProfits.optDouble(0)) else "—"
+            val finalTp = if (takeProfits != null && takeProfits.length() > 0) formatPrice(takeProfits.optDouble(takeProfits.length() - 1)) else "—"
+
+            // Row 2: ENTRY + SL
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                SnapshotCard(title = "ENTRY", value = entryText, weight = 1f, onCopy = { copy(entryText) })
+                SnapshotCard(title = "SL", value = formatPrice(stopLoss), color = BearRed, weight = 1f, onCopy = { copy(formatPrice(stopLoss)) })
+            }
+            Spacer(Modifier.height(10.dp))
+            // Row 3: INITIAL TP + FINAL TP
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                SnapshotCard(title = "INITIAL TP", value = initialTp, color = BullGreen, weight = 1f, onCopy = { copy(initialTp) })
+                SnapshotCard(title = "FINAL TP", value = finalTp, color = BullGreen, weight = 1f, onCopy = { copy(finalTp) })
+            }
+            Spacer(Modifier.height(10.dp))
+            // Row 4: RR RATIO + STRENGTH
+            val rrText = if (rr > 0) "1 : ${trimNum(rr)}" else "—"
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                SnapshotCard(title = "RR RATIO", value = rrText, weight = 1f, onCopy = { copy(rrText) })
+                SnapshotCard(title = "STRENGTH", value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
+            }
+            Spacer(Modifier.height(10.dp))
+            // Row 5: ESTIMATE (real AI-generated duration)
+            if (estimatedDuration.isNotBlank()) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    SnapshotCard(title = "ESTIMATE", value = estimatedDuration, color = AccentCyan, weight = 1f, onCopy = { copy(estimatedDuration) })
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+        } else {
+            // NO_TRADE — show the derived labels but not fabricated trade levels.
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                SnapshotCard(title = "STRENGTH", value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
             }
             Spacer(Modifier.height(6.dp))
         }
-    } else {
-        // NO_TRADE — show the derived labels but not fabricated trade levels.
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SnapshotCard(title = "STRENGTH", value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
-        }
-        Spacer(Modifier.height(6.dp))
-    }
 
-    Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(16.dp))
+    }
 
     // --- MARKET PERFORMANCE (stocks only, real exchange data) — this is what
     // makes a stock result feel like a stock, not a reskinned forex card. ---
