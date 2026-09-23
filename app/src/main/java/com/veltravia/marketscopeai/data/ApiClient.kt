@@ -1332,6 +1332,29 @@ object ApiClient {
         request(request)
     }
 
+    /** Download the owner's custom avatar for private, offline first-paint caching. */
+    suspend fun downloadOwnAvatar(sessionToken: String, avatarUrl: String): ByteArray = withContext(Dispatchers.IO) {
+        require(avatarUrl.startsWith("${ApiConfig.BASE_URL}/api/profile/avatar/"))
+        val request = Request.Builder().url(avatarUrl.substringBefore("?v="))
+            .addHeader("Authorization", "Bearer $sessionToken").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw MarketAiException("Avatar unavailable")
+            val body = response.body ?: throw MarketAiException("Avatar unavailable")
+            if (body.contentLength() > 5 * 1024 * 1024) throw MarketAiException("Avatar exceeds cache limit")
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(8192)
+            body.byteStream().use { input ->
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    if (out.size() + n > 5 * 1024 * 1024) throw MarketAiException("Avatar exceeds cache limit")
+                    out.write(buf, 0, n)
+                }
+            }
+            out.toByteArray()
+        }
+    }
+
     /** Requests account deletion (support erases the account within 30 days; cancellable). */
     suspend fun requestAccountDeletion(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder()

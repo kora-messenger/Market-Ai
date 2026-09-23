@@ -80,6 +80,8 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.monetization.planDisplay
 import com.veltravia.marketscopeai.data.ApiConfig
 import com.veltravia.marketscopeai.data.SessionManager
+import com.veltravia.marketscopeai.data.AccountSnapshot
+import com.veltravia.marketscopeai.data.AccountSnapshotCache
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
@@ -124,15 +126,18 @@ fun ProfileScreen(
     val scope = rememberCoroutineScope()
     val token = SessionManager.sessionToken(context)
     val user = SessionManager.currentUser(context)
+    val cached = remember(user?.email) { user?.email?.let { AccountSnapshotCache.read(context, it) } }
 
-    var trialActive by remember { mutableStateOf(true) }
-    var trialDaysRemaining by remember { mutableStateOf(0) }
-    var isPremium by remember { mutableStateOf(false) }
-    var plan by remember { mutableStateOf("free") } // free | trial | premium | lifetime
+    var trialActive by remember(user?.email) { mutableStateOf(SessionManager.trialActive(context)) }
+    var trialDaysRemaining by remember(user?.email) { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
+    var isPremium by remember(user?.email) { mutableStateOf(SessionManager.isPremium(context)) }
+    var plan by remember(user?.email) { mutableStateOf(SessionManager.plan(context)) } // free | trial | premium | lifetime
     // Server-derived plan display (handles admin grants correctly, unlike
     // the raw isPremium flag which only reflects a PAID subscription).
-    var planEffectivePremium by remember { mutableStateOf(false) }
-    var planTrailingLabel by remember { mutableStateOf("Free") }
+    var planEffectivePremium by remember(user?.email) { mutableStateOf(SessionManager.effectivePremium(context)) }
+    var planTrailingLabel by remember(user?.email) {
+        mutableStateOf(SessionManager.planLabel(context) ?: if (SessionManager.effectivePremium(context)) "Premium" else "Free")
+    }
     var accountEmail by remember { mutableStateOf(user?.email ?: "") }
     var deletionRequestedAt by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -141,16 +146,26 @@ fun ProfileScreen(
     var shakeToReport by remember { mutableStateOf(SessionManager.shakeToReportBug(context)) }
 
     // Profile card (FxLens-style): public handle + custom avatar + real stats.
-    var username by remember { mutableStateOf<String?>(null) }
-    var myAvatarUrl by remember { mutableStateOf<String?>(null) }
-    var analysesCount by remember { mutableStateOf<Int?>(null) }
-    var savedTradesCount by remember { mutableStateOf<Int?>(null) }
-    var savedPlanCount by remember { mutableStateOf<Int?>(null) }
+    var username by remember(user?.email) { mutableStateOf(cached?.username ?: user?.username) }
+    var myAvatarUrl by remember(user?.email) {
+        mutableStateOf(user?.email?.let { AccountSnapshotCache.avatarUri(context, it) } ?: cached?.avatarUrl)
+    }
+    var analysesCount by remember(user?.email) { mutableStateOf(cached?.analysesCount) }
+    var savedTradesCount by remember(user?.email) { mutableStateOf(cached?.savedTradesCount) }
+    var savedPlanCount by remember(user?.email) { mutableStateOf(cached?.savedPlanCount) }
     var avatarUploading by remember { mutableStateOf(false) }
     var showHandleDialog by remember { mutableStateOf(false) }
     var handleInput by remember { mutableStateOf("") }
     var handleBusy by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
+
+    fun persistSnapshot(avatar: String? = user?.email?.let { AccountSnapshotCache.read(context, it)?.avatarUrl }) {
+        user?.email?.let { email ->
+            AccountSnapshotCache.save(context, email, AccountSnapshot(
+                username, avatar, analysesCount, savedTradesCount, savedPlanCount
+            ))
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(token) {
         if (token == null) return@LaunchedEffect
@@ -172,20 +187,37 @@ fun ProfileScreen(
             val display = planDisplay(trial)
             planEffectivePremium = display.effectivePremium
             planTrailingLabel = display.trailingLabel
+            SessionManager.updateTrialState(context, trialActive, trialDaysRemaining, isPremium)
             SessionManager.updatePlan(context, display.plan, display.trailingLabel)
             com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(trial)
         }
-        // Leave defaults if trial is null — the plan chip just won't show until this loads.
+        // Cached entitlement stays visible while offline or during a slow refresh.
 
         val status = statusDeferred.await()
         if (status != null) {
             accountEmail = status.optString("email", accountEmail).takeIf { it != "null" } ?: accountEmail
             deletionRequestedAt = if (status.isNull("deletionRequestedAt")) null else status.optString("deletionRequestedAt")
             username = if (status.isNull("username")) null else status.optString("username")
-            myAvatarUrl = ApiClient.resolveAvatarUrl(if (status.isNull("avatar")) null else status.optString("avatar"))
+            val avatar = ApiClient.resolveAvatarUrl(if (status.isNull("avatar")) null else status.optString("avatar"))
             if (status.has("analysesCount")) analysesCount = status.optInt("analysesCount")
             if (status.has("savedTradesCount")) savedTradesCount = status.optInt("savedTradesCount")
             if (status.has("savedTradePlansCount")) savedPlanCount = status.optInt("savedTradePlansCount")
+            persistSnapshot(avatar)
+            if (avatar == null) {
+                user?.email?.let { AccountSnapshotCache.removeAvatar(context, it) }
+                myAvatarUrl = null
+            } else {
+                // Keep the private local photo on screen while refreshing it from R2.
+                if (myAvatarUrl == null) myAvatarUrl = avatar
+                val email = user?.email
+                if (!email.isNullOrBlank()) {
+                    launch {
+                        runCatching { ApiClient.downloadOwnAvatar(token, avatar) }.getOrNull()?.let { bytes ->
+                            AccountSnapshotCache.saveAvatar(context, email, bytes)?.let { myAvatarUrl = it }
+                        }
+                    }
+                }
+            }
         }
         // Non-fatal if status is null — Danger Zone just shows the request option.
     }
@@ -211,9 +243,13 @@ fun ProfileScreen(
                         val loader = context.imageLoader
                         loader.memoryCache?.remove(coil.memory.MemoryCache.Key(fresh))
                         loader.diskCache?.remove(fresh)
-                        myAvatarUrl = fresh + "?v=" + System.currentTimeMillis()
+                        myAvatarUrl = user?.email?.let { AccountSnapshotCache.saveUploadedAvatar(context, it, dataUrl) }
+                            ?: fresh + "?v=" + System.currentTimeMillis()
+                        persistSnapshot(fresh)
                     } else {
+                        user?.email?.let { AccountSnapshotCache.removeAvatar(context, it) }
                         myAvatarUrl = null
+                        persistSnapshot(null)
                     }
                 } catch (e: Exception) {
                     profileError = e.message ?: "Could not update the photo"
@@ -444,6 +480,7 @@ fun ProfileScreen(
                     try {
                         val res = ApiClient.updateUsername(t, handleInput)
                         username = res.optString("username")
+                        persistSnapshot()
                         showHandleDialog = false
                     } catch (e: Exception) {
                         profileError = e.message ?: "Could not save the handle"

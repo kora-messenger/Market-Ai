@@ -100,6 +100,11 @@ object SessionManager {
 
     /** Persists the profile plus the server-issued session JWT and community membership flag. */
     fun saveSession(context: Context, session: UserSession) {
+        val previousEmail = prefs(context).getString(KEY_EMAIL, null)
+        if (previousEmail != null && !previousEmail.equals(session.user.email, ignoreCase = true)) {
+            AccountSnapshotCache.clear(context, previousEmail)
+            prefs(context).edit().remove(KEY_PLAN).remove(KEY_PLAN_LABEL).apply()
+        }
         prefs(context).edit()
             .putString(KEY_NAME, session.user.name)
             .putString(KEY_EMAIL, session.user.email)
@@ -230,6 +235,7 @@ object SessionManager {
     }
 
     fun signOut(context: Context) {
+        AccountSnapshotCache.clear(context, prefs(context).getString(KEY_EMAIL, null))
         prefs(context).edit().clear().apply()
     }
 
