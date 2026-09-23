@@ -158,9 +158,11 @@ fun ProfileScreen(
                 context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED))
     }
     val screenshotPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        shakeToReport = granted
         SessionManager.setShakeToReportBug(context, granted)
-        if (granted) (context as? Activity)?.let { ShakeBugReporter.start(it) }
+        shakeToReport = SessionManager.shakeToReportBug(context)
+        (context as? Activity)?.let { activity ->
+            if (shakeToReport) ShakeBugReporter.start(activity) else ShakeBugReporter.stop(activity)
+        }
     }
 
     // Profile card (FxLens-style): public handle + custom avatar + real stats.
@@ -438,10 +440,10 @@ fun ProfileScreen(
                         context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                         screenshotPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                     } else {
-                        shakeToReport = enabled
                         SessionManager.setShakeToReportBug(context, enabled)
+                        shakeToReport = SessionManager.shakeToReportBug(context)
                         (context as? Activity)?.let { activity ->
-                            if (enabled) ShakeBugReporter.start(activity) else ShakeBugReporter.stop(activity)
+                            if (shakeToReport) ShakeBugReporter.start(activity) else ShakeBugReporter.stop(activity)
                         }
                     }
                 }

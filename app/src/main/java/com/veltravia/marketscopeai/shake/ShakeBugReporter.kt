@@ -85,20 +85,24 @@ object ShakeBugReporter {
             // The switch can be disabled or the account can sign out while
             // PixelCopy is in flight. Never save a frame after opt-out.
             if (!canCapture(activity)) { bitmap.recycle(); return }
-            // PixelCopy has captured the original screen. Only now navigate.
-            PushRouter.pendingBugReport = true
-            val copied = ClipboardImage.copy(activity, bitmap, "marketscope_screenshot")
+            // Save the captured frame first. If Photos cannot publish it,
+            // report the failure instead of treating a clipboard-only copy as
+            // a successfully saved screenshot.
             val ctx = activity.applicationContext
             saveScope.launch {
                 val saved = if (canCapture(activity)) ScreenshotGallery.save(ctx, bitmap) else false
-                bitmap.recycle()
                 withContext(Dispatchers.Main) {
-                    if (!canCapture(activity)) return@withContext
+                    if (!canCapture(activity)) {
+                        bitmap.recycle()
+                        return@withContext
+                    }
+                    val copied = if (saved) ClipboardImage.copy(activity, bitmap, "marketscope_screenshot") else false
+                    bitmap.recycle()
+                    if (saved) PushRouter.pendingBugReport = true
                     val message = when {
                         saved && copied -> "Screenshot saved to Photos and copied"
                         saved -> "Screenshot saved to Photos"
-                        copied -> "Screenshot copied, but could not save to Photos"
-                        else -> "Could not save the screenshot"
+                        else -> "Couldn't save the screenshot to Photos. Check device storage and try again."
                     }
                     Toast.makeText(ctx, message, Toast.LENGTH_LONG).show()
                 }

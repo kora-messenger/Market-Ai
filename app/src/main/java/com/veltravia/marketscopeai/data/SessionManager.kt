@@ -3,6 +3,8 @@ package com.veltravia.marketscopeai.data
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.Locale
 
 data class GoogleUser(
     val name: String,
@@ -178,15 +180,32 @@ object SessionManager {
     fun communityJoined(context: Context): Boolean =
         prefs(context).getBoolean(KEY_COMMUNITY_JOINED, false)
 
-    /**
-     * "Shake to report a bug" — when on, a firm shake of the phone anywhere
-     * in the app opens the bug report screen. Off by default; purely local.
+    /** Shake is a private, opt-in setting for each account on this device.
+     * The older shared flag is deliberately NOT migrated: a new account must
+     * never inherit another account's screenshot permission. Signed-out users
+     * cannot read or enable it. Preferences survive sign-out for that account.
      */
+    private fun shakeAccountKey(context: Context): String? {
+        if (sessionToken(context).isNullOrBlank()) return null
+        val email = prefs(context).getString(KEY_EMAIL, null)?.trim()
+            ?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: return null
+        val hash = MessageDigest.getInstance("SHA-256")
+            .digest(email.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return "shake_bug_report_v2_$hash"
+    }
+
     fun shakeToReportBug(context: Context): Boolean =
-        prefs(context).getBoolean("shake_bug_report", false)
+        shakeAccountKey(context)?.let { key ->
+            context.getSharedPreferences("marketai_account_shake", Context.MODE_PRIVATE)
+                .getBoolean(key, false)
+        } ?: false
 
     fun setShakeToReportBug(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean("shake_bug_report", enabled).apply()
+        val key = shakeAccountKey(context) ?: return
+        // Synchronous commit keeps the sensor's gate in step with the switch.
+        context.getSharedPreferences("marketai_account_shake", Context.MODE_PRIVATE)
+            .edit().putBoolean(key, enabled).commit()
     }
 
     fun setCommunityJoined(context: Context, joined: Boolean) {
