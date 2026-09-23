@@ -1337,7 +1337,7 @@ object ApiClient {
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/account/delete-request")
             .addHeader("Authorization", "Bearer $sessionToken")
-            .post("".toRequestBody(null))
+            .post("{}".toRequestBody("application/json".toMediaType()))
             .build()
         request(request)
     }

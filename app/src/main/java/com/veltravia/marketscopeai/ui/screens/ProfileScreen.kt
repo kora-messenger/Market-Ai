@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -131,9 +133,11 @@ fun ProfileScreen(
     // the raw isPremium flag which only reflects a PAID subscription).
     var planEffectivePremium by remember { mutableStateOf(false) }
     var planTrailingLabel by remember { mutableStateOf("Free") }
+    var accountEmail by remember { mutableStateOf(user?.email ?: "") }
     var deletionRequestedAt by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleteBusy by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<String?>(null) }
     var shakeToReport by remember { mutableStateOf(SessionManager.shakeToReportBug(context)) }
 
     // Profile card (FxLens-style): public handle + custom avatar + real stats.
@@ -183,6 +187,7 @@ fun ProfileScreen(
 
         val status = statusDeferred.await()
         if (status != null) {
+            accountEmail = status.optString("email", accountEmail).takeIf { it != "null" } ?: accountEmail
             deletionRequestedAt = if (status.isNull("deletionRequestedAt")) null else status.optString("deletionRequestedAt")
             username = if (status.isNull("username")) null else status.optString("username")
             myAvatarUrl = ApiClient.resolveAvatarUrl(if (status.isNull("avatar")) null else status.optString("avatar"))
@@ -294,8 +299,8 @@ fun ProfileScreen(
                         try {
                             ApiClient.cancelAccountDeletion(t)
                             deletionRequestedAt = null
-                        } catch (_: Exception) {
-                            // Silently leave banner — user can retry.
+                        } catch (e: Exception) {
+                            profileError = e.message ?: "Could not cancel account deletion. Please try again."
                         }
                         deleteBusy = false
                     }
@@ -437,7 +442,7 @@ fun ProfileScreen(
                     tint = BearRed,
                     label = "Delete my account",
                     labelColor = BearRed,
-                    onClick = { showDeleteConfirm = true },
+                    onClick = { deleteError = null; showDeleteConfirm = true },
                     showDivider = false
                 )
             }
@@ -477,21 +482,31 @@ fun ProfileScreen(
 
     if (showDeleteConfirm) {
         DeleteAccountSheet(
-            email = user?.email ?: "",
+            email = accountEmail,
             busy = deleteBusy,
+            error = deleteError,
             onDismiss = { if (!deleteBusy) showDeleteConfirm = false },
             onConfirm = {
-                val t = token ?: return@DeleteAccountSheet
+                if (deleteBusy) return@DeleteAccountSheet
+                val t = token
+                if (t == null) {
+                    deleteError = "Your sign-in has expired. Please sign in again to request deletion."
+                    return@DeleteAccountSheet
+                }
+                deleteBusy = true
+                deleteError = null
                 scope.launch {
-                    deleteBusy = true
                     try {
                         val res = ApiClient.requestAccountDeletion(t)
-                        deletionRequestedAt = res.optString("deletionRequestedAt")
+                        val requestedAt = res.optString("deletionRequestedAt").takeIf { it.isNotBlank() && it != "null" }
+                            ?: throw IllegalStateException("The server did not confirm your deletion request. Please retry.")
+                        deletionRequestedAt = requestedAt
                         showDeleteConfirm = false
-                    } catch (_: Exception) {
-                        // Leave the sheet open so the user can retry.
+                    } catch (e: Exception) {
+                        deleteError = e.message ?: "Could not request account deletion. Please try again."
+                    } finally {
+                        deleteBusy = false
                     }
-                    deleteBusy = false
                 }
             }
         )
@@ -509,29 +524,40 @@ fun ProfileScreen(
 private fun DeleteAccountSheet(
     email: String,
     busy: Boolean,
+    error: String?,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
     var understood by remember { mutableStateOf(false) }
     var typedEmail by remember { mutableStateOf("") }
-    val emailMatches = email.isNotBlank() && typedEmail.trim().equals(email.trim(), ignoreCase = true)
-    val canDelete = understood && emailMatches && !busy
+    val confirmationMatches = if (email.isNotBlank()) {
+        typedEmail.trim().equals(email.trim(), ignoreCase = true)
+    } else {
+        typedEmail.trim() == "DELETE"
+    }
+    val canDelete = understood && confirmationMatches && !busy
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.55f))
-            .clickable(enabled = !busy) { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
+    Dialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .clickable(enabled = false) {} // absorb clicks, don't dismiss
-                .padding(horizontal = 24.dp, vertical = 24.dp)
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.55f))
+                .clickable(enabled = !busy) { onDismiss() },
+            contentAlignment = Alignment.BottomCenter
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable {} // consume taps inside the sheet, don't dismiss
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 24.dp)
+            ) {
             Text(
                 "Permanently delete account?",
                 style = MaterialTheme.typography.titleLarge,
@@ -570,7 +596,7 @@ private fun DeleteAccountSheet(
 
             Spacer(Modifier.height(14.dp))
             Text(
-                "Type your email to confirm",
+                if (email.isNotBlank()) "Type your email to confirm" else "Type DELETE to confirm",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextMuted
             )
@@ -578,7 +604,7 @@ private fun DeleteAccountSheet(
             OutlinedTextField(
                 value = typedEmail,
                 onValueChange = { typedEmail = it },
-                placeholder = { Text(email) },
+                placeholder = { Text(if (email.isNotBlank()) email else "DELETE") },
                 singleLine = true,
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
@@ -590,6 +616,9 @@ private fun DeleteAccountSheet(
                 )
             )
 
+            if (error != null) {
+                Text(error, style = MaterialTheme.typography.bodySmall, color = BearRed)
+            }
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 PremiumSecondaryButton(
@@ -611,6 +640,7 @@ private fun DeleteAccountSheet(
                     height = 48.dp,
                     shape = RoundedCornerShape(12.dp)
                 )
+            }
             }
         }
     }

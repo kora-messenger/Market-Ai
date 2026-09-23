@@ -20,6 +20,7 @@ const { fetchCandles, INTERVALS } = require("./src/candles");
 const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
 const { searchStock, bestMatch, fetchStockStats, searchNgxIpo } = require("./src/stocks");
 const r2 = require("./src/r2");
+const { processExpiredDeletions } = require("./src/accountDeletion");
 
 const app = express();
 
@@ -1162,8 +1163,8 @@ app.post("/api/community/join", requireAuth, async (req, res) => {
 // across trade_plans/analyses/community/signals that a same-instant cascade
 // would silently orphan or corrupt for other users (e.g. community posts).
 // Requesting sets a real timestamp the user can see and cancel; permanent
-// erasure is handled by support within 30 days, same model FxLens itself
-// (and most consumer apps) use for account deletion.
+// erasure runs via the guarded /api/cron/account-deletions endpoint after
+// the 30-day cancellation window. The cron has a read-only preview mode.
 // --- Profile: avatar + username (FxLens-style editable profile) --------
 const USERNAME_RE = /^[a-z0-9._]{3,20}$/;
 const AVATAR_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1259,7 +1260,7 @@ app.get("/api/account/status", requireAuth, async (req, res) => {
   }
   try {
     const { rows } = await pool.query(
-      `SELECT u.deletion_requested_at, u.username, u.avatar_key, u.id,
+      `SELECT u.deletion_requested_at, u.username, u.avatar_key, u.id, u.email,
               (SELECT COUNT(*)::int FROM analyses a WHERE a.user_id = u.id) AS analyses_count,
               (SELECT COUNT(*)::int FROM trade_plans t WHERE t.user_id = u.id) AS saved_count
        FROM users u WHERE u.google_sub = $1`,
@@ -1271,6 +1272,7 @@ app.get("/api/account/status", requireAuth, async (req, res) => {
     const r = rows[0];
     return res.json({
       deletionRequestedAt: r.deletion_requested_at,
+      email: r.email,
       username: r.username || null,
       avatar: r.avatar_key ? `avatar:${r.id}` : null,
       analysesCount: r.analyses_count,
@@ -1313,6 +1315,25 @@ app.post("/api/account/delete-request/cancel", requireAuth, async (req, res) => 
     return res.json({ deletionRequestedAt: null });
   } catch (err) {
     return res.status(500).json({ error: "Could not cancel deletion request", detail: String(err.message || err) });
+  }
+});
+
+// Daily maintenance: only process accounts that requested deletion at least
+// 30 full days ago. A preview never deletes anything and reports no PII.
+app.post("/api/cron/account-deletions", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const preview = req.body?.preview === true;
+  if (!preview && req.body?.confirm !== "process-expired-requests") {
+    return res.status(400).json({ error: "Explicit confirmation required." });
+  }
+  try {
+    return res.json(await processExpiredDeletions(pool, r2, { preview }));
+  } catch (err) {
+    console.error("[account-deletion] maintenance failed:", String(err.message || err));
+    return res.status(500).json({ error: "Account deletion maintenance failed; remaining requests will be retried." });
   }
 });
 
