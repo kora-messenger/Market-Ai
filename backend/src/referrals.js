@@ -159,7 +159,7 @@ async function reward(pool, userId, kind) {
 async function rewardFirstAnalysis(pool, userId) { return reward(pool, userId, "analysis"); }
 async function rewardFirstSubscription(pool, userId) { return reward(pool, userId, "subscription"); }
 
-const DOWNLOAD_URL = "https://github.com/kora-messenger/Market-Ai/releases/tag/v1.5.0";
+const DOWNLOAD_URL = "https://github.com/kora-messenger/Market-Ai/releases/download/v1.5.1/MarketScopeAI-v1.5.1.apk";
 
 function esc(s) {
   return String(s)
