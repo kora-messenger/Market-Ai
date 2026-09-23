@@ -454,6 +454,11 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable("bug_reports_inbox") {
+            com.veltravia.marketscopeai.ui.screens.BugReportsInboxScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("feedback_inbox") {
             com.veltravia.marketscopeai.ui.screens.FeedbackInboxScreen(
                 onBack = { navController.popBackStack() }
@@ -545,7 +550,8 @@ fun MarketAiApp() {
             AdminSignalsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenPremium = { navController.navigate("premium_admin") },
-                onOpenFeedback = { navController.navigate("feedback_inbox") }
+                onOpenFeedback = { navController.navigate("feedback_inbox") },
+                onOpenBugReports = { navController.navigate("bug_reports_inbox") }
             )
         }
         composable("premium_admin") {

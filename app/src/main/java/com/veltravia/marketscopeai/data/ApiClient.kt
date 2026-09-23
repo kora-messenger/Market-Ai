@@ -1587,6 +1587,16 @@ object ApiClient {
         request(request)
     }
 
+    /** Owner-only bug report inbox with fresh private attachment links. */
+    suspend fun fetchAdminBugReports(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/bug-reports")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Send a bug report (description + up to 4 screenshots + 1 recording). */
     suspend fun submitBugReport(
         sessionToken: String,

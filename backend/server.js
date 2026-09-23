@@ -7400,7 +7400,9 @@ async function notifyAdminBugReport(reporter, description) {
       [ADMIN_EMAILS]
     )).rows;
   }
-  if (!rows.length) {
+  // Only use the legacy oldest-account fallback when no owner is configured.
+  // Otherwise a missing owner account must never receive another user's report.
+  if (!rows.length && !ADMIN_EMAILS.length) {
     rows = (await pool.query(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`)).rows;
   }
   if (!rows.length) return;
