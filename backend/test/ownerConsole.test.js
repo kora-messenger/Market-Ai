@@ -22,6 +22,8 @@ test('private web console verifies an emailed code and rejects consumer-app bear
       if (sql.includes('SELECT id FROM users WHERE google_sub')) return { rows: params[0] === 'google-owner' && params[1] === 'owner@example.com' ? [{ id: 'owner-id' }] : [] };
       if (sql.includes('FROM user_feedback')) return { rows: [{ id: 'f1', user_email: 'member@example.com', message: 'Add a widget', attachments: [], created_at: new Date() }] };
       if (sql.includes('FROM bug_reports')) return { rows: [] };
+      if (sql.includes('FROM ai_usage_events e')) return { rows: [{ day: '2026-09-23', user_id: 'user-1', email: 'member@example.com', name: 'Member', calls: 2, unknown_calls: 0, input_tokens: '4000', output_tokens: '600' }] };
+      if (sql.includes('FROM ai_usage_events\n')) return { rows: [{ id: 'event-1', feature: 'analysis', provider: 'openrouter', model: 'gemini', input_tokens: 4000, output_tokens: 600, completed_at: new Date() }] };
       if (sql.includes('DELETE FROM owner_console_codes')) return { rows: [] };
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
       throw new Error('Unexpected SQL: ' + sql.slice(0, 100));
@@ -53,6 +55,18 @@ test('private web console verifies an emailed code and rejects consumer-app bear
     const inbox = await fetch(base + '/api/owner/opinions', { headers: { Cookie: cookie } });
     assert.equal(inbox.status, 200); assert.equal((await inbox.json()).feedback[0].message, 'Add a widget');
     assert.equal((await fetch(base + '/api/owner/bug-reports', { headers: { Cookie: cookie } })).status, 200);
+    assert.equal((await fetch(base + '/api/owner/ai-usage')).status, 401);
+    const usage = await fetch(base + '/api/owner/ai-usage?days=7', { headers: { Cookie: cookie } });
+    assert.equal(usage.status, 200);
+    const data = await usage.json();
+    assert.equal(data.timezone, 'Africa/Lagos');
+    assert.equal(data.daily[0].inputTokens, 4000);
+    assert.equal((await fetch(base + '/api/owner/ai-usage?days=32', { headers: { Cookie: cookie } })).status, 400);
+    const calls = await fetch(base + '/api/owner/ai-usage/calls?date=2026-09-23&userId=user-1', { headers: { Cookie: cookie } });
+    assert.equal(calls.status, 400);
+    const validCalls = await fetch(base + '/api/owner/ai-usage/calls?date=2026-09-23&userId=11111111-1111-4111-8111-111111111111', { headers: { Cookie: cookie } });
+    assert.equal(validCalls.status, 200);
+    assert.equal((await validCalls.json()).calls[0].feature, 'analysis');
     assert.equal((await post('/api/owner/verify-code', { email: 'owner@example.com', code: emails[0].code })).status, 401);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });

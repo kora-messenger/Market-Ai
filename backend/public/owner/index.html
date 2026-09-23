@@ -37,20 +37,24 @@
 
     <section id="desk" hidden>
       <div class="desk-head">
-        <div><div class="eyebrow">MEMBER VOICE & PRODUCT HEALTH</div><h1>Owner inbox</h1>
-          <p>Private submissions from MarketScope AI members. Newest first.</p></div>
+        <div><div class="eyebrow">MEMBER VOICE & PRODUCT HEALTH</div><h1>Owner console</h1>
+          <p>Private member submissions and AI usage, available only to the owner.</p></div>
         <div class="actions"><button type="button" id="refresh" class="button-outline">Refresh links</button>
           <button type="button" id="logout" class="button-outline">Sign out</button></div>
       </div>
       <div class="toolbar" role="tablist" aria-label="Inbox category">
         <button type="button" id="tab-opinions" class="tab selected" role="tab" aria-selected="true">Your Opinion <span id="opinion-count"></span></button>
         <button type="button" id="tab-bugs" class="tab" role="tab" aria-selected="false">Bug reports <span id="bug-count"></span></button>
+        <button type="button" id="tab-usage" class="tab" role="tab" aria-selected="false">AI usage</button>
       </div>
-      <div class="filter"><label for="search">Search visible reports</label>
+      <div id="usage-controls" class="filter" hidden><label for="usage-days">Period (Africa/Lagos)</label>
+        <select id="usage-days"><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+        <p>Provider-reported tokens only. Unknown counts are shown, never estimated. Shared jobs are grouped as System.</p></div>
+      <div id="report-filter" class="filter"><label for="search">Search visible reports</label>
         <input id="search" type="search" placeholder="Search name, message or device"></div>
       <div id="desk-status" class="status" role="status" aria-live="polite"></div>
       <div id="list" class="list"></div>
-      <footer>Only the latest 100 submissions of each type are shown. Pictures and recordings are private; refresh to renew expired links.</footer>
+      <footer id="report-footer">Only the latest 100 submissions of each type are shown. Pictures and recordings are private; refresh to renew expired links.</footer>
     </section>
   </main>
   <dialog id="media-dialog" aria-label="Attachment viewer">

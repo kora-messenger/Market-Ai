@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const state = { email: "", tab: "opinions", opinions: [], bugs: [] };
+const state = { email: "", tab: "opinions", opinions: [], bugs: [], usage: [], usageDetails: null };
 const show = (node, visible) => { node.hidden = !visible; };
 function status(id, message, error = false) {
   const node = $(id);
@@ -19,7 +19,7 @@ async function api(path, options = {}) {
 }
 function showLogin() {
   show($("login"), true); show($("desk"), false);
-  state.opinions = []; state.bugs = [];
+  state.opinions = []; state.bugs = []; state.usage = []; state.usageDetails = null;
   $("list").replaceChildren();
 }
 async function showDesk() {
@@ -27,11 +27,12 @@ async function showDesk() {
   await reload();
 }
 async function reload() {
-  status("desk-status", "Loading private reports…");
+  status("desk-status", "Loading private reports and usage…");
   try {
-    const [opinions, bugs] = await Promise.all([api("opinions"), api("bug-reports")]);
+    const [opinions, bugs, usage] = await Promise.all([api("opinions"), api("bug-reports"), api(`ai-usage?days=${$("usage-days").value}`)]);
     state.opinions = opinions.feedback || [];
     state.bugs = bugs.reports || [];
+    state.usage = usage.daily || []; state.usageDetails = null;
     $("opinion-count").textContent = String(state.opinions.length);
     $("bug-count").textContent = String(state.bugs.length);
     status("desk-status", ""); render();
@@ -58,8 +59,47 @@ function closeMedia() {
   $("media-dialog").close();
   $("media-stage").replaceChildren(); // stops playback and removes signed links
 }
+function renderUsage(list) {
+  if (!state.usage.length) {
+    list.append(element("div", "empty", "No recorded AI calls in this period. Historical calls before tracking was deployed cannot be recovered."));
+    return;
+  }
+  for (const row of state.usage) {
+    const card = element("article", "entry");
+    const head = element("div", "entry-head");
+    head.append(element("strong", "", row.email || (row.userId ? "Member" : "System / shared")));
+    head.append(element("time", "", `${row.day} · ${row.calls} call${row.calls === 1 ? "" : "s"}`));
+    card.append(head);
+    if (row.name) card.append(element("p", "meta", row.name));
+    card.append(element("p", "message", `${Number(row.inputTokens).toLocaleString()} input · ${Number(row.outputTokens).toLocaleString()} output tokens`));
+    if (row.unknownCalls) card.append(element("p", "meta", `${row.unknownCalls} call${row.unknownCalls === 1 ? "" : "s"} lacked provider token counts, so totals are incomplete.`));
+    const button = element("button", "button-outline", "View calls");
+    button.type = "button";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        const result = await api(`ai-usage/calls?date=${encodeURIComponent(row.day)}&userId=${encodeURIComponent(row.userId || "system")}`);
+        const details = element("div", "usage-calls");
+        if (result.calls.length === 200) details.append(element("p", "meta", "Showing the latest 200 calls for this day."));
+        for (const call of result.calls) {
+          const time = new Date(call.completedAt).toLocaleTimeString("en-NG", { timeZone: "Africa/Lagos", hour: "2-digit", minute: "2-digit" });
+          details.append(element("p", "meta", `${time} · ${call.feature} · ${call.provider} / ${call.model} · ${call.inputTokens ?? "?"} in / ${call.outputTokens ?? "?"} out`));
+        }
+        if (!result.calls.length) details.append(element("p", "meta", "No calls found."));
+        const previous = card.querySelector(".usage-calls"); if (previous) previous.remove();
+        card.append(details);
+      } catch (error) { status("desk-status", error.message, true); }
+      finally { button.disabled = false; }
+    });
+    card.append(button); list.append(card);
+  }
+}
 function render() {
   const list = $("list"); list.replaceChildren();
+  show($("usage-controls"), state.tab === "usage");
+  show($("report-filter"), state.tab !== "usage");
+  show($("report-footer"), state.tab !== "usage");
+  if (state.tab === "usage") { renderUsage(list); return; }
   const query = $("search").value.toLowerCase().trim();
   const isBug = state.tab === "bugs";
   const items = (isBug ? state.bugs : state.opinions).filter(item =>
@@ -136,10 +176,11 @@ $("logout").addEventListener("click", async () => {
 function closeMediaIfOpen() { if ($("media-dialog").open) closeMedia(); }
 $("refresh").addEventListener("click", reload);
 $("search").addEventListener("input", render);
-for (const [name, id] of [["opinions", "tab-opinions"], ["bugs", "tab-bugs"]]) {
+$("usage-days").addEventListener("change", reload);
+for (const [name, id] of [["opinions", "tab-opinions"], ["bugs", "tab-bugs"], ["usage", "tab-usage"]]) {
   $(id).addEventListener("click", () => {
     state.tab = name;
-    for (const [n, tabId] of [["opinions", "tab-opinions"], ["bugs", "tab-bugs"]]) {
+    for (const [n, tabId] of [["opinions", "tab-opinions"], ["bugs", "tab-bugs"], ["usage", "tab-usage"]]) {
       $(tabId).classList.toggle("selected", n === name);
       $(tabId).setAttribute("aria-selected", String(n === name));
     }

@@ -9,7 +9,7 @@ const OBJECT_QUEUE_DDL = `CREATE TABLE IF NOT EXISTS account_deletion_objects (
 )`;
 const DUE = "deletion_requested_at IS NOT NULL AND deletion_requested_at <= now() - interval '30 days'";
 const DIRECT_USER_TABLES = Object.freeze([
-  "analyses", "subscription_payments", "trade_plans", "signal_reactions",
+  "analyses", "ai_usage_events", "subscription_payments", "trade_plans", "signal_reactions",
   "signal_saves", "signal_comment_reactions", "post_poll_votes",
   "post_reactions", "post_views", "push_log"
 ]);

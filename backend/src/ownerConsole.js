@@ -174,6 +174,64 @@ function installOwnerConsole(app, { pool, jwtSecret, adminEmails, r2, sendCode, 
     res.json({ ok: true });
   });
 
+  // Private provider-measured token usage. Days use the owner's Lagos local
+  // calendar dates; totals include every recorded response, not just saved analyses.
+  app.get("/api/owner/ai-usage", requireOwner, async (req, res) => {
+    const days = Number(req.query.days || 7);
+    if (!Number.isInteger(days) || days < 1 || days > 31) {
+      return res.status(400).json({ error: "Days must be between 1 and 31." });
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT (e.completed_at AT TIME ZONE 'Africa/Lagos')::date::text AS day,
+                e.user_id, u.email, u.name,
+                COUNT(*)::int AS calls,
+                COUNT(*) FILTER (WHERE e.input_tokens IS NULL OR e.output_tokens IS NULL)::int AS unknown_calls,
+                COALESCE(SUM(e.input_tokens), 0)::bigint::text AS input_tokens,
+                COALESCE(SUM(e.output_tokens), 0)::bigint::text AS output_tokens
+         FROM ai_usage_events e
+         LEFT JOIN users u ON u.id = e.user_id
+         WHERE (e.completed_at AT TIME ZONE 'Africa/Lagos')::date >=
+               (now() AT TIME ZONE 'Africa/Lagos')::date - ($1::int - 1)
+         GROUP BY day, e.user_id, u.email, u.name
+         ORDER BY day DESC, (COALESCE(SUM(e.input_tokens), 0) + COALESCE(SUM(e.output_tokens), 0)) DESC`, [days]
+      );
+      return res.json({ timezone: "Africa/Lagos", days, daily: rows.map(r => ({
+        day: r.day, userId: r.user_id, email: r.email, name: r.name,
+        calls: r.calls, unknownCalls: r.unknown_calls,
+        inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens)
+      })) });
+    } catch (err) {
+      console.error("[owner-console] AI usage totals failed:", String(err.message || err));
+      return res.status(500).json({ error: "Could not load AI usage." });
+    }
+  });
+
+  app.get("/api/owner/ai-usage/calls", requireOwner, async (req, res) => {
+    const date = String(req.query.date || "");
+    const userId = String(req.query.userId || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`)) ||
+        (userId !== "system" && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId))) {
+      return res.status(400).json({ error: "Choose a valid date and user." });
+    }
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, feature, provider, model, input_tokens, output_tokens, completed_at
+         FROM ai_usage_events
+         WHERE (completed_at AT TIME ZONE 'Africa/Lagos')::date = $1::date
+           AND (($2::text = 'system' AND user_id IS NULL) OR user_id::text = $2::text)
+         ORDER BY completed_at DESC, id DESC LIMIT 200`, [date, userId]
+      );
+      return res.json({ date, userId, timezone: "Africa/Lagos", calls: rows.map(r => ({
+        id: r.id, feature: r.feature, provider: r.provider, model: r.model,
+        inputTokens: r.input_tokens, outputTokens: r.output_tokens, completedAt: r.completed_at
+      })) });
+    } catch (err) {
+      console.error("[owner-console] AI usage calls failed:", String(err.message || err));
+      return res.status(500).json({ error: "Could not load AI calls." });
+    }
+  });
+
   app.get("/api/owner/opinions", requireOwner, async (_req, res) => {
     try {
       const { rows } = await pool.query(

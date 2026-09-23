@@ -5,6 +5,7 @@
 const express = require("express");
 const { OAuth2Client, GoogleAuth } = require("google-auth-library");
 const { installOwnerConsole } = require("./src/ownerConsole");
+const { recordCompletedAiCall } = require("./src/aiUsage");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
@@ -116,7 +117,7 @@ const AI_CALL_TIMEOUT_MS = 90 * 1000;  // hard cap — a hung provider socket
  *  as a hard "Analysis provider error" on the very first retry-able blip.
  *  Every failure (transient or final) is logged with the real status/body
  *  so it is diagnosable from Render logs instead of vanishing silently. */
-async function callOpenRouter(payload, label) {
+async function callOpenRouter(payload, label, usageContext = {}) {
   const RETRYABLE = new Set([408, 429, 500, 502, 503, 504, 522, 524, 529]);
   let lastStatus = 0;
   let lastDetail = "";
@@ -139,7 +140,12 @@ async function callOpenRouter(payload, label) {
       if (attempt === 1) { await new Promise(r => setTimeout(r, 1200)); continue; }
       return { ok: false, status: 0, detail: lastDetail };
     }
-    if (response.ok) return { ok: true, response };
+    if (response.ok) {
+      await recordCompletedAiCall(pool, response, {
+        ...usageContext, feature: usageContext.feature || label, provider: 'openrouter', model: payload.model
+      });
+      return { ok: true, response };
+    }
     lastStatus = response.status;
     lastDetail = (await response.text()).slice(0, 500);
     console.error(`[openrouter:${label}] HTTP ${lastStatus} (attempt ${attempt}):`, lastDetail);
@@ -166,7 +172,7 @@ async function callOpenRouter(payload, label) {
  *  - swaps in the OpenAI model (OPENAI_ANALYSIS_MODEL, default gpt-4o)
  *  - newer reasoning models (gpt-5 family / o-series) require max_completion_tokens
  *    instead of max_tokens; handled automatically. */
-async function callOpenAI(payload, label) {
+async function callOpenAI(payload, label, usageContext = {}) {
   const { model: _orModel, reasoning: _reasoning, ...rest } = payload;
   const body = { ...rest, model: OPENAI_MODEL };
   if (/^(gpt-5|o[134])/.test(OPENAI_MODEL)) {
@@ -196,7 +202,12 @@ async function callOpenAI(payload, label) {
       if (attempt === 1) { await new Promise(r => setTimeout(r, 1200)); continue; }
       return { ok: false, status: 0, detail: lastDetail, provider: "openai" };
     }
-    if (response.ok) return { ok: true, response, provider: "openai" };
+    if (response.ok) {
+      await recordCompletedAiCall(pool, response, {
+        ...usageContext, feature: usageContext.feature || label, provider: 'openai', model: body.model
+      });
+      return { ok: true, response, provider: "openai" };
+    }
     lastStatus = response.status;
     lastDetail = (await response.text()).slice(0, 500);
     console.error(`[openai:${label}] HTTP ${lastStatus} (attempt ${attempt}):`, lastDetail);
@@ -232,7 +243,7 @@ async function callAI(payload, label, opts = {}) {
   const openaiDead = Date.now() < BREAKER.openaiDeadUntil;
   const paidRouterDead = Date.now() < BREAKER.openrouterPaidDeadUntil;
   if (OPENAI_API_KEY && useOpenAI && !openaiDead) {
-    const r = await callOpenAI(payload, label);
+    const r = await callOpenAI(payload, label, opts);
     if (r.ok) return r;
     console.error(
       `[ai:${label}] OpenAI attempt failed (HTTP ${r.status}) — falling back to OpenRouter:`,
@@ -245,7 +256,7 @@ async function callAI(payload, label, opts = {}) {
     if (paidRouterDead) {
       console.log(`[ai:${label}] OpenRouter paid tier skipped — credit breaker open, trying free models`);
     } else {
-    const r = await callOpenRouter(payload, label);
+    const r = await callOpenRouter(payload, label, opts);
     if (r.ok) return r;
     console.error(
       `[ai:${label}] OpenRouter paid attempt failed (HTTP ${r.status}) — trying free tier:`,
@@ -268,7 +279,7 @@ async function callAI(payload, label, opts = {}) {
             ? Math.min(6000, freeBody.max_tokens + 2000)
             : freeBody.max_tokens * 2;
         }
-        const fr = await callOpenRouter(freeBody, `${label}:free(${freeModel})`);
+        const fr = await callOpenRouter(freeBody, `${label}:free(${freeModel})`, { ...opts, feature: label });
         if (!fr.ok) {
           console.error(`[ai:${label}] free model ${freeModel} failed (HTTP ${fr.status}) — trying next`);
           continue;
@@ -349,6 +360,20 @@ async function initDb() {
       outcome TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS ai_usage_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      feature TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT NOT NULL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT ai_usage_input_nonnegative CHECK (input_tokens IS NULL OR input_tokens >= 0),
+      CONSTRAINT ai_usage_output_nonnegative CHECK (output_tokens IS NULL OR output_tokens >= 0)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_usage_day ON ai_usage_events (completed_at DESC, user_id);
+    CREATE INDEX IF NOT EXISTS idx_ai_usage_user_day ON ai_usage_events (user_id, completed_at DESC);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ NOT NULL DEFAULT now();
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expired_email_sent_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS questionnaire JSONB;
@@ -1629,7 +1654,7 @@ app.post("/api/calendar/directional-implication", requireAuth, async (req, res) 
         },
         { role: "user", content: factLines }
       ]
-    }, "calendar-directional-implication");
+    }, "calendar-directional-implication", { userSub: req.session.sub });
 
     if (!result.ok) {
       return res.status(502).json({ error: "AI is temporarily unavailable — try again shortly." });
@@ -2898,7 +2923,7 @@ app.post("/api/cron/stock-monitor", async (req, res) => {
               `Should the trader keep or sell?`
           }
         ]
-      }, "stock-monitor-verdict");
+      }, "stock-monitor-verdict", { userId: m.user_id });
 
       if (!verdictResult.ok) {
         console.error(`[stock-monitor] AI verdict failed for ${m.symbol}: HTTP ${verdictResult.status}`);
@@ -3261,7 +3286,7 @@ Respond ONLY with JSON:
           ]
         }
       ]
-    }, "validation");
+    }, "validation", { userId: userRow.id });
     if (!vResult.ok) {
       return res.status(502).json({
         error: "Our AI analysis service had a temporary hiccup verifying your charts. Please tap Analyze again.",
@@ -3325,7 +3350,7 @@ Respond ONLY with JSON:
           ]
         }
       ]
-    }, "analysis", { premium });
+    }, "analysis", { premium, userId: userRow.id });
 
     if (!orResult.ok) {
       const billingIssue = orResult.status === 402;
@@ -3492,12 +3517,14 @@ app.post("/api/analyze/stock/identify", requireAuth, async (req, res) => {
   if (!isDataUrl(image)) return res.status(400).json({ error: "Attach one valid stock screenshot." });
 
   let premium = false;
+  let userId = null;
   try {
     const { rows } = await pool.query(
       `SELECT id, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
+    userId = rows[0].id;
     premium = paidPremiumActive(rows[0]) || Boolean(await getEffectiveGrant(rows[0].id));
   } catch (err) {
     return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
@@ -3517,7 +3544,7 @@ app.post("/api/analyze/stock/identify", requireAuth, async (req, res) => {
           { type: "image_url", image_url: { url: image, detail: "low" } }
         ]
       }]
-    }, "stock-batch-image-identify", { premium });
+    }, "stock-batch-image-identify", { premium, userId });
     if (!ai.ok) {
       return res.status(502).json({ error: "We couldn't read that stock screenshot right now. Please type its company name instead." });
     }
@@ -3639,7 +3666,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
             ]
           }
         ]
-      }, "stock-vision");
+      }, "stock-vision", { userId: userRow.id });
       if (!vResult.ok) {
         return res.status(502).json({
           error: "Our AI analysis service had a temporary hiccup. Please tap Analyze again.",
@@ -3764,7 +3791,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
         { role: "system", content: ipoOffer ? IPO_SYSTEM_PROMPT : STOCK_SYSTEM_PROMPT },
         { role: "user", content: userContent }
       ]
-    }, "stock-analysis", { premium }).catch((err) => ({
+    }, "stock-analysis", { premium, userId: userRow.id }).catch((err) => ({
       ok: false, status: 0, detail: String(err.message || err)
     }));
     const orResult = await Promise.race([
@@ -4209,7 +4236,7 @@ app.post("/api/ai-trade-plans/generate", requireAuth, async (req, res) => {
 
   let content;
   try {
-    const result = await callAI(payload, "trade-plan", { premium: isPremium });
+    const result = await callAI(payload, "trade-plan", { premium: isPremium, userId: userRow.id });
     if (!result.ok) {
       return res.status(502).json({ error: "The plan generator is unavailable right now. Try again shortly." });
     }
@@ -5857,11 +5884,11 @@ async function guardLinks(author, body) {
               "\n\nFull message for context:\n" + String(body).slice(0, 1500)
           }
         ]
-      }, "link-guard");
+      }, "link-guard", { userId: author.id });
       if (!response.ok) {
         return { allowed: false, error: "Links can't be posted right now — please try again in a moment or remove the link." };
       }
-      const data = await response.json();
+      const data = await response.response.json();
       const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
       checked = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];
     } catch (_e) {
