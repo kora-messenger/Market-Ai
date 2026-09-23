@@ -475,4 +475,20 @@ async function sendStatsReportEmail(stats) {
   }
 }
 
-module.exports = { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumPaymentFailedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail, formatLagosTime, describeDevice };
+/** Deliberate owner sign-in send: unlike user notifications, a delivery failure
+ * must fail the login request, never claim a code was sent. */
+async function sendOwnerConsoleCode({ to, code }) {
+  if (!configured()) throw new Error("Owner sign-in email is not configured");
+  const content = {
+    subject: "MarketScope AI owner sign-in code",
+    paragraphs: [
+      "Use this code to sign in to the MarketScope AI owner console:",
+      code,
+      "It expires in 10 minutes. If you did not request it, you can ignore this message."
+    ],
+    signoff: ["MarketScope AI", "Veltravia Technologies"]
+  };
+  return sendViaBrevo({ to, subject: content.subject, content });
+}
+
+module.exports = { sendOwnerConsoleCode, sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumPaymentFailedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail, formatLagosTime, describeDevice };

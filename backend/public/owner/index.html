@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Owner Console · MarketScope AI</title>
+  <link rel="stylesheet" href="/owner/console.css">
+  <script src="/owner/console.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div class="brand-mark" aria-hidden="true">M</div>
+      <div class="brand"><strong>MarketScope AI</strong><span>PRIVATE OWNER CONSOLE</span></div>
+      <span class="private-tag">Owner only</span>
+    </header>
+
+    <section id="login" class="login-panel" hidden>
+      <div class="eyebrow">SECURE ACCESS</div>
+      <h1>Your desk, away from the app.</h1>
+      <p class="intro">See what members are saying and review bug reports here. Sign in with the email configured for the MarketScope AI owner account.</p>
+      <form id="email-form">
+        <label for="email">Owner email</label>
+        <input type="email" id="email" autocomplete="email" required placeholder="you@example.com" maxlength="254">
+        <button type="submit" class="button-primary">Send a sign-in code</button>
+      </form>
+      <form id="code-form" hidden>
+        <label for="code">Six-digit code</label>
+        <input type="text" id="code" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required placeholder="000000">
+        <button type="submit" class="button-primary">Open console</button>
+        <button type="button" id="change-email" class="button-link">Use a different email</button>
+      </form>
+      <p id="login-status" class="status" role="status" aria-live="polite"></p>
+      <p class="note">The code expires in 10 minutes. Sessions end after 8 hours. No reports are accessible until you sign in.</p>
+    </section>
+
+    <section id="desk" hidden>
+      <div class="desk-head">
+        <div><div class="eyebrow">MEMBER VOICE & PRODUCT HEALTH</div><h1>Owner inbox</h1>
+          <p>Private submissions from MarketScope AI members. Newest first.</p></div>
+        <div class="actions"><button type="button" id="refresh" class="button-outline">Refresh links</button>
+          <button type="button" id="logout" class="button-outline">Sign out</button></div>
+      </div>
+      <div class="toolbar" role="tablist" aria-label="Inbox category">
+        <button type="button" id="tab-opinions" class="tab selected" role="tab" aria-selected="true">Your Opinion <span id="opinion-count"></span></button>
+        <button type="button" id="tab-bugs" class="tab" role="tab" aria-selected="false">Bug reports <span id="bug-count"></span></button>
+      </div>
+      <div class="filter"><label for="search">Search visible reports</label>
+        <input id="search" type="search" placeholder="Search name, message or device"></div>
+      <div id="desk-status" class="status" role="status" aria-live="polite"></div>
+      <div id="list" class="list"></div>
+      <footer>Only the latest 100 submissions of each type are shown. Pictures and recordings are private; refresh to renew expired links.</footer>
+    </section>
+  </main>
+  <dialog id="media-dialog" aria-label="Attachment viewer">
+    <div class="viewer-top"><span id="media-caption">Attachment</span><button type="button" id="close-media" aria-label="Close viewer">Close</button></div>
+    <div id="media-stage"></div>
+  </dialog>
+</body>
+</html>

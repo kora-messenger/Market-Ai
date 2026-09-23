@@ -4,12 +4,13 @@
  */
 const express = require("express");
 const { OAuth2Client, GoogleAuth } = require("google-auth-library");
+const { installOwnerConsole } = require("./src/ownerConsole");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const { ALL, byId, categories } = require("./src/instruments");
 const monetization = require("./src/monetization");
 const appVersion = require("./src/appVersion");
-const { sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
+const { sendOwnerConsoleCode, sendWelcomeEmail, sendSecurityAlert, sendTrialExpiredEmail, sendHealthAlertEmail, sendStatsReportEmail, sendPremiumActivatedEmail, sendPremiumGrantedEmail, sendPremiumRevokedEmail } = require("./src/mailer");
 const { termsOfServiceHtml, privacyPolicyHtml, purchaseTermsHtml, communityGuidelinesHtml } = require("./src/legalPages");
 const { fetchPrice, fetchHistory } = require("./src/prices");
 const { sendFcm } = require("./src/fcm");
@@ -736,6 +737,17 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_bug_reports_created ON bug_reports(created_at DESC);
+    CREATE TABLE IF NOT EXISTS owner_console_codes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_owner_console_codes_email_created
+      ON owner_console_codes(email, created_at DESC);
     CREATE TABLE IF NOT EXISTS user_feedback (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -7287,28 +7299,6 @@ app.post("/api/feedback", requireAuth, async (req, res) => {
 });
 
 /** Owner-only inbox with temporary signed links to private R2 attachments. */
-app.get("/api/admin/feedback", requireAuth, async (req, res) => {
-  if (!pool) return res.status(503).json({ error: "Database is not configured." });
-  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Owner only." });
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, user_email, message, attachments, created_at
-       FROM user_feedback ORDER BY created_at DESC LIMIT 100`
-    );
-    const feedback = await Promise.all(rows.map(async (row) => ({
-      id: row.id, email: row.user_email, message: row.message, createdAt: row.created_at,
-      images: await Promise.all((Array.isArray(row.attachments) ? row.attachments : []).map(async (item) => ({
-        url: await r2.signedImageUrl(item.r2Key, 900).catch(() => null),
-        sizeBytes: item.sizeBytes
-      })))
-    })));
-    return res.json({ feedback });
-  } catch (err) {
-    console.error("admin feedback failed:", String(err.message || err));
-    return res.status(500).json({ error: "Could not load feedback." });
-  }
-});
-
 /* ---------- Bug reports (in-app "Report a bug" flow) ---------- */
 
 /**
@@ -7418,40 +7408,6 @@ async function notifyAdminBugReport(reporter, description) {
 }
 
 /** Admin inbox: the latest bug reports with fresh signed attachment URLs. */
-app.get("/api/admin/bug-reports", requireAuth, async (req, res) => {
-  if (!pool) return res.status(503).json({ error: "Database is not configured." });
-  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Admins only." });
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, user_email, description, attachments, app_version, device_model, android_version, status, created_at
-       FROM bug_reports ORDER BY created_at DESC LIMIT 100`
-    );
-    const reports = [];
-    for (const r of rows) {
-      const attachments = [];
-      const raw = Array.isArray(r.attachments) ? r.attachments : [];
-      for (const a of raw) {
-        const out = { kind: a.kind, contentType: a.contentType, sizeBytes: a.sizeBytes };
-        if (a.r2Key) {
-          out.url = await r2.signedImageUrl(a.r2Key, 3600).catch(() => null);
-        } else if (a.dataBase64) {
-          out.dataUrl = `data:${a.contentType};base64,${a.dataBase64}`;
-        }
-        attachments.push(out);
-      }
-      reports.push({
-        id: r.id, email: r.user_email, description: r.description,
-        appVersion: r.app_version, deviceModel: r.device_model, androidVersion: r.android_version,
-        status: r.status, createdAt: r.created_at, attachments
-      });
-    }
-    return res.json({ reports });
-  } catch (err) {
-    console.error("admin bug-reports failed:", String(err.message || err));
-    return res.status(500).json({ error: "Could not load bug reports." });
-  }
-});
-
 /* ---------- Push notifications (FCM v1) ---------- */
 
 /**
@@ -7919,6 +7875,13 @@ app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: "Could not post the comment", detail: String(err.message || err) });
   }
+});
+
+// Owner report inboxes live in a separate web console, never in the consumer APK.
+// Deprecated Bearer admin-inbox endpoints intentionally no longer exist.
+installOwnerConsole(app, {
+  pool, jwtSecret: JWT_SECRET, adminEmails: ADMIN_EMAILS, r2,
+  sendCode: sendOwnerConsoleCode
 });
 
 initDb()
