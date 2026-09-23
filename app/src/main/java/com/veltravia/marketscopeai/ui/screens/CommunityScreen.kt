@@ -1791,7 +1791,10 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
             val count = poll.counts[option.id] ?: 0
             val pct = if (poll.totalVotes > 0) (count * 100f / poll.totalVotes) else 0f
             val mine = poll.myVote == option.id
-            val hasVoted = poll.myVote != null
+            // Show results (fill + %) to EVERYONE once there's at least one vote —
+            // not just to whoever cast it. A poster who hasn't voted their own poll
+            // must still see how the votes split.
+            val hasResults = poll.totalVotes > 0
 
             Surface(
                 color = Color(0xFFF8FAFC),
@@ -1808,8 +1811,8 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
                     .clickable { onVote(option.id) }
             ) {
                 Box {
-                    // result fill once you've voted
-                    if (hasVoted) {
+                    // result fill once anyone has voted
+                    if (hasResults) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(pct / 100f)
@@ -1847,7 +1850,7 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.weight(1f)
                         )
-                        if (hasVoted) {
+                        if (hasResults) {
                             Text(
                                 "${pct.toInt()}%",
                                 fontSize = 12.sp,
