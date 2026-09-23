@@ -9,7 +9,8 @@ function fakePool(overrides = {}) {
   const state = Object.assign({
     users: {}, // id -> row
     analysesCountByUser: {},
-    grants: {} // userId -> grant row
+    grants: {}, // userId -> referral grant row
+    adminGrants: {}
   }, overrides);
   const query = async (sql, params = []) => {
     calls.push({ sql, params });
@@ -59,6 +60,10 @@ function fakePool(overrides = {}) {
     if (/SELECT premium_expires_at FROM users/.test(sql)) {
       const u = state.users[params[0]];
       return { rows: u?.is_premium && u?.premium_expires_at ? [{ premium_expires_at: u.premium_expires_at }] : [] };
+    }
+    if (/SELECT duration_type, expires_at FROM premium_grants/.test(sql)) {
+      const g = state.adminGrants[params[0]];
+      return { rows: g ? [g] : [] };
     }
     if (/SELECT id, duration_type, expires_at FROM premium_grants/.test(sql)) {
       const g = state.grants[params[0]];
@@ -114,7 +119,7 @@ test('grantBonusDays creates then extends, and skips an active lifetime grant', 
   assert.equal(second.extended, true);
   assert.equal(pool.state.grants.alice.expires_at.getTime(), before + 7 * 86400000);
 
-  pool.state.grants.lifetime_user = { id: 'g2', duration_type: 'lifetime', expires_at: null };
+  pool.state.adminGrants.lifetime_user = { id: 'g2', duration_type: 'lifetime', expires_at: null };
   const skipped = await grantBonusDays(pool, 'lifetime_user', 1, 'r3');
   assert.equal(skipped.alreadyLifetime, true);
 });
@@ -179,4 +184,14 @@ test('invite code cannot be retroactively attached after analysis or purchase', 
   }, analysesCountByUser: { analyzed: 1 } });
   assert.equal((await applyReferralCode(pool, { userId: 'analyzed', code: 'ALICE01', requireWithinSignupWindow: true })).reason, 'already_active');
   assert.equal((await applyReferralCode(pool, { userId: 'subscribed', code: 'ALICE01', requireWithinSignupWindow: true })).reason, 'already_active');
+});
+
+test('referral bonus is independent of an administrator grant', async () => {
+  const adminExpiry = new Date(Date.now() + 15 * 86400000);
+  const adminGrant = { id: 'admin-1', duration_type: 'months', expires_at: adminExpiry };
+  const pool = fakePool({ adminGrants: { alice: adminGrant } });
+  const result = await grantBonusDays(pool, 'alice', 7, 'referral');
+  assert.equal(result.created, true);
+  assert.equal(pool.state.adminGrants.alice.expires_at, adminExpiry);
+  assert.ok(pool.state.grants.alice.expires_at.getTime() >= adminExpiry.getTime() + 7 * 86400000 - 1000);
 });

@@ -99,14 +99,19 @@ async function grantBonusDays(client, userId, days, reason) {
     `SELECT premium_expires_at FROM users WHERE id = $1 AND is_premium = true AND premium_expires_at > now()`,
     [userId]
   );
+  const { rows: admin } = await client.query(
+    `SELECT duration_type, expires_at FROM premium_grants
+     WHERE user_id = $1 AND revoked_at IS NULL AND granted_by_email IS DISTINCT FROM 'referral-system'
+       AND (expires_at IS NULL OR expires_at > now()) LIMIT 1 FOR UPDATE`, [userId]
+  );
   const { rows: active } = await client.query(
     `SELECT id, duration_type, expires_at FROM premium_grants
-     WHERE user_id = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
-     ORDER BY granted_at DESC LIMIT 1 FOR UPDATE`, [userId]
+     WHERE user_id = $1 AND revoked_at IS NULL AND granted_by_email = 'referral-system'
+       AND expires_at > now() LIMIT 1 FOR UPDATE`, [userId]
   );
-  if (active.length && active[0].duration_type === "lifetime") return { extended: false, alreadyLifetime: true };
+  if (admin[0]?.duration_type === "lifetime") return { extended: false, alreadyLifetime: true };
   const base = Math.max(Date.now(), new Date(paidRows[0]?.premium_expires_at || 0).getTime(),
-    new Date(active[0]?.expires_at || 0).getTime());
+    new Date(admin[0]?.expires_at || 0).getTime(), new Date(active[0]?.expires_at || 0).getTime());
   const expiresAt = new Date(base + days * 86400000).toISOString();
   if (active.length) {
     await client.query(
@@ -117,8 +122,8 @@ async function grantBonusDays(client, userId, days, reason) {
     );
     return { extended: true, expiresAt };
   }
-  // Retire expired rows before inserting; the unique index includes expired grants.
-  await client.query(`UPDATE premium_grants SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND expires_at <= now()`, [userId]);
+  // Retire only expired referral rows; administrator grants remain independent.
+  await client.query(`UPDATE premium_grants SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL AND granted_by_email = 'referral-system' AND expires_at <= now()`, [userId]);
   await client.query(
     `INSERT INTO premium_grants (user_id, duration_type, duration_count, expires_at, reason, granted_by, granted_by_email)
      VALUES ($1, 'days', $2, $3, $4, NULL, 'referral-system')`,

@@ -373,8 +373,11 @@ async function initDb() {
       revoked_at TIMESTAMPTZ,
       revoked_by UUID
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS premium_grants_one_active
-      ON premium_grants(user_id) WHERE revoked_at IS NULL;
+    DROP INDEX IF EXISTS premium_grants_one_active;
+    CREATE UNIQUE INDEX IF NOT EXISTS premium_grants_one_admin_active
+      ON premium_grants(user_id) WHERE revoked_at IS NULL AND granted_by_email IS DISTINCT FROM 'referral-system';
+    CREATE UNIQUE INDEX IF NOT EXISTS premium_grants_one_referral_active
+      ON premium_grants(user_id) WHERE revoked_at IS NULL AND granted_by_email = 'referral-system';
     CREATE TABLE IF NOT EXISTS premium_audit (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       target_user_id UUID NOT NULL,
@@ -795,6 +798,7 @@ async function getActivePremiumGrant(userId) {
      FROM premium_grants
      WHERE user_id = $1
        AND revoked_at IS NULL
+       AND granted_by_email IS DISTINCT FROM 'referral-system'
        AND (expires_at IS NULL OR expires_at > now())
      ORDER BY granted_at DESC
      LIMIT 1`,
@@ -803,8 +807,24 @@ async function getActivePremiumGrant(userId) {
   return rows[0] || null;
 }
 
+async function getActiveReferralGrant(userId) {
+  if (!pool || !userId) return null;
+  const { rows } = await pool.query(
+    `SELECT id, duration_type, duration_count, expires_at, reason,
+            granted_by, granted_by_email, granted_at
+     FROM premium_grants WHERE user_id = $1 AND granted_by_email = 'referral-system'
+       AND revoked_at IS NULL AND expires_at > now()
+     ORDER BY granted_at DESC LIMIT 1`, [userId]
+  );
+  return rows[0] || null;
+}
+
+async function getEffectiveGrant(userId) {
+  return (await getActivePremiumGrant(userId)) || (await getActiveReferralGrant(userId));
+}
+
 async function hasActivePremiumGrant(userId) {
-  return Boolean(await getActivePremiumGrant(userId));
+  return Boolean(await getEffectiveGrant(userId));
 }
 
 /** Partially hides an email for display to someone who isn't its owner,
@@ -1809,6 +1829,7 @@ async function premiumStatusSnapshot(userId) {
   const u = rows[0];
   const trial = trialInfo(u);
   const grant = await getActivePremiumGrant(u.id);
+  const referralGrant = await getActiveReferralGrant(u.id);
   const { rows: payRows } = await pool.query(
     `SELECT count(*)::int AS c FROM subscription_payments WHERE user_id = $1 AND status = 'success'`,
     [u.id]
@@ -1822,7 +1843,8 @@ async function premiumStatusSnapshot(userId) {
   const sources = [];
   if (paid) sources.push(u.premium_platform === "google_play" ? "Google Play Subscription" : "Paid Subscription");
   if (grant) sources.push(grant.duration_type === "lifetime" ? "Lifetime Admin Grant" : premiumGrantLabel(grant) + " (Admin Grant)");
-  if (trial.trialActive && !paid && !grant) sources.push("Free Trial");
+  if (referralGrant) sources.push(premiumGrantLabel(referralGrant) + " (Referral Bonus)");
+  if (trial.trialActive && !paid && !grant && !referralGrant) sources.push("Free Trial");
   return {
     id: u.id,
     googleSub: u.google_sub,
@@ -1843,7 +1865,10 @@ async function premiumStatusSnapshot(userId) {
       grantedBy: grant.granted_by_email,
       grantedAt: grant.granted_at
     } : null,
-    grantHistory: history.map((h) => ({
+    referralBonus: referralGrant ? {
+      label: premiumGrantLabel(referralGrant), expiresAt: referralGrant.expires_at
+    } : null,
+    grantHistory: history.filter((h) => h.granted_by_email !== "referral-system").map((h) => ({
       kind: h.duration_type,
       label: premiumGrantLabel(h),
       expiresAt: h.expires_at,
@@ -1852,8 +1877,8 @@ async function premiumStatusSnapshot(userId) {
       grantedAt: h.granted_at,
       revokedAt: h.revoked_at
     })),
-    premium: { active: paid || !!grant || trial.trialActive, sources },
-    plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : trial.trialActive ? "trial" : "free"
+    premium: { active: paid || !!grant || !!referralGrant || trial.trialActive, sources },
+    plan: paid ? "premium" : grant?.duration_type === "lifetime" ? "lifetime" : (grant || referralGrant) ? "premium" : trial.trialActive ? "trial" : "free"
   };
 }
 
@@ -2126,7 +2151,7 @@ app.post("/api/monetization/rewarded-unlock", requireAuth, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
     const trial = trialInfo(rows[0]);
-    const grant = await getActivePremiumGrant(rows[0].id);
+    const grant = await getEffectiveGrant(rows[0].id);
     const effectivePremium = paidPremiumActive(rows[0]) || !!grant || trial.trialActive;
     try {
       const result = await monetization.grantRewardedUnlock(pool, rows[0].id, {
@@ -2953,7 +2978,7 @@ app.get("/api/trial/status", requireAuth, async (req, res) => {
       rows[0].premium_expires_at = null;
     }
     const trial = trialInfo(rows[0]);
-    const grant = await getActivePremiumGrant(rows[0].id);
+    const grant = await getEffectiveGrant(rows[0].id);
     // Paid subscription is sticky forever once activated (existing behavior);
     // an admin grant covers the rest. The plan label tells the app the truth.
     const plan = paidPremiumActive(rows[0])
@@ -3148,7 +3173,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   const modeOverridden = profileCtx.enforcedMode != null && profileCtx.enforcedMode !== mode;
   const traderProfile = profileCtx.text;
   const trial = trialInfo(userRow);
-  const premium = paidPremiumActive(userRow) || Boolean(await getActivePremiumGrant(userRow.id));
+  const premium = paidPremiumActive(userRow) || Boolean(await getEffectiveGrant(userRow.id));
   if (!trial.trialActive && !premium) {
     // Trial lapsed without a subscription: the free tier keeps the core
     // feature alive at 3 analyses per rolling 24h — the upgrade pressure
@@ -3451,7 +3476,7 @@ app.post("/api/analyze/stock/identify", requireAuth, async (req, res) => {
       [req.session.sub]
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
-    premium = paidPremiumActive(rows[0]) || Boolean(await getActivePremiumGrant(rows[0].id));
+    premium = paidPremiumActive(rows[0]) || Boolean(await getEffectiveGrant(rows[0].id));
   } catch (err) {
     return res.status(500).json({ error: "Could not verify account", detail: String(err.message || err) });
   }
@@ -3508,7 +3533,7 @@ app.post("/api/analyze/stock/preflight", requireAuth, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
     const user = rows[0];
-    const premium = paidPremiumActive(user) || Boolean(await getActivePremiumGrant(user.id));
+    const premium = paidPremiumActive(user) || Boolean(await getEffectiveGrant(user.id));
     const trial = trialInfo(user);
     if (premium || trial.trialActive) {
       return res.json({ allowed: true, requestedCount, unlimited: true, remaining: null });
@@ -3559,7 +3584,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
   const profileCtx = await traderProfileContext(userRow);
   const traderProfile = profileCtx.text;
   const trial = trialInfo(userRow);
-  const premium = paidPremiumActive(userRow) || Boolean(await getActivePremiumGrant(userRow.id));
+  const premium = paidPremiumActive(userRow) || Boolean(await getEffectiveGrant(userRow.id));
   if (!trial.trialActive && !premium) {
     const usage = await analysisUsage(userRow.id);
     if (usage.used >= usage.limit) {
@@ -4396,7 +4421,7 @@ app.get("/api/daily-signals/access", requireAuth, async (req, res) => {
     // Premium/lifetime grants never factor in, only the real owner or an
     // explicitly assigned admin/mentor community role.
     const canRepost = isAdmin || canRepostCommunity(communityRole);
-    const grant = await getActivePremiumGrant(rows[0].id);
+    const grant = await getEffectiveGrant(rows[0].id);
     const paid = paidPremiumActive(rows[0]);
     const entitled = trial.trialActive || paid || isAdmin || !!grant;
     res.json({ isAdmin, entitled, trialActive: trial.trialActive, trialDaysRemaining: trial.trialDaysRemaining, isPremium: paid || !!grant, plan: paid ? "premium" : grant ? (grant.duration_type === "lifetime" ? "lifetime" : "premium") : (trial.trialActive ? "trial" : "free"), communityRole, canCompose, canRepost });
@@ -4417,7 +4442,7 @@ app.get("/api/daily-signals", requireAuth, async (req, res) => {
     const me = userRows[0];
     const trial = trialInfo(me);
     const admin = await isAdminRequest(req);
-    const entitled = trial.trialActive || me.is_premium || admin || Boolean(await getActivePremiumGrant(me.id));
+    const entitled = trial.trialActive || me.is_premium || admin || Boolean(await getEffectiveGrant(me.id));
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const { rows } = await pool.query(
       `SELECT * FROM daily_signals ORDER BY published_at DESC LIMIT $1`,
