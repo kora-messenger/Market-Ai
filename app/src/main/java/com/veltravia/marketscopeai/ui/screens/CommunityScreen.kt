@@ -495,6 +495,12 @@ fun CommunityScreen(
         scope.launch {
             try {
                 ApiClient.deleteCommunityPost(tk, post.id)
+                // The featured strip comes from a separate leaderboard query.
+                // Refresh it after deletion so a removed proof never lingers.
+                proofPosts = proofPosts.filter { it.postId != post.id }
+                try {
+                    proofPosts = parseTopProofs(ApiClient.fetchLeaderboard(tk))
+                } catch (_: Exception) { /* Keep the locally pruned list. */ }
             } catch (e: Exception) {
                 error = e.message ?: "Could not delete the post"
                 load(reset = true)
@@ -822,16 +828,17 @@ fun CommunityScreen(
                     // unchanged pagination math); reverseLayout alone flips how
                     // that maps onto the screen, so a freshly published post
                     // (prepended at index 0) lands at the bottom automatically.
-                    // The non-composer note is a real row beside the newest post
-                    // at the bottom; team/mentors use the floating compose button.
-                    val composerRows = if (canCompose) 0 else 1
-                    val endReached by remember(listState, composerRows) {
+                    // In reverseLayout, the first DSL item is the bottom-most
+                    // item on screen. Put featured proof there, under the newest
+                    // post and any inline member composer note.
+                    val bottomRows = (if (proofPosts.isEmpty()) 0 else 1) + (if (canCompose) 0 else 1)
+                    val endReached by remember(listState, bottomRows) {
                         derivedStateOf {
                             val lastPostIdxVisible = listState.layoutInfo.visibleItemsInfo
                                 .map { it.index }
-                                .filter { it >= composerRows && it < posts.size + composerRows }
+                                .filter { it >= bottomRows && it < posts.size + bottomRows }
                                 .maxOrNull() ?: -1
-                            posts.isNotEmpty() && lastPostIdxVisible >= posts.size + composerRows - 3
+                            posts.isNotEmpty() && lastPostIdxVisible >= posts.size + bottomRows - 3
                         }
                     }
                     LaunchedEffect(endReached) {
@@ -847,6 +854,16 @@ fun CommunityScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        if (proofPosts.isNotEmpty()) {
+                            item(key = "featured-proof") {
+                                FeaturedProofRow(
+                                    proofs = proofPosts,
+                                    onOpenImage = { proof ->
+                                        proofViewerUrl = ApiClient.communityImageUrl(proof.postId, 0)
+                                    }
+                                )
+                            }
+                        }
                         if (!canCompose) {
                             item(key = "composer-note") { postComposerBlock() }
                         }
@@ -891,16 +908,6 @@ fun CommunityScreen(
                         // Info panels follow the older posts in the DSL, so in
                         // reverseLayout they sit above the chat-like feed.
                         item { WeeklyCompetitionCard(onOpen = onOpenLeaderboard) }
-                        if (proofPosts.isNotEmpty()) {
-                            item {
-                                FeaturedProofRow(
-                                    proofs = proofPosts,
-                                    onOpenImage = { proof ->
-                                        proofViewerUrl = ApiClient.communityImageUrl(proof.postId, 0)
-                                    }
-                                )
-                            }
-                        }
                         if (pinnedPosts.isNotEmpty()) {
                             item {
                                 PinnedPostsWidget(
@@ -913,10 +920,10 @@ fun CommunityScreen(
                                     onOpenPinned = { pinnedId ->
                                         showPinnedList = false
                                         val idx = posts.indexOfFirst { it.id == pinnedId }
-                                        // The member note occupies index 0 only for
-                                        // non-composers; all post indices follow it.
+                                        // Proof and member note precede posts in
+                                        // the reversed list; account for both.
                                         if (idx >= 0) {
-                                            scope.launch { listState.animateScrollToItem(idx + composerRows) }
+                                            scope.launch { listState.animateScrollToItem(idx + bottomRows) }
                                         }
                                     }
                                 )
@@ -1693,12 +1700,12 @@ private fun PostCard(
                 }
                 if (canDelete) {
                     Spacer(Modifier.width(2.dp))
-                    IconButton(onClick = onDelete, modifier = Modifier.size(26.dp)) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                         Icon(
                             Icons.Filled.Delete,
                             contentDescription = "Delete post",
                             tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
