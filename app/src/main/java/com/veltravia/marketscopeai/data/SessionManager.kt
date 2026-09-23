@@ -103,7 +103,8 @@ object SessionManager {
         val previousEmail = prefs(context).getString(KEY_EMAIL, null)
         if (previousEmail != null && !previousEmail.equals(session.user.email, ignoreCase = true)) {
             AccountSnapshotCache.clear(context, previousEmail)
-            prefs(context).edit().remove(KEY_PLAN).remove(KEY_PLAN_LABEL).apply()
+            prefs(context).edit().remove(KEY_PLAN).remove(KEY_PLAN_LABEL)
+                .remove("shake_bug_report").apply()
         }
         prefs(context).edit()
             .putString(KEY_NAME, session.user.name)

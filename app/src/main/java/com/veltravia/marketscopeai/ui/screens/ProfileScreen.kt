@@ -1,6 +1,12 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -82,6 +88,7 @@ import com.veltravia.marketscopeai.data.ApiConfig
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.data.AccountSnapshot
 import com.veltravia.marketscopeai.data.AccountSnapshotCache
+import com.veltravia.marketscopeai.shake.ShakeBugReporter
 import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.components.PremiumSecondaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
@@ -143,7 +150,16 @@ fun ProfileScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var deleteBusy by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
-    var shakeToReport by remember { mutableStateOf(SessionManager.shakeToReportBug(context)) }
+    var shakeToReport by remember(user?.email) {
+        mutableStateOf(SessionManager.shakeToReportBug(context) &&
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+                context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED))
+    }
+    val screenshotPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        shakeToReport = granted
+        SessionManager.setShakeToReportBug(context, granted)
+        if (granted) (context as? Activity)?.let { ShakeBugReporter.start(it) }
+    }
 
     // Profile card (FxLens-style): public handle + custom avatar + real stats.
     var username by remember(user?.email) { mutableStateOf(cached?.username ?: user?.username) }
@@ -407,14 +423,19 @@ fun ProfileScreen(
                 icon = Icons.Filled.Vibration,
                 tint = GoldAmber,
                 label = "Shake to report a bug",
-                helper = "Shaking your phone always copies a screenshot to your clipboard. Turn this on to also jump straight to the bug report screen.",
+                helper = "Off until you enable it. When on, a shake saves a screenshot to Photos, copies it, and opens bug reporting.",
                 checked = shakeToReport,
                 onChecked = { enabled ->
-                    // The screenshot-on-shake sensor itself is always registered
-                    // from the Activity lifecycle — this switch only decides
-                    // whether the same shake ALSO opens the bug report screen.
-                    shakeToReport = enabled
-                    SessionManager.setShakeToReportBug(context, enabled)
+                    if (enabled && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                        context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                        screenshotPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    } else {
+                        shakeToReport = enabled
+                        SessionManager.setShakeToReportBug(context, enabled)
+                        (context as? Activity)?.let { activity ->
+                            if (enabled) ShakeBugReporter.start(activity) else ShakeBugReporter.stop(activity)
+                        }
+                    }
                 }
             )
             SettingsRow(

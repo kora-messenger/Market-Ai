@@ -91,9 +91,8 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         presenceTick.run()
         ensurePushTokenRegistered()
-        // Shake-to-report-bug: registered fresh every foreground while the
-        // pref is on, so toggling it takes effect on the next app open even
-        // if the in-session start/stop was missed.
+        // Shake capture only registers for a signed-in account that explicitly
+        // enabled it in Settings and has any required legacy gallery permission.
         com.veltravia.marketscopeai.shake.ShakeBugReporter.start(this)
     }
 
