@@ -1,0 +1,33 @@
+name: Process expired account deletions
+
+# Only user-requested deletions older than 30 full days qualify. The backend
+# locks one account at a time and retries any failed DB/R2 cleanup tomorrow.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  account-deletions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Process expired user requests
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET" || { echo 'CRON_SECRET not configured'; exit 1; }
+          status=$(curl -sS --max-time 120 -o /tmp/account-deletions.json -w '%{http_code}' \
+            -X POST -H "x-cron-secret: $CRON_SECRET" \
+            -H 'Content-Type: application/json' \
+            -d '{"confirm":"process-expired-requests"}' \
+            'https://market-ai-api-jwfb.onrender.com/api/cron/account-deletions')
+          if [ "$status" != 200 ]; then
+            echo "Account-deletion maintenance failed (HTTP $status)"
+            exit 1
+          fi
+          cat /tmp/account-deletions.json
+          jq -e '.processed >= .dueCount and .objectsPending == 0' /tmp/account-deletions.json > /dev/null || {
+            echo 'Deletion backlog or R2 cleanup pending; investigate/retry'
+            exit 1
+          }
