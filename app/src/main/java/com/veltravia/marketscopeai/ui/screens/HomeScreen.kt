@@ -2,7 +2,6 @@ package com.veltravia.marketscopeai.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -45,6 +44,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -90,6 +91,27 @@ import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+
+private data class HomeCalendarEvent(val title: String, val market: String, val timeMillis: Long)
+
+private fun parseCalendarTime(raw: String): Long? {
+    for (pattern in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'")) {
+        val parsed = runCatching {
+            SimpleDateFormat(pattern, Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+                isLenient = false
+            }.parse(raw)?.time
+        }.getOrNull()
+        if (parsed != null) return parsed
+    }
+    return null
+}
 
 private data class QuickAction(
     val label: String,
@@ -98,11 +120,10 @@ private data class QuickAction(
 )
 
 /**
- * Home screen — real header, an expandable quick-actions grid, a real
- * community card + a real trial-status card, and a single genuine
- * recommended-broker card. Every number shown here is real: the community
- * member count comes from the backend (COUNT of joined users), and the trial
- * days remaining come from the signed-in user's real trial state.
+ * Decision-first Home preview. One primary analysis action leads to live
+ * signals and high-impact calendar, then the existing live watchlist,
+ * community, account status, tools and recommended broker. No fabricated
+ * market numbers or static signal samples.
  *
  * Tab indices: 0 Home, 1 Signals, 2 Community, 3 Saved, 4 Profile — see
  * MarketAiApp's `tabs` list.
@@ -117,7 +138,8 @@ fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenLearningHub: () -> Unit,
     onOpenNewsOutlook: () -> Unit,
-    onOpenMarket: (String) -> Unit
+    onOpenMarket: (String) -> Unit,
+    onOpenSignal: (String) -> Unit
 ) {
     val context = LocalContext.current
     val user = remember { SessionManager.currentUser(context) }
@@ -126,6 +148,12 @@ fun HomeScreen(
     var expanded by remember { mutableStateOf(false) }
     var memberCount by remember { mutableStateOf<Int?>(null) }
     var onlineCount by remember { mutableStateOf<Int?>(null) }
+    var latestSignal by remember { mutableStateOf<JSONObject?>(null) }
+    var signalLoaded by remember { mutableStateOf(false) }
+    var signalError by remember { mutableStateOf(false) }
+    var nextHighImpact by remember { mutableStateOf<HomeCalendarEvent?>(null) }
+    var calendarLoaded by remember { mutableStateOf(false) }
+    var calendarError by remember { mutableStateOf(false) }
     var trialDaysRemaining by remember { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
     var isPremium by remember { mutableStateOf(SessionManager.effectivePremium(context)) }
     // Free-tier allowance after the trial lapses: 3 chart analyses per day.
@@ -136,36 +164,60 @@ fun HomeScreen(
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
 
-    /** Re-fetches every live number Home shows — shared by the initial
-     *  load and the pull-to-refresh gesture so both are identical. */
-    suspend fun refreshData() {
-        // Real member count — a literal COUNT() from the backend, refreshed
-        // every time Home loads.
-        runCatching { ApiClient.fetchCommunityStats() }.getOrNull()?.let {
-            memberCount = it.optInt("totalMembers", memberCount ?: 0)
-            onlineCount = it.optInt("onlineCount", onlineCount ?: 0)
+    /** Refreshes Home briefing and account/community state on entry or pull.
+     * Watchlist and trending sections retain their own live data loaders. */
+    suspend fun refreshData() = coroutineScope {
+        // Independent real feeds run together so a slow calendar does not
+        // postpone the trial state or signals. Failure never invents data.
+        launch {
+            runCatching { ApiClient.fetchCommunityStats() }.getOrNull()?.let {
+                memberCount = it.optInt("totalMembers", memberCount ?: 0)
+                onlineCount = it.optInt("onlineCount", onlineCount ?: 0)
+            }
         }
-        // Refresh trial state from the server so it never goes stale.
         SessionManager.sessionToken(context)?.let { token ->
-            runCatching { ApiClient.fetchTrialStatus(token) }.getOrNull()?.let { status ->
-                val active = status.optBoolean("trialActive", true)
-                val days = status.optInt("trialDaysRemaining", trialDaysRemaining)
-                val premium = status.optBoolean("isPremium", isPremium)
-                val granted = status.optString("plan", "") == "premium" || status.optString("plan", "") == "lifetime"
-                SessionManager.updateTrialState(context, active, days, premium)
-                val display = com.veltravia.marketscopeai.monetization.planDisplay(status)
-                SessionManager.updatePlan(context, display.plan, display.trailingLabel)
-                // Feed the ad/monetization system the server's ad-eligibility verdict.
-                com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(status)
-                trialDaysRemaining = days
-                isPremium = premium || granted
-                // Real remaining allowance from the server (only for lapsed
-                // free users — premium/trial responses report unlimited).
-                val usage = status.optJSONObject("analysisUsage")
-                if (usage != null && !usage.optBoolean("unlimited", true)) {
-                    analysesLeftToday = usage.optInt("remaining", 3)
+            launch {
+                runCatching { ApiClient.fetchTrialStatus(token) }.getOrNull()?.let { status ->
+                    val active = status.optBoolean("trialActive", true)
+                    val days = status.optInt("trialDaysRemaining", trialDaysRemaining)
+                    val premium = status.optBoolean("isPremium", isPremium)
+                    val granted = status.optString("plan", "") in listOf("premium", "lifetime")
+                    SessionManager.updateTrialState(context, active, days, premium)
+                    val display = com.veltravia.marketscopeai.monetization.planDisplay(status)
+                    SessionManager.updatePlan(context, display.plan, display.trailingLabel)
+                    com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(status)
+                    trialDaysRemaining = days
+                    isPremium = premium || granted
+                    val usage = status.optJSONObject("analysisUsage")
+                    analysesLeftToday = if (usage != null && !usage.optBoolean("unlimited", true))
+                        usage.optInt("remaining", 3) else null
                 }
             }
+            launch {
+                val feed = runCatching { ApiClient.fetchDailySignalsFeed(token, 1) }
+                signalError = feed.isFailure
+                latestSignal = feed.getOrNull()?.optJSONArray("signals")?.optJSONObject(0)
+                signalLoaded = true
+            }
+        }
+        launch {
+            val feed = runCatching { ApiClient.fetchEconomicCalendar() }
+            calendarError = feed.isFailure
+            if (feed.isFailure) nextHighImpact = null
+            if (feed.isSuccess) {
+                val now = System.currentTimeMillis()
+                val events = feed.getOrThrow()
+                nextHighImpact = (0 until events.length()).mapNotNull { i ->
+                    val e = events.optJSONObject(i) ?: return@mapNotNull null
+                    if (!e.optString("impact").equals("High", ignoreCase = true)) return@mapNotNull null
+                    val at = parseCalendarTime(e.optString("timestamp")) ?: return@mapNotNull null
+                    if (at < now || at > now + 3 * 24 * 3600_000L) return@mapNotNull null
+                    val title = e.optString("title").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    HomeCalendarEvent(title, e.optString("currency").takeIf { it.isNotBlank() }
+                        ?: e.optString("country"), at)
+                }.minByOrNull { it.timeMillis }
+            }
+            calendarLoaded = true
         }
     }
 
@@ -223,18 +275,13 @@ fun HomeScreen(
         }
     }
 
-    fun comingSoon(feature: String) {
-        Toast.makeText(context, "$feature is coming soon", Toast.LENGTH_SHORT).show()
-    }
-
-    // Prioritize real, working features in the collapsed row; the three
-    // not-yet-built tools only appear once the user explicitly expands.
+    // Working destinations remain available in the expandable Explore grid.
     val primaryActions = listOf(
         QuickAction("News Outlook", Icons.AutoMirrored.Filled.Article, onOpenNewsOutlook),
         QuickAction("Risk calculator", Icons.Filled.Calculate, onOpenRiskCalculator),
-        QuickAction("Community", Icons.Filled.Groups) { onSwitchTab(2) },
-        QuickAction("Signals", Icons.AutoMirrored.Filled.ShowChart) { onSwitchTab(1) },
         QuickAction("Saved", Icons.Filled.Bookmark) { onSwitchTab(3) },
+        QuickAction("Signals", Icons.AutoMirrored.Filled.ShowChart) { onSwitchTab(1) },
+        QuickAction("Community", Icons.Filled.Groups) { onSwitchTab(2) },
         QuickAction("Share", Icons.Filled.Share) {
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -306,7 +353,7 @@ fun HomeScreen(
                     color = TextPrimary
                 )
                 Text(
-                    "Trade with data-driven confidence.",
+                    "Your market desk, in one place.",
                     style = MaterialTheme.typography.bodySmall,
                     color = AccentCyan,
                     maxLines = 1
@@ -325,46 +372,123 @@ fun HomeScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // --- Quick-actions gradient card ---
+        // --- Decision-first primary action. Static logo stays in the header. ---
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(Brush.linearGradient(listOf(AccentViolet, AccentCyan)))
-                .padding(vertical = 22.dp, horizontal = 12.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Brush.linearGradient(listOf(SurfaceLight, SurfaceDark)))
+                .border(1.dp, BorderSubtle, RoundedCornerShape(22.dp))
+                .padding(20.dp)
         ) {
-            ActionRow(primaryActions.subList(0, 3))
-            Spacer(Modifier.height(18.dp))
-            ActionRow(primaryActions.subList(3, 6))
-
-            AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
-                Column {
-                    Spacer(Modifier.height(18.dp))
-                    ActionRow(moreActions)
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("YOUR NEXT STEP", style = MaterialTheme.typography.labelSmall,
+                    color = AccentCyan, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (isPremium) "PREMIUM" else if (trialDaysRemaining > 0) "TRIAL" else "FREE",
+                    color = if (isPremium) GoldAmber else TextSecondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                        .background(BorderSubtle).padding(horizontal = 9.dp, vertical = 5.dp)
+                )
             }
-
-            Spacer(Modifier.height(10.dp))
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.18f))
-                        .clickable { expanded = !expanded },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = if (expanded) "Show less" else "Show more",
-                        tint = Color.White
-                    )
-                }
+            Spacer(Modifier.height(18.dp))
+            Text("Bring your next setup into focus", style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(6.dp))
+            Text("Upload a chart or choose a stock. We'll work from real market data and your trading profile.",
+                style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                    .background(Brush.horizontalGradient(listOf(AccentViolet, AccentCyan)))
+                    .clickable(onClick = onPickInstrument)
+                    .padding(horizontal = 16.dp, vertical = 15.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Analyze chart or stock", modifier = Modifier.weight(1f),
+                    color = Color.White, fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium)
+                Icon(Icons.Filled.NorthEast, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(28.dp))
 
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Today's briefing", style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("A quick view of the live feeds", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+            }
+            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.height(14.dp))
+
+        // The feed may hold a signal from a previous day: call it the latest,
+        // never pretend it was published today or that a locked feed is open.
+        val signal = latestSignal
+        val signalId = signal?.optString("id")?.takeIf { it.isNotBlank() }
+        val signalName = signal?.optString("instrument")?.takeIf { it.isNotBlank() }
+        val signalMeta = signal?.let {
+            listOfNotNull(
+                it.optString("direction").takeIf { value -> value.isNotBlank() }?.uppercase(Locale.getDefault()),
+                it.optString("status").takeIf { value -> value.isNotBlank() }?.replaceFirstChar { c -> c.uppercase() },
+                parseCalendarTime(it.optString("publishedAt"))?.let { at ->
+                    SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(at))
+                }
+            ).joinToString(" · ")
+        }
+        HomeBriefRow(
+            icon = Icons.AutoMirrored.Filled.ShowChart,
+            label = "LATEST SIGNAL",
+            title = when {
+                signalName != null -> signalName
+                !signalLoaded -> "Checking the signal feed…"
+                signalError -> "Signals aren't available right now"
+                else -> "No signals published yet"
+            },
+            detail = signalMeta?.takeIf { it.isNotBlank() } ?: "See the live signal feed",
+            onClick = { if (signalId != null) onOpenSignal(signalId) else onSwitchTab(1) }
+        )
+        Spacer(Modifier.height(10.dp))
+        val event = nextHighImpact
+        HomeBriefRow(
+            icon = Icons.Filled.CalendarMonth,
+            label = "NEXT HIGH-IMPACT EVENT",
+            title = when {
+                event != null -> event.title
+                !calendarLoaded -> "Checking the economic calendar…"
+                calendarError -> "Calendar isn't available right now"
+                else -> "No high-impact events in the next 3 days"
+            },
+            detail = if (event != null) {
+                val localTime = SimpleDateFormat("EEE, h:mm a z", Locale.getDefault()).format(Date(event.timeMillis))
+                listOf(event.market.takeIf { it.isNotBlank() }, localTime).filterNotNull().joinToString(" · ")
+            } else "View the full calendar",
+            onClick = onOpenCalendar
+        )
+
+        Spacer(Modifier.height(28.dp))
+
+        // --- Multi-asset live watchlist (Futures/Forex/Crypto) ---
+        MarketsWatchlistSection(onOpenMarket = onOpenMarket)
+
+        Spacer(Modifier.height(28.dp))
+
+        // --- Trending tokens (live) ---
+        TrendingSection(onOpenMarket = onOpenMarket)
+
+        Spacer(Modifier.height(28.dp))
+
+        // Account and community are still here, but no longer compete with
+        // the actual trading decision at the top of Home.
         // --- Community + Trial cards ---
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -467,13 +591,46 @@ fun HomeScreen(
 
         Spacer(Modifier.height(28.dp))
 
-        // --- Multi-asset live watchlist (Futures/Forex/Crypto) ---
-        MarketsWatchlistSection(onOpenMarket = onOpenMarket)
-
-        Spacer(Modifier.height(28.dp))
-
-        // --- Trending tokens (live) ---
-        TrendingSection(onOpenMarket = onOpenMarket)
+        // --- Compact, expandable tools. Every previous action remains. ---
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Explore tools", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("Your full toolkit is still one tap away", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+            }
+            IconButton(onClick = { expanded = !expanded }) {
+                Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Show fewer tools" else "Show all tools", tint = AccentCyan)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Column(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                .background(SurfaceLight).border(1.dp, BorderSubtle, RoundedCornerShape(18.dp))
+                .padding(vertical = 16.dp, horizontal = 6.dp)
+        ) {
+            ActionRow(primaryActions.subList(0, 3))
+            AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    ActionRow(primaryActions.subList(3, 6))
+                    Spacer(Modifier.height(12.dp))
+                    ActionRow(moreActions)
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
+                    .padding(top = 14.dp, bottom = 2.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(if (expanded) "Show fewer" else "All tools", color = AccentCyan,
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(4.dp))
+                Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+            }
+        }
 
         Spacer(Modifier.height(28.dp))
 
@@ -530,7 +687,7 @@ fun HomeScreen(
 
 @Composable
 private fun ActionRow(actions: List<QuickAction>) {
-    Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
         actions.forEach { action ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -540,7 +697,7 @@ private fun ActionRow(actions: List<QuickAction>) {
                     modifier = Modifier
                         .size(52.dp)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(SurfaceDark)
                         .clickable { action.onClick() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -550,8 +707,8 @@ private fun ActionRow(actions: List<QuickAction>) {
                 Text(
                     action.label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    maxLines = 1,
+                    color = TextSecondary,
+                    maxLines = 2,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
@@ -559,3 +716,35 @@ private fun ActionRow(actions: List<QuickAction>) {
     }
 }
 
+
+/** Small live-data row. The whole row opens its existing destination. */
+@Composable
+private fun HomeBriefRow(icon: ImageVector, label: String, title: String, detail: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(17.dp))
+            .background(SurfaceLight).border(1.dp, BorderSubtle, RoundedCornerShape(17.dp))
+            .clickable(onClick = onClick).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceDark),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(21.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelSmall,
+                color = AccentCyan, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(3.dp))
+            Text(title, style = MaterialTheme.typography.bodyMedium,
+                color = TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            Spacer(Modifier.height(3.dp))
+            Text(detail, style = MaterialTheme.typography.labelSmall,
+                color = TextMuted, maxLines = 2)
+        }
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.ChevronRight, contentDescription = null,
+            tint = TextMuted, modifier = Modifier.size(19.dp))
+    }
+}
