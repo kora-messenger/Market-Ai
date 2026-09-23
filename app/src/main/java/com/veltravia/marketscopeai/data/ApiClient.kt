@@ -1564,6 +1564,29 @@ object ApiClient {
             "data:$mime;base64,$base64"
         }
 
+    /** Send Settings feedback with up to 4 private R2-backed photos. */
+    suspend fun submitFeedback(sessionToken: String, message: String, images: List<String>): JSONObject =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().put("message", message)
+                .put("images", JSONArray().apply { images.forEach { put(it) } })
+            val request = Request.Builder()
+                .url("${ApiConfig.BASE_URL}/api/feedback")
+                .addHeader("Authorization", "Bearer $sessionToken")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            request(request)
+        }
+
+    /** Owner-only latest feedback, including short-lived signed photo links. */
+    suspend fun fetchAdminFeedback(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/admin/feedback")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
     /** Send a bug report (description + up to 4 screenshots + 1 recording). */
     suspend fun submitBugReport(
         sessionToken: String,

@@ -449,6 +449,16 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
+        composable("feedback") {
+            com.veltravia.marketscopeai.ui.screens.FeedbackScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable("feedback_inbox") {
+            com.veltravia.marketscopeai.ui.screens.FeedbackInboxScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("report_bug") {
             com.veltravia.marketscopeai.ui.screens.BugReportScreen(
                 onBack = { navController.popBackStack() }
@@ -534,7 +544,8 @@ fun MarketAiApp() {
         composable("signals_admin") {
             AdminSignalsScreen(
                 onBack = { navController.popBackStack() },
-                onOpenPremium = { navController.navigate("premium_admin") }
+                onOpenPremium = { navController.navigate("premium_admin") },
+                onOpenFeedback = { navController.navigate("feedback_inbox") }
             )
         }
         composable("premium_admin") {
@@ -767,6 +778,7 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenSubscribe = { navController.navigate("subscribe") },
                     onOpenReferrals = { navController.navigate("referrals") },
                     onOpenBugReport = { navController.navigate("report_bug") },
+                    onOpenFeedback = { navController.navigate("feedback") },
                     onViewSavedTradePlans = { currentTab = 3 },
                     onEditTradingProfile = { navController.navigate("questionnaire_edit") }
                 )

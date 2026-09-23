@@ -53,8 +53,11 @@ async function processExpiredDeletions(pool, r2, { preview = false, limit = 25 }
       const reports = await client.query(
         `SELECT attachments FROM bug_reports WHERE user_id = $1 OR ($2 <> '' AND lower(user_email) = $2)`, args
       );
+      const feedback = await client.query(
+        `SELECT attachments FROM user_feedback WHERE user_id = $1 OR ($2 <> '' AND lower(user_email) = $2)`, args
+      );
       for (const row of [...postImages.rows, ...proofImages.rows]) if (row.r2_key) keys.add(row.r2_key);
-      for (const row of reports.rows) {
+      for (const row of [...reports.rows, ...feedback.rows]) {
         const attachments = typeof row.attachments === "string" ? JSON.parse(row.attachments) : row.attachments;
         if (Array.isArray(attachments)) for (const a of attachments) if (a && a.r2Key) keys.add(a.r2Key);
       }
@@ -70,6 +73,7 @@ async function processExpiredDeletions(pool, r2, { preview = false, limit = 25 }
       await client.query(`DELETE FROM post_comments WHERE user_id = $1 OR ($2 <> '' AND lower(author_email) = $2)`, args);
       await client.query(`DELETE FROM community_posts WHERE user_id = $1 OR ($2 <> '' AND (lower(author_email) = $2 OR lower(COALESCE(reposted_by_email,'')) = $2))`, args);
       await client.query(`DELETE FROM bug_reports WHERE user_id = $1 OR ($2 <> '' AND lower(user_email) = $2)`, args);
+      await client.query(`DELETE FROM user_feedback WHERE user_id = $1 OR ($2 <> '' AND lower(user_email) = $2)`, args);
       await client.query(`DELETE FROM premium_audit WHERE target_user_id = $1 OR admin_user_id = $1 OR ($2 <> '' AND (lower(COALESCE(target_email,'')) = $2 OR lower(COALESCE(admin_email,'')) = $2))`, args);
       // Grants issued to *other* members must remain in force, without the
       // deleted grantor's identity or a dangling foreign key.

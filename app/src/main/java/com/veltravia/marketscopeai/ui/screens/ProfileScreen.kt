@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -125,6 +126,7 @@ fun ProfileScreen(
     onOpenSubscribe: () -> Unit,
     onOpenReferrals: () -> Unit,
     onOpenBugReport: () -> Unit = {},
+    onOpenFeedback: () -> Unit = {},
     onViewSavedTradePlans: () -> Unit,
     onEditTradingProfile: () -> Unit = {}
 ) {
@@ -412,6 +414,12 @@ fun ProfileScreen(
                     val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
                     context.startActivity(mail)
                 }
+            )
+            SettingsRow(
+                icon = Icons.Filled.Forum,
+                tint = AccentViolet,
+                label = "Feedback & ideas",
+                onClick = onOpenFeedback
             )
             SettingsRow(
                 icon = Icons.Filled.BugReport,

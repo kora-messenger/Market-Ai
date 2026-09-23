@@ -736,6 +736,16 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_bug_reports_created ON bug_reports(created_at DESC);
+    CREATE TABLE IF NOT EXISTS user_feedback (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_email TEXT NOT NULL,
+      message TEXT NOT NULL,
+      attachments JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_feedback_created ON user_feedback(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_user_feedback_user ON user_feedback(user_id, created_at DESC);
   `);
 }
 
@@ -7200,6 +7210,102 @@ app.post("/api/tab-activity/seen", requireAuth, async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     return res.status(500).json({ error: "Could not mark tab as seen", detail: String(err.message || err) });
+  }
+});
+
+/* ---------- User feedback (Settings > Feedback) ---------- */
+
+/** Feedback is private: require a signed-in account and store image keys only
+ * in Postgres. Never fall back to inline base64 or accept a client email/id.
+ * A failed upload or insert cleans up any newly uploaded R2 objects. */
+app.post("/api/feedback", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const message = String(req.body?.message || "").trim();
+  if (message.length < 3 || message.length > 4000) {
+    return res.status(400).json({ error: "Write 3 to 4000 characters before sending feedback." });
+  }
+  const images = req.body?.images === undefined ? [] : req.body.images;
+  if (!Array.isArray(images) || images.length > 4) {
+    return res.status(400).json({ error: "Attach no more than 4 pictures." });
+  }
+  const decoded = [];
+  for (const dataUrl of images) {
+    const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(dataUrl));
+    if (!match || match[2].length > 4_200_000) {
+      return res.status(400).json({ error: "Use JPEG, PNG or WebP images under 3MB each." });
+    }
+    const bytes = Buffer.from(match[2], "base64");
+    const type = match[1];
+    const valid = type === "jpeg" ? bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+      : type === "png" ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      : bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+    if (!valid || bytes.length === 0 || bytes.length > 3 * 1024 * 1024) {
+      return res.status(400).json({ error: "Each picture must be a valid JPEG, PNG or WebP under 3MB." });
+    }
+    decoded.push({ bytes, contentType: `image/${type}` });
+  }
+  if (decoded.length && !r2.isR2Configured()) {
+    return res.status(503).json({ error: "Photo storage is unavailable right now. Try again later or send text only." });
+  }
+  const uploaded = [];
+  try {
+    const me = await currentUser(req);
+    if (!me) return res.status(404).json({ error: "User not found." });
+    const attachments = [];
+    for (const { bytes, contentType } of decoded) {
+      const r2Key = await r2.uploadImage(bytes, contentType, "feedback");
+      uploaded.push(r2Key);
+      attachments.push({ r2Key, contentType, sizeBytes: bytes.length });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO user_feedback (user_id, user_email, message, attachments)
+       VALUES ($1, $2, $3, $4::jsonb) RETURNING id, created_at`,
+      [me.id, me.email || "", message, JSON.stringify(attachments)]
+    );
+    // Notification is best-effort after the row is saved. An FCM/owner lookup
+    // failure must never make a successful submission look unsent and duplicate.
+    if (ADMIN_EMAILS.length) {
+      pool.query(`SELECT id FROM users WHERE lower(email) = ANY($1::text[])`, [ADMIN_EMAILS])
+        .then(({ rows: owners }) => {
+          const snippet = message.length > 90 ? message.slice(0, 90) + "…" : message;
+          for (const owner of owners) {
+            notifyUser(owner.id, {
+              title: "New user feedback",
+              body: `${me.email || "A user"}: ${snippet}`,
+              type: "general",
+              data: { type: "user_feedback", route: "notifications" }
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+    }
+    return res.json({ ok: true, id: rows[0].id, createdAt: rows[0].created_at });
+  } catch (err) {
+    await Promise.allSettled(uploaded.map((key) => r2.deleteObject(key)));
+    console.error("feedback failed:", String(err.message || err));
+    return res.status(500).json({ error: "Could not send feedback. Please try again." });
+  }
+});
+
+/** Owner-only inbox with temporary signed links to private R2 attachments. */
+app.get("/api/admin/feedback", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!(await isAdminRequest(req))) return res.status(403).json({ error: "Owner only." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, user_email, message, attachments, created_at
+       FROM user_feedback ORDER BY created_at DESC LIMIT 100`
+    );
+    const feedback = await Promise.all(rows.map(async (row) => ({
+      id: row.id, email: row.user_email, message: row.message, createdAt: row.created_at,
+      images: await Promise.all((Array.isArray(row.attachments) ? row.attachments : []).map(async (item) => ({
+        url: await r2.signedImageUrl(item.r2Key, 900).catch(() => null),
+        sizeBytes: item.sizeBytes
+      })))
+    })));
+    return res.json({ feedback });
+  } catch (err) {
+    console.error("admin feedback failed:", String(err.message || err));
+    return res.status(500).json({ error: "Could not load feedback." });
   }
 });
 

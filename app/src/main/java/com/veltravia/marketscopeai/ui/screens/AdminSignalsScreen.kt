@@ -85,7 +85,7 @@ import java.time.format.DateTimeFormatter
  * never see this route — the "Post" pill only appears for the admin.
  */
 @Composable
-fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
+fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}, onOpenFeedback: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -171,6 +171,10 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
             color = TextSecondary,
             modifier = Modifier.padding(horizontal = 4.dp)
         )
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(onClick = onOpenFeedback, modifier = Modifier.fillMaxWidth()) {
+            Text("User feedback inbox", color = AccentCyan)
+        }
         Spacer(Modifier.height(16.dp))
 
         // ---------- overview dashboard ----------
