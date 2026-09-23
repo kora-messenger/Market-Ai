@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +42,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,7 +87,7 @@ import java.time.format.DateTimeFormatter
  * never see this route — the "Post" pill only appears for the admin.
  */
 @Composable
-fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
+fun AdminSignalsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -116,6 +118,9 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
     var pendingWinProofs by remember { mutableStateOf<org.json.JSONArray?>(null) }
     var memberQuery by remember { mutableStateOf("") }
     var busyMemberId by remember { mutableStateOf<String?>(null) }
+    var selectedTab by remember { mutableStateOf(0) }
+    var closeRequest by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    var closing by remember { mutableStateOf(false) }
 
     LaunchedEffect(reloadKey) {
         val token = SessionManager.sessionToken(context) ?: return@LaunchedEffect
@@ -147,31 +152,21 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
         }
     }
 
+    if (selectedTab == 1) {
+        // Reuse the fully operational search, grants, revocation and audit UI
+        // inside the console instead of sending the owner to another route.
+        AdminPremiumScreen(onBack = onBack, embedded = true, onSelectTab = { selectedTab = it })
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(Modifier.height(8.dp))
-        Box(modifier = Modifier.fillMaxWidth()) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-            }
-            Text(
-                "Team Console",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
-        Text(
-            "Publish a curated signal, or close one manually (needed for synthetics — they have no public price feed).",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
-        Spacer(Modifier.height(16.dp))
+        TeamConsoleHeader(onBack, selectedTab, onSelectTab = { selectedTab = it })
+        if (selectedTab == 0) {
         // ---------- overview dashboard ----------
         if (overview != null) {
             val ov = overview!!
@@ -535,16 +530,7 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
                 for (i in 0 until list.length()) {
                     val item = list.optJSONObject(i) ?: continue
                     AdminSignalRow(item) { outcome ->
-                        scope.launch {
-                            try {
-                                val token = SessionManager.sessionToken(context) ?: return@launch
-                                ApiClient.closeDailySignal(token, item.optString("id"), outcome)
-                                Toast.makeText(context, "Closed as $outcome", Toast.LENGTH_SHORT).show()
-                                reloadKey++
-                            } catch (ex: Exception) {
-                                Toast.makeText(context, ex.message ?: "Could not close", Toast.LENGTH_SHORT).show()
-                            }
-                        }
+                        closeRequest = Triple(item.optString("id"), item.optString("instrument"), outcome)
                     }
                     Spacer(Modifier.height(10.dp))
                 }
@@ -552,35 +538,9 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
         }
         Spacer(Modifier.height(28.dp))
 
-        // ---------- premium management ----------
-        if (members != null) {
-            Text("Premium management", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Grant or revoke free Premium (lifetime, months or years) for any user — with email confirmation to the user and a full audit trail.",
-                style = MaterialTheme.typography.bodySmall, color = TextMuted
-            )
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceLight)
-                    .clickable { onOpenPremium() }
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = GoldAmber, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Open Premium Management", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text("Search users, grant or revoke free Premium", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                }
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp).rotate(180f))
-            }
-            Spacer(Modifier.height(24.dp))
-        }
+        } // Signals & reviews tab
 
+        if (selectedTab == 2) {
         // ---------- members & roles (mentor manager) ----------
         if (members != null) {
             Text("Members & roles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
@@ -633,8 +593,88 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}) {
             Spacer(Modifier.height(8.dp))
         }
 
+        } // Members & roles tab
         Spacer(Modifier.height(32.dp))
     }
+
+    closeRequest?.let { (id, instrumentName, outcome) ->
+        val label = when (outcome) {
+            "successful" -> "Win"
+            "invalidated_sl" -> "Loss"
+            "breakeven" -> "Breakeven"
+            else -> "Expired"
+        }
+        AlertDialog(
+            onDismissRequest = { if (!closing) closeRequest = null },
+            title = { Text("Close this trade?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Close $instrumentName as $label? This marks the signal as closed for everyone. Check the outcome before continuing.")
+            },
+            confirmButton = {
+                TextButton(enabled = !closing, onClick = {
+                    if (closing) return@TextButton
+                    closing = true
+                    scope.launch {
+                        try {
+                            val token = SessionManager.sessionToken(context) ?: throw IllegalStateException("Not signed in")
+                            ApiClient.closeDailySignal(token, id, outcome)
+                            closeRequest = null
+                            Toast.makeText(context, "$instrumentName closed as $label", Toast.LENGTH_SHORT).show()
+                            reloadKey++
+                        } catch (ex: Exception) {
+                            Toast.makeText(context, ex.message ?: "Could not close trade", Toast.LENGTH_LONG).show()
+                        } finally {
+                            closing = false
+                        }
+                    }
+                }) { Text("Close trade", color = BearRed) }
+            },
+            dismissButton = {
+                TextButton(enabled = !closing, onClick = { closeRequest = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+/** Three focused sections within the same owner-only console. */
+@Composable
+internal fun TeamConsoleHeader(onBack: () -> Unit, selectedTab: Int, onSelectTab: (Int) -> Unit) {
+    Spacer(Modifier.height(8.dp))
+    Box(modifier = Modifier.fillMaxWidth()) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        }
+        Text("Team Console", style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
+    }
+    Text(
+        when (selectedTab) {
+            0 -> "Publish signals, review submissions and confirm manual closes."
+            1 -> "Manage Premium grants and review the audit trail."
+            else -> "Find members and manage their community roles."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = TextSecondary,
+        modifier = Modifier.padding(horizontal = 4.dp)
+    )
+    Spacer(Modifier.height(16.dp))
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("Signals", "Premium", "Members").forEachIndexed { index, title ->
+            val active = selectedTab == index
+            Button(
+                onClick = { onSelectTab(index) },
+                modifier = Modifier.weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (active) AccentViolet else SurfaceLight,
+                    contentColor = if (active) androidx.compose.ui.graphics.Color.White else TextPrimary
+                )
+            ) {
+                Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+    Spacer(Modifier.height(20.dp))
 }
 
 private val COMMUNITY_ROLES = listOf("member", "mentor", "moderator", "admin")

@@ -77,7 +77,7 @@ import java.util.Locale
  * recalculates effective access from every entitlement source.
  */
 @Composable
-fun AdminPremiumScreen(onBack: () -> Unit) {
+fun AdminPremiumScreen(onBack: () -> Unit, embedded: Boolean = false, onSelectTab: (Int) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -195,25 +195,24 @@ fun AdminPremiumScreen(onBack: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
     ) {
-        Spacer(Modifier.height(8.dp))
-        Box(modifier = Modifier.fillMaxWidth()) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+        if (embedded) {
+            TeamConsoleHeader(onBack, selectedTab = 1, onSelectTab = onSelectTab)
+            Text("Premium management", style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+        } else {
+            Spacer(Modifier.height(8.dp))
+            Box(modifier = Modifier.fillMaxWidth()) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Text("Premium Management", style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
             }
-            Text(
-                "Premium Management",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Center)
-            )
+            Text("Manage MarketScope AI Premium access", style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary, modifier = Modifier.padding(horizontal = 4.dp))
+            Spacer(Modifier.height(16.dp))
         }
-        Text(
-            "Manage MarketScope AI Premium access",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
-        Spacer(Modifier.height(16.dp))
 
         // ---------- search ----------
         OutlinedTextField(
