@@ -150,6 +150,7 @@ fun ProfileScreen(
     var accountEmail by remember { mutableStateOf(user?.email ?: "") }
     var deletionRequestedAt by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showSignOutConfirm by remember { mutableStateOf(false) }
     var deleteBusy by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf<String?>(null) }
     var shakeToReport by remember(user?.email) {
@@ -476,7 +477,7 @@ fun ProfileScreen(
                 icon = Icons.AutoMirrored.Filled.Login,
                 tint = BearRed,
                 label = "Sign out",
-                onClick = onSignOut
+                onClick = { showSignOutConfirm = true }
             )
             if (deletionRequestedAt == null) {
                 SettingsRow(
@@ -553,6 +554,63 @@ fun ProfileScreen(
                 }
             }
         )
+    }
+
+    if (showSignOutConfirm) {
+        SignOutConfirmDialog(
+            onDismiss = { showSignOutConfirm = false },
+            onConfirm = {
+                showSignOutConfirm = false
+                onSignOut()
+            }
+        )
+    }
+}
+
+/**
+ * Sign-out confirmation — a small centered card (title, message, two text
+ * actions) so a stray tap on "Sign out" can't drop someone out of their
+ * session by accident.
+ */
+@Composable
+private fun SignOutConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(24.dp)
+        ) {
+            Text(
+                "Log out?",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "You'll need to sign back in to keep using MarketScope AI.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            Spacer(Modifier.height(22.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onConfirm) {
+                    Text("Log out", fontWeight = FontWeight.SemiBold, color = BearRed)
+                }
+            }
+        }
     }
 }
 
