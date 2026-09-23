@@ -27,7 +27,9 @@ async function ensureReferralColumns(pool) {
   // bonuses are day-granular, so widen the CHECK to include 'days'.
   await pool.query(`ALTER TABLE premium_grants DROP CONSTRAINT IF EXISTS premium_grants_duration_type_check`);
   await pool.query(`ALTER TABLE premium_grants ADD CONSTRAINT premium_grants_duration_type_check CHECK (duration_type IN ('lifetime','months','years','days'))`);
-  // Codes for existing accounts are created lazily on their first referral screen visit.
+  // Every existing account must be able to share a working code immediately.
+  // New accounts receive a code during Google sign-in; this is idempotent on restart.
+  await backfillReferralCodes(pool);
 }
 
 /** Generates and stores a unique code for one user, retrying on collision. */
@@ -47,6 +49,24 @@ async function assignReferralCode(pool, userId) {
     }
   }
   throw new Error("Could not allocate a unique referral code");
+}
+
+/** Backfills all existing accounts without overwriting an already shared code.
+ *  Batch reads keep each query bounded; the unique index + assign retry protect
+ *  against concurrent signups or another instance performing the same work. */
+async function backfillReferralCodes(pool) {
+  let allocated = 0;
+  for (;;) {
+    const { rows } = await pool.query(
+      `SELECT id FROM users WHERE referral_code IS NULL ORDER BY id LIMIT 100`
+    );
+    if (!rows.length) break;
+    for (const { id } of rows) {
+      if (await assignReferralCode(pool, id)) allocated++;
+    }
+  }
+  if (allocated) console.log(`[referrals] allocated invite codes for ${allocated} existing accounts`);
+  return allocated;
 }
 
 /**
@@ -220,6 +240,7 @@ module.exports = {
   SUBSCRIPTION_BONUS_DAYS,
   ensureReferralColumns,
   assignReferralCode,
+  backfillReferralCodes,
   applyReferralCode,
   grantBonusDays,
   rewardFirstAnalysis,

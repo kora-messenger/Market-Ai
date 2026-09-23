@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  applyReferralCode, grantBonusDays, rewardFirstAnalysis, rewardFirstSubscription, assignReferralCode
+  applyReferralCode, grantBonusDays, rewardFirstAnalysis, rewardFirstSubscription, assignReferralCode, backfillReferralCodes
 } = require('../src/referrals');
 
 function fakePool(overrides = {}) {
@@ -14,6 +14,9 @@ function fakePool(overrides = {}) {
   }, overrides);
   const query = async (sql, params = []) => {
     calls.push({ sql, params });
+    if (/SELECT id FROM users WHERE referral_code IS NULL ORDER BY id LIMIT 100/.test(sql)) {
+      return { rows: Object.values(state.users).filter(u => !u.referral_code).slice(0, 100).map(u => ({ id: u.id })) };
+    }
     if (/UPDATE users SET referral_code = \$1 WHERE id = \$2 AND referral_code IS NULL/.test(sql)) {
       const [code, id] = params;
       if (state.users[id] && !state.users[id].referral_code) {
@@ -194,4 +197,15 @@ test('referral bonus is independent of an administrator grant', async () => {
   assert.equal(result.created, true);
   assert.equal(pool.state.adminGrants.alice.expires_at, adminExpiry);
   assert.ok(pool.state.grants.alice.expires_at.getTime() >= adminExpiry.getTime() + 7 * 86400000 - 1000);
+});
+
+
+test('backfill allocates distinct codes to every existing account without changing shared codes', async () => {
+  const users = Object.fromEntries(Array.from({ length: 125 }, (_, i) => [String(i),
+    { id: String(i), referral_code: i === 0 ? 'KEEP234' : null }]));
+  const pool = fakePool({ users });
+  assert.equal(await backfillReferralCodes(pool), 124);
+  assert.equal(users['0'].referral_code, 'KEEP234');
+  assert.equal(new Set(Object.values(users).map(u => u.referral_code)).size, 125);
+  assert.equal(await backfillReferralCodes(pool), 0);
 });
