@@ -110,7 +110,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AccentCyan)
             }
-            Text("Feedback", style = MaterialTheme.typography.titleLarge,
+            Text("Your Opinion", style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold, color = TextPrimary)
         }
         Column(
@@ -130,7 +130,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                         color = TextPrimary, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
-                    Text("Your feedback has reached our team. We read every submission, though we may not reply individually.",
+                    Text("Your message has reached our team. We read every submission, though we may not reply individually.",
                         style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
                         textAlign = TextAlign.Center)
                     Spacer(Modifier.height(26.dp))
@@ -245,7 +245,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(24.dp))
                 GradientPrimaryButton(
-                    text = "Send feedback",
+                    text = "Send your opinion",
                     enabled = !sending && !preparing && token != null && message.trim().length >= 3,
                     loading = sending,
                     onClick = {

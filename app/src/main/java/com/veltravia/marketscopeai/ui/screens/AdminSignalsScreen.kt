@@ -173,7 +173,7 @@ fun AdminSignalsScreen(onBack: () -> Unit, onOpenPremium: () -> Unit = {}, onOpe
         )
         Spacer(Modifier.height(16.dp))
         OutlinedButton(onClick = onOpenFeedback, modifier = Modifier.fillMaxWidth()) {
-            Text("User feedback inbox", color = AccentCyan)
+            Text("Your Opinion inbox", color = AccentCyan)
         }
         Spacer(Modifier.height(16.dp))
 

@@ -86,7 +86,7 @@ fun FeedbackInboxScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AccentCyan)
             }
-            Text("Feedback inbox", style = MaterialTheme.typography.titleLarge,
+            Text("Your Opinion inbox", style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
             IconButton(onClick = { items = null; reload++ }) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh feedback", tint = AccentCyan)

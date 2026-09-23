@@ -418,7 +418,7 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.Forum,
                 tint = AccentViolet,
-                label = "Feedback & ideas",
+                label = "Your Opinion",
                 onClick = onOpenFeedback
             )
             SettingsRow(

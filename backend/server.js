@@ -7270,7 +7270,7 @@ app.post("/api/feedback", requireAuth, async (req, res) => {
           const snippet = message.length > 90 ? message.slice(0, 90) + "…" : message;
           for (const owner of owners) {
             notifyUser(owner.id, {
-              title: "New user feedback",
+              title: "New user opinion",
               body: `${me.email || "A user"}: ${snippet}`,
               type: "general",
               data: { type: "user_feedback", route: "notifications" }
