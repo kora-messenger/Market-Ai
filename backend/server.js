@@ -1262,7 +1262,11 @@ app.get("/api/account/status", requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT u.deletion_requested_at, u.username, u.avatar_key, u.id, u.email,
               (SELECT COUNT(*)::int FROM analyses a WHERE a.user_id = u.id) AS analyses_count,
-              (SELECT COUNT(*)::int FROM trade_plans t WHERE t.user_id = u.id) AS saved_count
+              -- Saved tab = analysis history + AI trade plans + bookmarked daily signals.
+              -- The legacy trade_plans table is no longer displayed there.
+              ((SELECT COUNT(*)::int FROM analyses a WHERE a.user_id = u.id)
+               + (SELECT COUNT(*)::int FROM ai_trade_plans p WHERE p.user_id = u.id)
+               + (SELECT COUNT(*)::int FROM signal_saves s WHERE s.user_id = u.id)) AS saved_count
        FROM users u WHERE u.google_sub = $1`,
       [req.session.sub]
     );

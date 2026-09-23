@@ -124,7 +124,6 @@ fun ProfileScreen(
     val token = SessionManager.sessionToken(context)
     val user = SessionManager.currentUser(context)
 
-    var savedPlanCount by remember { mutableStateOf<Int?>(null) }
     var trialActive by remember { mutableStateOf(true) }
     var trialDaysRemaining by remember { mutableStateOf(0) }
     var isPremium by remember { mutableStateOf(false) }
@@ -153,23 +152,14 @@ fun ProfileScreen(
 
     androidx.compose.runtime.LaunchedEffect(token) {
         if (token == null) return@LaunchedEffect
-        // Fire all three profile calls concurrently instead of one after
-        // another — the screen used to render in three visible waves (trade
-        // count, then plan badge, then avatar/username) because each await
-        // blocked the next request from even starting. Now the total wait is
-        // bounded by the SLOWEST single call, not the sum of all three.
-        val plansDeferred = async {
-            try { ApiClient.fetchTradePlans(token) } catch (_: Exception) { null }
-        }
+        // Load plan entitlement and account stats concurrently. The account
+        // status endpoint counts the same items actually shown in Saved.
         val trialDeferred = async {
             try { ApiClient.fetchTrialStatus(token) } catch (_: Exception) { null }
         }
         val statusDeferred = async {
             try { ApiClient.fetchAccountStatus(token) } catch (_: Exception) { null }
         }
-
-        val plans = plansDeferred.await()
-        savedPlanCount = plans?.length() ?: 0
 
         val trial = trialDeferred.await()
         if (trial != null) {
@@ -257,7 +247,7 @@ fun ProfileScreen(
             trialActive = trialActive,
             trialDaysRemaining = trialDaysRemaining,
             analysesCount = analysesCount,
-            savedPlanCount = savedPlanCount ?: savedTradesCount,
+            savedPlanCount = savedTradesCount,
             plan = plan,
             isVerified = planEffectivePremium,
             avatarUploading = avatarUploading,
