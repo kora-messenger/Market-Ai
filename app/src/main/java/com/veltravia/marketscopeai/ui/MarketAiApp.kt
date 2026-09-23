@@ -734,8 +734,7 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenCalendar = { navController.navigate("calendar") },
                     onOpenLearningHub = { navController.navigate("learning_hub") },
                     onOpenNewsOutlook = { navController.navigate("news_outlook") },
-                    onOpenMarket = { id -> navController.navigate("market/$id") },
-                    onOpenSignal = { id -> navController.navigate("daily_signal/$id") }
+                    onOpenMarket = { id -> navController.navigate("market/$id") }
                 )
                 1 -> SignalsScreen(
                     onOpenAdmin = { navController.navigate("signals_admin") },
