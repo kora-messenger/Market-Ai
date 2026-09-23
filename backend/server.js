@@ -1264,6 +1264,7 @@ app.get("/api/account/status", requireAuth, async (req, res) => {
               (SELECT COUNT(*)::int FROM analyses a WHERE a.user_id = u.id) AS analyses_count,
               -- Saved tab = analysis history + AI trade plans + bookmarked daily signals.
               -- The legacy trade_plans table is no longer displayed there.
+              (SELECT COUNT(*)::int FROM ai_trade_plans p WHERE p.user_id = u.id) AS saved_plan_count,
               ((SELECT COUNT(*)::int FROM analyses a WHERE a.user_id = u.id)
                + (SELECT COUNT(*)::int FROM ai_trade_plans p WHERE p.user_id = u.id)
                + (SELECT COUNT(*)::int FROM signal_saves s WHERE s.user_id = u.id)) AS saved_count
@@ -1280,7 +1281,8 @@ app.get("/api/account/status", requireAuth, async (req, res) => {
       username: r.username || null,
       avatar: r.avatar_key ? `avatar:${r.id}` : null,
       analysesCount: r.analyses_count,
-      savedTradesCount: r.saved_count
+      savedTradesCount: r.saved_count,
+      savedTradePlansCount: r.saved_plan_count
     });
   } catch (err) {
     return res.status(500).json({ error: "Could not load account status", detail: String(err.message || err) });

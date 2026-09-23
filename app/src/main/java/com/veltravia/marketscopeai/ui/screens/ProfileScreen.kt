@@ -144,6 +144,7 @@ fun ProfileScreen(
     var myAvatarUrl by remember { mutableStateOf<String?>(null) }
     var analysesCount by remember { mutableStateOf<Int?>(null) }
     var savedTradesCount by remember { mutableStateOf<Int?>(null) }
+    var savedPlanCount by remember { mutableStateOf<Int?>(null) }
     var avatarUploading by remember { mutableStateOf(false) }
     var showHandleDialog by remember { mutableStateOf(false) }
     var handleInput by remember { mutableStateOf("") }
@@ -183,6 +184,7 @@ fun ProfileScreen(
             myAvatarUrl = ApiClient.resolveAvatarUrl(if (status.isNull("avatar")) null else status.optString("avatar"))
             if (status.has("analysesCount")) analysesCount = status.optInt("analysesCount")
             if (status.has("savedTradesCount")) savedTradesCount = status.optInt("savedTradesCount")
+            if (status.has("savedTradePlansCount")) savedPlanCount = status.optInt("savedTradePlansCount")
         }
         // Non-fatal if status is null — Danger Zone just shows the request option.
     }
@@ -247,7 +249,7 @@ fun ProfileScreen(
             trialActive = trialActive,
             trialDaysRemaining = trialDaysRemaining,
             analysesCount = analysesCount,
-            savedPlanCount = savedTradesCount,
+            savedTradesCount = savedTradesCount,
             plan = plan,
             isVerified = planEffectivePremium,
             avatarUploading = avatarUploading,
@@ -646,7 +648,7 @@ private fun AccountSummaryCard(
     trialActive: Boolean,
     trialDaysRemaining: Int,
     analysesCount: Int?,
-    savedPlanCount: Int?,
+    savedTradesCount: Int?,
     plan: String,
     isVerified: Boolean,
     avatarUploading: Boolean,
@@ -781,7 +783,7 @@ private fun AccountSummaryCard(
             StatTile(
                 modifier = Modifier.weight(1f),
                 label = "Saved trades",
-                value = savedPlanCount?.toString() ?: "—"
+                value = savedTradesCount?.toString() ?: "—"
             )
         }
 
