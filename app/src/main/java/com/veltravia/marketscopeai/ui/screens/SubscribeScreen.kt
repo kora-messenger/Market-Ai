@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -340,10 +341,18 @@ fun SubscribeScreen(
             }
         }
 
+        // .weight(1f) (not fillMaxSize) is the reliable way to give a
+        // scrollable Column exactly "the rest of the screen below the close
+        // button" inside a plain Column — it guarantees a bounded viewport
+        // so verticalScroll always has room to scroll, and it leaves a
+        // little breathing room above the system nav bar so the last item
+        // (the support link) never sits flush against the very edge.
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
