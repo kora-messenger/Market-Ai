@@ -493,6 +493,30 @@ fun MarketAiApp() {
         composable("risk_calculator") {
             RiskCalculatorScreen(onBack = { navController.popBackStack() })
         }
+        composable("journal") {
+            JournalScreen(
+                onBack = { navController.popBackStack() },
+                onOpenEntry = { id ->
+                    navController.navigate(
+                        if (id.isBlank()) "journal_edit" else "journal_edit/$id"
+                    )
+                }
+            )
+        }
+        composable(
+            "journal_edit?entryId={entryId}",
+            arguments = listOf(
+                androidx.navigation.navArgument("entryId") {
+                    type = androidx.navigation.NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { entry ->
+            JournalEntryScreen(
+                entryId = entry.arguments?.getString("entryId")?.takeIf { it.isNotBlank() } ?: "",
+                onBack = { navController.popBackStack() }
+            )
+        }
         composable("calendar") {
             CalendarScreen(onBack = { navController.popBackStack() })
         }
@@ -731,6 +755,7 @@ private fun MainTabs(navController: NavHostController) {
                     },
                     onSwitchTab = { index -> currentTab = index },
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
+                    onOpenJournal = { navController.navigate("journal") },
                     onOpenNotifications = { navController.navigate("notifications") },
                     onCreateTradePlan = { navController.navigate("create_trade_plan") },
                     onOpenCalendar = { navController.navigate("calendar") },
@@ -765,6 +790,7 @@ private fun MainTabs(navController: NavHostController) {
                     },
                     onOpenScreenshotGuide = { navController.navigate("screenshot_guide") },
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
+                    onOpenJournal = { navController.navigate("journal") },
                     onOpenNotifications = { navController.navigate("notifications") },
                     onOpenSubscribe = { navController.navigate("subscribe") },
                     onOpenReferrals = { navController.navigate("referrals") },

@@ -122,6 +122,7 @@ fun ProfileScreen(
     onSignOut: () -> Unit,
     onOpenScreenshotGuide: () -> Unit,
     onOpenRiskCalculator: () -> Unit,
+    onOpenJournal: () -> Unit = {},
     onOpenNotifications: () -> Unit,
     onOpenSubscribe: () -> Unit,
     onOpenReferrals: () -> Unit,
@@ -371,6 +372,12 @@ fun ProfileScreen(
                 tint = GoldAmber,
                 label = "Risk calculator",
                 onClick = onOpenRiskCalculator
+            )
+            SettingsRow(
+                icon = Icons.Filled.Book,
+                tint = BullGreen,
+                label = "Trade journal",
+                onClick = onOpenJournal
             )
             SettingsRow(
                 icon = Icons.Filled.NotificationsNone,

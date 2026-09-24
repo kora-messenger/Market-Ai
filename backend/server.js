@@ -577,6 +577,34 @@ async function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_ai_trade_plans_user ON ai_trade_plans(user_id, created_at DESC);
 
+    -- Trade journal: the real trade record behind every AI analysis. Closes
+    -- the analysis -> actual trade -> outcome -> lesson loop. Only the
+    -- trader's own numbers live here; R-multiple is computed server-side.
+    CREATE TABLE IF NOT EXISTS trade_journal (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      instrument TEXT NOT NULL,
+      asset_class TEXT NOT NULL DEFAULT 'other',
+      direction TEXT NOT NULL CHECK (direction IN ('BUY','SELL')),
+      entry_price DOUBLE PRECISION NOT NULL,
+      exit_price DOUBLE PRECISION,
+      stop_loss DOUBLE PRECISION,
+      take_profit DOUBLE PRECISION,
+      position_size DOUBLE PRECISION,
+      risk_amount DOUBLE PRECISION,
+      pnl DOUBLE PRECISION,
+      r_multiple DOUBLE PRECISION,
+      status TEXT NOT NULL DEFAULT 'open',
+      setup_tag TEXT,
+      notes TEXT,
+      lesson TEXT,
+      opened_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      closed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_trade_journal_user ON trade_journal(user_id, opened_at DESC);
+
     CREATE TABLE IF NOT EXISTS community_posts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -4057,6 +4085,119 @@ app.delete("/api/trade-plans/:id", requireAuth, async (req, res) => {
     res.json({ deleted: true });
   } catch (err) {
     res.status(500).json({ error: "Could not delete trade plan", detail: String(err.message || err) });
+  }
+});
+
+// ============================================================
+// Trade journal — the trader's REAL trade record (analysis -> actual
+// trade -> outcome -> lesson). Pure CRUD + honest stats computed from
+// the trader's own numbers; no invented win/loss anywhere.
+// ============================================================
+const {
+  validateJournalInput, recomputeR, journalToApi, computeJournalStats
+} = require("./src/tradeJournal");
+
+const JOURNAL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** List the signed-in user's journal entries, newest first. */
+app.get("/api/journal", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
+    const { rows } = await pool.query(
+      `SELECT j.* FROM trade_journal j
+       JOIN users u ON u.id = j.user_id
+       WHERE u.google_sub = $1
+       ORDER BY j.opened_at DESC, j.created_at DESC LIMIT $2`,
+      [req.session.sub, limit]
+    );
+    res.json({ entries: rows.map(journalToApi), stats: computeJournalStats(rows) });
+  } catch (err) {
+    console.error("journal list failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not load the trade journal." });
+  }
+});
+
+/** Record a real trade in the journal. */
+app.post("/api/journal", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const result = validateJournalInput(req.body);
+  if (result.error) return res.status(400).json({ error: result.error });
+  const fields = result.fields;
+  try {
+    const { rows: userRows } = await pool.query(
+      `SELECT id FROM users WHERE google_sub = $1`, [req.session.sub]
+    );
+    if (!userRows.length) return res.status(404).json({ error: "User not found." });
+    recomputeR({ direction: fields.direction, entry_price: fields.entry_price, stop_loss: fields.stop_loss, exit_price: fields.exit_price }, fields);
+    const cols = Object.keys(fields);
+    const placeholders = cols.map((c, i) => `$${i + 4}`).join(", ");
+    const { rows } = await pool.query(
+      `INSERT INTO trade_journal (user_id, opened_at, closed_at, ${cols.join(", ")})
+       VALUES ($1, $2::timestamptz, $3::timestamptz, ${placeholders})
+       RETURNING *`,
+      [userRows[0].id, new Date().toISOString(), fields.exit_price != null ? new Date().toISOString() : null, ...cols.map((c) => fields[c])]
+    );
+    res.status(201).json({ entry: journalToApi(rows[0]) });
+  } catch (err) {
+    console.error("journal create failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not save the trade." });
+  }
+});
+
+/** Edit an entry (close it by adding an exit price, fix a typo, add the lesson). */
+app.patch("/api/journal/:id", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!JOURNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Journal entry not found." });
+  const result = validateJournalInput(req.body, { partial: true });
+  if (result.error) return res.status(400).json({ error: result.error });
+  const fields = result.fields;
+  if (!Object.keys(fields).length) return res.status(400).json({ error: "Nothing to update." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT j.* FROM trade_journal j
+       JOIN users u ON u.id = j.user_id
+       WHERE j.id = $1 AND u.google_sub = $2`,
+      [req.params.id, req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Journal entry not found." });
+    recomputeR(rows[0], fields);
+    const cols = Object.keys(fields);
+    const sets = cols.map((c, i) => `${c} = $${i + 3}`).join(", ");
+    const newStatus = "status" in fields ? fields.status : rows[0].status;
+    const { rows: updated } = await pool.query(
+      `UPDATE trade_journal SET ${sets},
+         closed_at = CASE
+           WHEN $${cols.length + 3}::text = 'closed' AND closed_at IS NULL THEN now()
+           WHEN $${cols.length + 3}::text = 'open' THEN NULL
+           ELSE closed_at END,
+         updated_at = now()
+       WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [req.params.id, rows[0].user_id, ...cols.map((c) => fields[c]), newStatus]
+    );
+    res.json({ entry: journalToApi(updated[0]) });
+  } catch (err) {
+    console.error("journal update failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not update the trade." });
+  }
+});
+
+/** Remove an entry the trader no longer wants in their journal. */
+app.delete("/api/journal/:id", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  if (!JOURNAL_UUID_RE.test(req.params.id)) return res.status(404).json({ error: "Journal entry not found." });
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM trade_journal j
+       USING users u
+       WHERE j.id = $1 AND j.user_id = u.id AND u.google_sub = $2`,
+      [req.params.id, req.session.sub]
+    );
+    if (!rowCount) return res.status(404).json({ error: "Journal entry not found." });
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error("journal delete failed:", String(err.message || err));
+    res.status(500).json({ error: "Could not delete the trade." });
   }
 });
 

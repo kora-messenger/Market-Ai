@@ -2,10 +2,8 @@ package com.veltravia.marketscopeai.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.animate
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,33 +16,26 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.animation.core.animate
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.automirrored.filled.ShowChart
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.CandlestickChart
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,6 +55,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -71,41 +65,67 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.BrokerConfig
 import com.veltravia.marketscopeai.data.SessionManager
-import com.veltravia.marketscopeai.ui.theme.AccentCyan
-import com.veltravia.marketscopeai.ui.theme.BorderSubtle
-import com.veltravia.marketscopeai.ui.theme.AccentViolet
-import com.veltravia.marketscopeai.ui.theme.BullGreen
-import com.veltravia.marketscopeai.ui.theme.GoldAmber
-import com.veltravia.marketscopeai.ui.theme.SurfaceDark
-import com.veltravia.marketscopeai.ui.theme.SurfaceLight
-import com.veltravia.marketscopeai.ui.theme.TextMuted
-import com.veltravia.marketscopeai.ui.theme.TextPrimary
-import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import kotlin.math.cos
+import kotlin.math.sin
 
-private data class QuickAction(
-    val label: String,
-    val icon: ImageVector,
-    val onClick: () -> Unit
+// --- Compass Home palette (from the approved MarketScope Compass concept) ---
+private val DeskInk = Color(0xFF090F21)        // deep navy canvas
+private val InkCard = Color(0xFF121B31)        // slot surface
+private val InkCardBorder = Color(0xFF253451)
+private val InkSubCard = Color(0xFF141D34)    // small-card surface
+private val InkSubCardBorder = Color(0xFF29395C)
+private val DeskText = Color(0xFFF1F5FF)
+private val DeskBody = Color(0xFF91A1BD)
+private val DeskMuted = Color(0xFF7C87AA)
+private val DeskLavender = Color(0xFF95A7CE)
+private val DeskAccent = Color(0xFF8F92FF)     // eyebrow
+private val DeskIndex = Color(0xFF939AFF)
+private val DeskHighlight = Color(0xFF9DA9FF)
+private val DeskArrowBox = Color(0xFF242F4E)
+private val DeskArrowTint = Color(0xFFB0B9FF)
+private val OrbitLine = Color(0xFF3F4E7F)
+private val OrbitDash = Color(0xFF50679E)
+private val OrbitInner = Color(0xFF6073B3)
+private val NodeCyan = Color(0xFF89D7EB)
+private val NodeViolet = Color(0xFF8275F9)
+private val CoreBorder = Color(0xFF8397E2)
+private val UpGreen = Color(0xFF4ADE80)
+private val DownRed = Color(0xFFF87171)
+
+private data class CompassWatchRow(
+    val id: String,
+    val display: String,
+    val price: Double?,
+    val changePct: Double?
+)
+
+private data class CompassToken(
+    val symbol: String,
+    val name: String,
+    val price: Double,
+    val change24h: Double?
 )
 
 /**
- * Home screen — real header, an expandable quick-actions grid, a real
- * community card + a real trial-status card, and a single genuine
- * recommended-broker card. Every number shown here is real: the community
- * member count comes from the backend (COUNT of joined users), and the trial
- * days remaining come from the signed-in user's real trial state.
- *
- * Tab indices: 0 Home, 1 Signals, 2 Community, 3 Saved, 4 Profile — see
- * MarketAiApp's `tabs` list.
+ * MarketScope Compass Home — the concept Ijezie approved and saved:
+ * a dark navy editorial trading desk with the app's purple-to-blue accents,
+ * a static orbital compass ("Clarity before conviction.") whose core starts
+ * a real analysis, and three indexed rails below it. Everything is wired to
+ * real backend data and real destinations: the radar previews the live
+ * multi-asset watchlist and trending tokens, the intelligence cards open the
+ * real daily signals feed and economic calendar, and the people & tools area
+ * keeps every previous Home destination reachable. The logo stays strictly
+ * static. Tab indices: 0 Home, 1 Signals, 2 Community, 3 Saved, 4 Profile.
  */
 @Composable
 fun HomeScreen(
@@ -120,32 +140,29 @@ fun HomeScreen(
     onOpenMarket: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val user = remember { SessionManager.currentUser(context) }
-    val firstName = remember(user) { user?.name?.trim()?.split(" ")?.firstOrNull() ?: "there" }
 
-    var expanded by remember { mutableStateOf(false) }
+    // Real, server-refreshed account state — same contract as the previous
+    // Home so the trial/monetization system keeps working untouched.
     var memberCount by remember { mutableStateOf<Int?>(null) }
-    var onlineCount by remember { mutableStateOf<Int?>(null) }
     var trialDaysRemaining by remember { mutableStateOf(SessionManager.trialDaysRemaining(context)) }
     var isPremium by remember { mutableStateOf(SessionManager.effectivePremium(context)) }
-    // Free-tier allowance after the trial lapses: 3 chart analyses per day.
+    var planLabel by remember { mutableStateOf(SessionManager.planLabel(context)) }
     var analysesLeftToday by remember { mutableStateOf<Int?>(null) }
-    val communityJoined = remember { SessionManager.communityJoined(context) }
+
+    // Real radar data (live watchlist + trending), reloaded on pull-to-refresh.
+    var watchRows by remember { mutableStateOf<List<CompassWatchRow>?>(null) }
+    var watchError by remember { mutableStateOf<String?>(null) }
+    var tokens by remember { mutableStateOf<List<CompassToken>?>(null) }
+    var trendingError by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
 
-    /** Re-fetches every live number Home shows — shared by the initial
-     *  load and the pull-to-refresh gesture so both are identical. */
     suspend fun refreshData() {
-        // Real member count — a literal COUNT() from the backend, refreshed
-        // every time Home loads.
         runCatching { ApiClient.fetchCommunityStats() }.getOrNull()?.let {
             memberCount = it.optInt("totalMembers", memberCount ?: 0)
-            onlineCount = it.optInt("onlineCount", onlineCount ?: 0)
         }
-        // Refresh trial state from the server so it never goes stale.
         SessionManager.sessionToken(context)?.let { token ->
             runCatching { ApiClient.fetchTrialStatus(token) }.getOrNull()?.let { status ->
                 val active = status.optBoolean("trialActive", true)
@@ -155,44 +172,43 @@ fun HomeScreen(
                 SessionManager.updateTrialState(context, active, days, premium)
                 val display = com.veltravia.marketscopeai.monetization.planDisplay(status)
                 SessionManager.updatePlan(context, display.plan, display.trailingLabel)
-                // Feed the ad/monetization system the server's ad-eligibility verdict.
                 com.veltravia.marketscopeai.monetization.PremiumAccessManager.updateFromTrialStatus(status)
                 trialDaysRemaining = days
                 isPremium = premium || granted
-                // Real remaining allowance from the server (only for lapsed
-                // free users — premium/trial responses report unlimited).
+                planLabel = display.trailingLabel
                 val usage = status.optJSONObject("analysisUsage")
                 if (usage != null && !usage.optBoolean("unlimited", true)) {
                     analysesLeftToday = usage.optInt("remaining", 3)
+                } else {
+                    analysesLeftToday = null
                 }
             }
         }
+        runCatching { ApiClient.fetchMarketsWatchlist() }
+            .onSuccess { arr ->
+                watchRows = parseCompassWatch(arr)
+                watchError = null
+            }
+            .onFailure { if (watchRows == null) watchError = "Live market data is temporarily unavailable." }
+        runCatching { ApiClient.fetchTrending() }
+            .onSuccess { arr ->
+                tokens = parseCompassTokens(arr)
+                trendingError = null
+            }
+            .onFailure { if (tokens == null) trendingError = "Trending is temporarily unavailable." }
     }
 
-    LaunchedEffect(Unit) { refreshData() }
-
-    // --- Pull-to-refresh: drag the Home feed down to re-fetch everything ---
-    val pullThresholdPx = with(density) { 110.dp.toPx() }
-    val pullMaxPx = pullThresholdPx * 1.5f
-    var pullDistance by remember { mutableFloatStateOf(0f) }
+    // Pull-to-refresh — identical behavior to the previous Home.
     var refreshing by remember { mutableStateOf(false) }
+    var pullDistance by remember { mutableFloatStateOf(0f) }
+    val pullThresholdPx = with(density) { 78.dp.toPx() }
 
     val pullConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (refreshing) return Offset.Zero
-                val delta = available.y
-                if (delta > 0f && scrollState.value == 0) {
-                    // Finger pulled down while at the very top — grow the
-                    // indicator instead of (impossibly) scrolling further up.
-                    val newPull = (pullDistance + delta).coerceAtMost(pullMaxPx)
-                    val consumed = newPull - pullDistance
-                    pullDistance = newPull
-                    return Offset(0f, consumed)
-                }
-                if (delta < 0f && pullDistance > 0f) {
-                    // Push back up — the indicator shrinks first.
-                    val newPull = (pullDistance + delta).coerceAtLeast(0f)
+                if (source != NestedScrollSource.UserInput || refreshing) return Offset.Zero
+                if (scrollState.value == 0 && available.y < 0f) {
+                    val newPull = (pullDistance + available.y).coerceAtLeast(0f)
                     val consumed = newPull - pullDistance
                     pullDistance = newPull
                     return Offset(0f, consumed)
@@ -203,7 +219,6 @@ fun HomeScreen(
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (refreshing) return Velocity.Zero
                 if (pullDistance >= pullThresholdPx) {
-                    // Released past the threshold — run the real refresh.
                     refreshing = true
                     pullDistance = pullThresholdPx * 0.55f
                     scope.launch {
@@ -215,72 +230,37 @@ fun HomeScreen(
                     return available
                 }
                 val start = pullDistance
-                scope.launch {
-                    animate(start, 0f) { v, _ -> pullDistance = v }
-                }
+                scope.launch { animate(start, 0f) { v, _ -> pullDistance = v } }
                 return Velocity.Zero
             }
         }
     }
 
-    fun comingSoon(feature: String) {
-        Toast.makeText(context, "$feature is coming soon", Toast.LENGTH_SHORT).show()
-    }
-
-    // Prioritize real, working features in the collapsed row; the three
-    // not-yet-built tools only appear once the user explicitly expands.
-    val primaryActions = listOf(
-        QuickAction("News Outlook", Icons.AutoMirrored.Filled.Article, onOpenNewsOutlook),
-        QuickAction("Risk calculator", Icons.Filled.Calculate, onOpenRiskCalculator),
-        QuickAction("Community", Icons.Filled.Groups) { onSwitchTab(2) },
-        QuickAction("Signals", Icons.AutoMirrored.Filled.ShowChart) { onSwitchTab(1) },
-        QuickAction("Saved", Icons.Filled.Bookmark) { onSwitchTab(3) },
-        QuickAction("Share", Icons.Filled.Share) {
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, "I'm using MarketScope AI for AI-powered chart analysis — check it out.")
-            }
-            context.startActivity(Intent.createChooser(send, "Share MarketScope AI"))
-        }
-    )
-    val moreActions = listOf(
-        QuickAction("Learning hub", Icons.Filled.School, onOpenLearningHub),
-        QuickAction("Trade Plan", Icons.Filled.Assignment, onCreateTradePlan),
-        QuickAction("Calendar", Icons.Filled.CalendarMonth) { onOpenCalendar() }
-    )
+    LaunchedEffect(Unit) { refreshData() }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(DeskInk)
             .nestedScroll(pullConnection)
             .verticalScroll(scrollState)
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 22.dp)
     ) {
-        // --- Pull-to-refresh indicator ---
-        // Grows with the drag (arrow rotates as it approaches the
-        // threshold), becomes a spinner while the real re-fetch runs.
         val indicatorHeight = when {
             refreshing -> 56.dp
             pullDistance > 0f -> with(density) { pullDistance.toDp() }
             else -> 0.dp
         }
         if (indicatorHeight > 0.dp) {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(indicatorHeight),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.fillMaxWidth().height(indicatorHeight), contentAlignment = Alignment.Center) {
                 if (refreshing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.5.dp,
-                        color = AccentViolet
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.5.dp, color = DeskAccent)
                 } else {
                     val progress = (pullDistance / pullThresholdPx).coerceIn(0.2f, 1f)
                     Icon(
                         Icons.Filled.Refresh,
                         contentDescription = "Pull to refresh",
-                        tint = AccentViolet.copy(alpha = progress),
+                        tint = DeskAccent.copy(alpha = progress),
                         modifier = Modifier
                             .size(18.dp)
                             .graphicsLayer { rotationZ = progress * 240f }
@@ -288,274 +268,594 @@ fun HomeScreen(
                 }
             }
         }
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
-        // --- Header ---
+        // --- Brand row (logo strictly static) ---
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painter = painterResource(R.drawable.app_logo),
                 contentDescription = "MarketScope AI",
-                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp))
+                modifier = Modifier.size(38.dp).clip(RoundedCornerShape(11.dp))
             )
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Row {
+                    Text("MarketScope ", color = DeskText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                    Text("AI", color = DeskHighlight, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                }
                 Text(
-                    "Welcome back, $firstName",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    "Trade with data-driven confidence.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AccentCyan,
-                    maxLines = 1
+                    "THE TRADING DESK",
+                    color = Color(0xFF8091B3),
+                    style = MaterialTheme.typography.labelSmall,
+                    letterSpacing = 1.45.dp
                 )
             }
-            IconButton(onClick = {
-                val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
-                runCatching { context.startActivity(mail) }
-            }) {
-                Icon(Icons.Filled.Email, contentDescription = "Contact support", tint = TextSecondary)
-            }
+            Spacer(Modifier.weight(1f))
             IconButton(onClick = onOpenNotifications) {
-                Icon(Icons.Filled.NotificationsNone, contentDescription = "Notifications", tint = TextSecondary)
+                Icon(
+                    Icons.Filled.NotificationsNone,
+                    contentDescription = "Notifications",
+                    tint = Color(0xFFC1D0F5),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color(0xFF121B32))
+                        .border(1.dp, Color(0xFF303C5A), RoundedCornerShape(13.dp))
+                        .padding(9.dp)
+                )
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        // --- Intro ---
+        Spacer(Modifier.height(28.dp))
+        Text(
+            "YOUR SPACE TO THINK CLEARLY",
+            color = DeskAccent,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.4.dp
+        )
+        Spacer(Modifier.height(12.dp))
+        Text("Clarity before", color = DeskText, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1.2).dp)
+        Text("conviction.", color = DeskHighlight, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1.2).dp)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "One focused place to assess a setup, track markets, and stay true to your plan.",
+            color = DeskBody,
+            style = MaterialTheme.typography.bodySmall
+        )
+        // Real account line — server-refreshed, never decorative.
+        Spacer(Modifier.height(8.dp))
+        Text(
+            accountLine(isPremium, trialDaysRemaining, analysesLeftToday),
+            color = DeskMuted,
+            style = MaterialTheme.typography.labelSmall
+        )
 
-        // --- Quick-actions gradient card ---
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(Brush.linearGradient(listOf(AccentViolet, AccentCyan)))
-                .padding(vertical = 22.dp, horizontal = 12.dp)
+        // --- The compass ---
+        Spacer(Modifier.height(18.dp))
+        CompassFocus(onStartAnalysis = onPickInstrument)
+
+        // --- 01 · The Market Radar ---
+        Spacer(Modifier.height(14.dp))
+        Rail(index = "01", title = "THE MARKET RADAR")
+        Spacer(Modifier.height(12.dp))
+
+        // Live watchlist slot with REAL prices from the backend.
+        SlotCard(
+            title = "Live watchlist",
+            description = "Futures · Forex · Crypto — live from the desk",
+            onArrowClick = { watchRows?.firstOrNull()?.let { onOpenMarket(it.id) } }
         ) {
-            ActionRow(primaryActions.subList(0, 3))
-            Spacer(Modifier.height(18.dp))
-            ActionRow(primaryActions.subList(3, 6))
-
-            AnimatedVisibility(visible = expanded, enter = expandVertically(), exit = shrinkVertically()) {
-                Column {
-                    Spacer(Modifier.height(18.dp))
-                    ActionRow(moreActions)
+            RadarPreview(
+                loading = watchRows == null && watchError == null,
+                error = watchError
+            ) {
+                watchRows.orEmpty().take(3).forEach { row ->
+                    RadarLine(
+                        primary = row.display,
+                        secondary = row.price?.let { formatCompassPrice(row.id, it) } ?: "—",
+                        delta = row.changePct,
+                        onClick = { onOpenMarket(row.id) }
+                    )
                 }
             }
+        }
 
-            Spacer(Modifier.height(10.dp))
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        // Trending slot with REAL trending tokens.
+        Spacer(Modifier.height(9.dp))
+        SlotCard(
+            title = "Trending markets",
+            description = "What's drawing attention right now",
+            onArrowClick = { tokens?.firstOrNull()?.let { onOpenMarket(it.symbol.lowercase() + "usd") } }
+        ) {
+            RadarPreview(
+                loading = tokens == null && trendingError == null,
+                error = trendingError
+            ) {
+                tokens.orEmpty().take(3).forEach { token ->
+                    RadarLine(
+                        primary = token.symbol.uppercase(),
+                        secondary = if (token.price.isFinite()) "$${"%,.2f".format(token.price)}" else "—",
+                        delta = token.change24h,
+                        onClick = { onOpenMarket(token.symbol.lowercase() + "usd") }
+                    )
+                }
+            }
+        }
+
+        // --- 02 · Intelligence & Context ---
+        Spacer(Modifier.height(14.dp))
+        Rail(index = "02", title = "INTELLIGENCE & CONTEXT")
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SmallCard(
+                index = "SIGNALS / 01",
+                title = "Daily signals",
+                description = "Published trade ideas",
+                modifier = Modifier.weight(1f),
+                onClick = { onSwitchTab(1) }
+            )
+            SmallCard(
+                index = "CALENDAR / 02",
+                title = "Economic events",
+                description = "High-impact releases",
+                modifier = Modifier.weight(1f),
+                onClick = { onOpenCalendar() }
+            )
+        }
+
+        // --- 03 · Your People & Tools ---
+        Spacer(Modifier.height(14.dp))
+        Rail(index = "03", title = "YOUR PEOPLE & TOOLS")
+        Spacer(Modifier.height(12.dp))
+        SlotCard(
+            title = "Community & toolkit",
+            description = memberCount?.let { n ->
+                if (n == 1) "1 trader · saved work, risk tools, trade plan"
+                else "$n traders · saved work, risk tools, trade plan"
+            } ?: "Your people, saved work, risk tools, trade plan",
+            onArrowClick = { onSwitchTab(2) }
+        )
+
+        // Compact tool tiles so every previous Home destination stays
+        // reachable from the new layout.
+        Spacer(Modifier.height(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToolTile("Risk calculator", Icons.Filled.Calculate, Modifier.weight(1f), onOpenRiskCalculator)
+                ToolTile("Trade plan", Icons.Filled.Assignment, Modifier.weight(1f), onCreateTradePlan)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToolTile("Learning hub", Icons.Filled.School, Modifier.weight(1f), onOpenLearningHub)
+                ToolTile("News outlook", Icons.AutoMirrored.Filled.Article, Modifier.weight(1f), onOpenNewsOutlook)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToolTile("Saved work", Icons.Filled.Bookmark, Modifier.weight(1f)) { onSwitchTab(3) }
+                ToolTile(
+                    "Share MarketScope",
+                    Icons.Filled.Share,
+                    Modifier.weight(1f)
+                ) {
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, "I'm using MarketScope AI for AI-powered chart analysis — check it out.")
+                    }
+                    runCatching { context.startActivity(Intent.createChooser(send, "Share MarketScope AI")) }
+                }
+            }
+        }
+
+        // Recommended broker — the unchanged Exness referral flow, restyled
+        // for the desk. Kept on Home exactly like before.
+        Spacer(Modifier.height(10.dp))
+        SlotCard(
+            title = "Recommended broker",
+            description = "Trade with our recommended partner",
+            onArrowClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(BrokerConfig.REFERRAL_URL))
+                runCatching { context.startActivity(intent) }
+            }
+        )
+
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** The real account status line under the intro. */
+private fun accountLine(isPremium: Boolean, trialDays: Int, analysesLeft: Int?): String {
+    if (isPremium) return "Premium active · unlimited analyses"
+    val trial = when {
+        trialDays > 1 -> "Trial: $trialDays days left"
+        trialDays == 1 -> "Trial: 1 day left"
+        trialDays == 0 -> "Trial ends today"
+        else -> "Free plan"
+    }
+    val allowance = analysesLeft?.let { if (it == 1) "1 analysis left today" else "$it analyses left today" } ?: "unlimited analyses"
+    return "$trial · $allowance"
+}
+
+// ------------------------------------------------------------
+// Compass — strictly static orbital composition (no animation).
+// ------------------------------------------------------------
+
+@Composable
+private fun CompassFocus(onStartAnalysis: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(316.dp)
+    ) {
+        // Soft radial glow behind the whole compass.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFF556CFF).copy(alpha = 0.09f), Color.Transparent),
+                        radius = 460f
+                    )
+                )
+        )
+
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val cx = size.width / 2f
+            val cy = size.height * 0.49f
+            val r1 = 133.5.dp.toPx()
+            val r2 = 113.dp.toPx()
+            val r3 = 85.dp.toPx()
+
+            drawCircle(color = OrbitLine, radius = r1, center = Offset(cx, cy), style = Stroke(width = 1.dp.toPx()))
+            drawCircle(
+                color = OrbitDash.copy(alpha = 0.47f),
+                radius = r2,
+                center = Offset(cx, cy),
+                style = Stroke(
+                    width = 1.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f))
+                )
+            )
+            drawCircle(
+                color = OrbitInner.copy(alpha = 0.27f),
+                radius = r3,
+                center = Offset(cx, cy),
+                style = Stroke(width = 1.dp.toPx())
+            )
+
+            // Gradient arcs on the outer orbit — the compass "needle ring".
+            val arcSize = androidx.compose.ui.geometry.Size(r1 * 2f, r1 * 2f)
+            val topLeft = Offset(cx - r1, cy - r1)
+            drawArc(
+                brush = Brush.sweepGradient(
+                    0.0f to Color(0xFF68C7ED),
+                    1.0f to Color(0xFF6369FF)
+                ),
+                startAngle = 213f,
+                sweepAngle = 65f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+            )
+            drawArc(
+                color = Color(0xFF555BE6),
+                startAngle = 232f,
+                sweepAngle = 21f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+            )
+
+            // The two static nodes sitting on the outer orbit.
+            val nodeR = 4.5.dp.toPx()
+            val glowR = 10.dp.toPx()
+            val a1 = Math.toRadians(160.0)
+            val a2 = Math.toRadians(20.0)
+            val p1 = Offset(cx + (r1 * cos(a1)).toFloat(), cy + (r1 * sin(a1)).toFloat())
+            val p2 = Offset(cx + (r1 * cos(a2)).toFloat(), cy + (r1 * sin(a2)).toFloat())
+            drawCircle(color = NodeCyan.copy(alpha = 0.15f), radius = glowR, center = p1)
+            drawCircle(color = NodeCyan, radius = nodeR, center = p1)
+            drawCircle(color = NodeViolet.copy(alpha = 0.2f), radius = glowR, center = p2)
+            drawCircle(color = NodeViolet, radius = nodeR, center = p2)
+        }
+
+        // Cardinal labels around the compass.
+        Text(
+            "ASSESS",
+            color = Color(0xFF8C9EC4),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.7.dp,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+        Row(Modifier.fillMaxWidth().align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "MARKETS",
+                color = Color(0xFFA8B8D4),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.dp
+            )
+        }
+        Text(
+            "SIGNALS",
+            color = Color(0xFFA8B8D4),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.dp,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
+        Text(
+            "REVIEW",
+            color = Color(0xFFA8B8D4),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.dp,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+
+        // Core — the single real action: start an analysis.
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(y = (-8).dp)
+                .size(151.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFF353B7C), Color(0xFF1C2750), Color(0xFF101A36)),
+                        center = Offset(x = 220f, y = 140f),
+                        radius = 1600f
+                    )
+                )
+                .border(1.dp, CoreBorder, CircleShape)
+                .clickable { onStartAnalysis() }
+        ) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Filled.CandlestickChart,
+                    contentDescription = null,
+                    tint = Color(0xFFA3CBFF),
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Start an analysis",
+                    color = DeskText,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(horizontal = 14.dp)
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "CHART OR STOCK ↗",
+                    color = Color(0xFFB3D1FF),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.7.dp
+                )
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------
+// Radar / rails / slots
+// ------------------------------------------------------------
+
+@Composable
+private fun Rail(index: String, title: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(index, color = DeskIndex, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+        Spacer(Modifier.width(9.dp))
+        Text(
+            title,
+            color = DeskLavender,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelSmall,
+            letterSpacing = 1.5.dp
+        )
+        Spacer(Modifier.width(9.dp))
+        Box(
+            Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(Color(0xFF303C60))
+        )
+    }
+}
+
+/** Dark slot with a title row + optional real content rows inside. */
+@Composable
+private fun SlotCard(
+    title: String,
+    description: String,
+    onArrowClick: (() -> Unit)? = null,
+    content: (@Composable () -> Unit)? = null
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(15.dp))
+            .background(InkCard)
+            .border(1.dp, InkCardBorder, RoundedCornerShape(15.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = DeskText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(3.dp))
+                Text(description, color = Color(0xFF8E9FBD), style = MaterialTheme.typography.labelSmall)
+            }
+            if (onArrowClick != null) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.18f))
-                        .clickable { expanded = !expanded },
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(DeskArrowBox)
+                        .clickable { onArrowClick() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = if (expanded) "Show less" else "Show more",
-                        tint = Color.White
+                        Icons.Filled.NorthEast,
+                        contentDescription = "Open",
+                        tint = DeskArrowTint,
+                        modifier = Modifier.size(15.dp)
                     )
                 }
             }
         }
-
-        Spacer(Modifier.height(16.dp))
-
-        // --- Community + Trial cards ---
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(SurfaceLight)
-                    .clickable { onSwitchTab(2) }
-                    .padding(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "COMMUNITY",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = AccentCyan,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(CircleShape)
-                            .background(AccentViolet),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.NorthEast, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(AccentCyan),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Groups, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                }
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    if (communityJoined) "Visit the room" else "Join the room today",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    memberCount?.let { "$it member${if (it == 1) "" else "s"}${onlineCount?.let { o -> if (o > 0) " · $o online" else "" } ?: ""}" } ?: "Loading…",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextMuted
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(SurfaceLight)
-                    .clickable { onSwitchTab(4) }
-                    .padding(16.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = GoldAmber, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        if (isPremium) "PREMIUM" else "FREE TRIAL",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GoldAmber,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    when {
-                        isPremium -> "Active"
-                        trialDaysRemaining > 0 -> "$trialDaysRemaining day${if (trialDaysRemaining == 1) "" else "s"} left"
-                        else -> "Free plan"
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    when {
-                        isPremium -> "Enjoy unlimited access"
-                        trialDaysRemaining > 0 -> "View your plan in Profile"
-                        analysesLeftToday != null ->
-                            "3 chart analyses a day — $analysesLeftToday left today"
-                        else -> "3 free chart analyses a day"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextMuted
-                )
-            }
+        if (content != null) {
+            Spacer(Modifier.height(10.dp))
+            content()
         }
-
-        Spacer(Modifier.height(28.dp))
-
-        // --- Multi-asset live watchlist (Futures/Forex/Crypto) ---
-        MarketsWatchlistSection(onOpenMarket = onOpenMarket)
-
-        Spacer(Modifier.height(28.dp))
-
-        // --- Trending tokens (live) ---
-        TrendingSection(onOpenMarket = onOpenMarket)
-
-        Spacer(Modifier.height(28.dp))
-
-        // --- Recommended tools ---
-        Text(
-            "MarketScope AI Recommended Tools",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-        )
-        Spacer(Modifier.height(14.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(SurfaceLight)
-                .border(1.dp, BorderSubtle, RoundedCornerShape(18.dp))
-                .clickable {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(BrokerConfig.REFERRAL_URL))
-                    runCatching { context.startActivity(intent) }
-                }
-                .padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Trade with real market conditions",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Our recommended broker for testing MarketScope AI's analysis.",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextMuted
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(BullGreen)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Text(BrokerConfig.NAME, color = Color.White, fontWeight = FontWeight.SemiBold)
-            }
-        }
-
-        Spacer(Modifier.height(140.dp))
     }
 }
 
 @Composable
-private fun ActionRow(actions: List<QuickAction>) {
-    Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        actions.forEach { action ->
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(84.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(Color.White)
-                        .clickable { action.onClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(action.icon, contentDescription = action.label, tint = AccentViolet, modifier = Modifier.size(24.dp))
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    action.label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    maxLines = 1,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-            }
+private fun RadarPreview(
+    loading: Boolean,
+    error: String?,
+    rows: @Composable () -> Unit
+) {
+    when {
+        loading -> Box(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = NodeCyan)
+        }
+        error != null -> Text(error, color = DeskMuted, style = MaterialTheme.typography.labelSmall)
+        else -> Column { rows() }
+    }
+}
+
+@Composable
+private fun RadarLine(primary: String, secondary: String, delta: Double?, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 2.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(primary, color = DeskText, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.weight(1f))
+        Text(secondary, color = Color(0xFFB3C0DC), style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.width(10.dp))
+        val deltaText = delta?.let { (if (it >= 0) "+" else "") + String.format(java.util.Locale.US, "%.2f%%", it) } ?: "—"
+        Text(
+            deltaText,
+            color = if (delta == null) DeskMuted else if (delta >= 0) UpGreen else DownRed,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun SmallCard(
+    index: String,
+    title: String,
+    description: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(InkSubCard)
+            .border(1.dp, InkSubCardBorder, RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(14.dp)
+            .height(103.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            index,
+            color = DeskIndex,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.3.dp
+        )
+        Column {
+            Text(title, color = DeskText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(3.dp))
+            Text(description, color = Color(0xFF8596B8), style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
+@Composable
+private fun ToolTile(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(InkSubCard)
+            .border(1.dp, InkSubCardBorder, RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = DeskHighlight, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = DeskText, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+// ------------------------------------------------------------
+// Radar data parsing — real backend payload shapes.
+// ------------------------------------------------------------
+
+private fun parseCompassWatch(arr: JSONArray): List<CompassWatchRow> {
+    val out = mutableListOf<CompassWatchRow>()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        out.add(
+            CompassWatchRow(
+                id = o.optString("id"),
+                display = o.optString("display"),
+                price = if (o.isNull("price")) null else o.optDouble("price"),
+                changePct = if (o.isNull("changePct")) null else o.optDouble("changePct")
+            )
+        )
+    }
+    return out
+}
+
+private fun parseCompassTokens(arr: JSONArray): List<CompassToken> {
+    val out = mutableListOf<CompassToken>()
+    for (i in 0 until arr.length()) {
+        val o = arr.optJSONObject(i) ?: continue
+        out.add(
+            CompassToken(
+                symbol = o.optString("symbol"),
+                name = o.optString("name"),
+                price = o.optDouble("price"),
+                change24h = if (o.isNull("change24h")) null else o.optDouble("change24h")
+            )
+        )
+    }
+    return out
+}
+
+private fun formatCompassPrice(id: String, v: Double): String {
+    if (!v.isFinite()) return "—"
+    val decimals = when {
+        id.startsWith("usdjpy") || id.endsWith("jpy") -> 3
+        id.length == 6 && id.all { it.isLetter() } -> 5
+        v >= 1000 -> 2
+        v >= 1 -> 4
+        else -> 6
+    }
+    return "%,.${decimals}f".format(v)
+}

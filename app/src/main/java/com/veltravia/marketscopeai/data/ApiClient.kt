@@ -1647,4 +1647,48 @@ object ApiClient {
             .build()
         request(request)
     }
+    // ---------------------------------------------------------
+    // Trade journal — the trader's real trade record (analysis ->
+    // actual trade -> outcome -> lesson).
+    // ---------------------------------------------------------
+
+    /** The signed-in user's journal entries, newest first, plus honest stats. */
+    suspend fun fetchJournal(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/journal")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /** Record a real trade. Blank/absent optional fields are simply not sent. */
+    suspend fun createJournalEntry(sessionToken: String, fields: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/journal")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(fields.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Edit / close / reopen an entry. Only the provided fields are sent. */
+    suspend fun updateJournalEntry(sessionToken: String, entryId: String, fields: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/journal/$entryId")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .patch(fields.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
+    /** Remove an entry from the journal. */
+    suspend fun deleteJournalEntry(sessionToken: String, entryId: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/journal/$entryId")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .delete()
+            .build()
+        request(request)
+    }
 }
