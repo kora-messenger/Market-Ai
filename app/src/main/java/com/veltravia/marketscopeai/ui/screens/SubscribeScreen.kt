@@ -152,6 +152,12 @@ fun SubscribeScreen(
 
     fun refreshStatus() {
         val token = sessionToken ?: return
+        // Only the FIRST transition into Premium during this screen's life
+        // gets the one-off "Premium is now active" toast — the permanent
+        // "You're on the X plan" box below already covers every later
+        // resume/check, so an already-Premium user (e.g. a Lifetime grant)
+        // never sees both writeups stacked on top of each other.
+        val wasEffectivePremium = effectivePremium
         scope.launch {
             try {
                 val status = ApiClient.fetchTrialStatus(token)
@@ -166,8 +172,10 @@ fun SubscribeScreen(
                 SessionManager.updateTrialState(context, active, days, premium)
                 SessionManager.updatePlan(context, display.plan, display.trailingLabel)
                 if (display.effectivePremium) {
-                    statusMessage = "Premium is now active on your account. Enjoy unlimited access!"
                     selectedTab = 1
+                    if (!wasEffectivePremium) {
+                        statusMessage = "Premium is now active on your account. Enjoy unlimited access!"
+                    }
                 }
             } catch (_: Exception) {
                 // Status refresh is best-effort; the screen keeps its current state.
