@@ -757,7 +757,6 @@ private fun MainTabs(navController: NavHostController) {
                     },
                     onSwitchTab = { index -> currentTab = index },
                     onOpenRiskCalculator = { navController.navigate("risk_calculator") },
-                    onOpenJournal = { navController.navigate("journal") },
                     onOpenNotifications = { navController.navigate("notifications") },
                     onCreateTradePlan = { navController.navigate("create_trade_plan") },
                     onOpenCalendar = { navController.navigate("calendar") },

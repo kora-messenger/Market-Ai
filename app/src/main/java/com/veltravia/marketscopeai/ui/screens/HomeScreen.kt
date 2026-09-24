@@ -69,6 +69,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.veltravia.marketscopeai.R
 import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.BrokerConfig
@@ -290,7 +291,7 @@ fun HomeScreen(
                     "THE TRADING DESK",
                     color = Color(0xFF8091B3),
                     style = MaterialTheme.typography.labelSmall,
-                    letterSpacing = 1.45.dp
+                    letterSpacing = 1.45.sp
                 )
             }
             Spacer(Modifier.weight(1f))
@@ -316,11 +317,11 @@ fun HomeScreen(
             color = DeskAccent,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 2.4.dp
+            letterSpacing = 2.4.sp
         )
         Spacer(Modifier.height(12.dp))
-        Text("Clarity before", color = DeskText, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1.2).dp)
-        Text("conviction.", color = DeskHighlight, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1.2).dp)
+        Text("Clarity before", color = DeskText, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1.2).sp)
+        Text("conviction.", color = DeskHighlight, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, letterSpacing = (-1.2).sp)
         Spacer(Modifier.height(10.dp))
         Text(
             "One focused place to assess a setup, track markets, and stay true to your plan.",
@@ -569,7 +570,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
             color = Color(0xFF8C9EC4),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.7.dp,
+            letterSpacing = 1.7.sp,
             modifier = Modifier.align(Alignment.TopCenter)
         )
         Row(Modifier.fillMaxWidth().align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
@@ -578,7 +579,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
                 color = Color(0xFFA8B8D4),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.dp
+                letterSpacing = 1.sp
             )
         }
         Text(
@@ -586,7 +587,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
             color = Color(0xFFA8B8D4),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.dp,
+            letterSpacing = 1.sp,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
         Text(
@@ -594,7 +595,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
             color = Color(0xFFA8B8D4),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.dp,
+            letterSpacing = 1.sp,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
 
@@ -639,7 +640,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
                     color = Color(0xFFB3D1FF),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.7.dp
+                    letterSpacing = 0.7.sp
                 )
             }
         }
@@ -663,7 +664,7 @@ private fun Rail(index: String, title: String) {
             color = DeskLavender,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.labelSmall,
-            letterSpacing = 1.5.dp
+            letterSpacing = 1.5.sp
         )
         Spacer(Modifier.width(9.dp))
         Box(
@@ -788,7 +789,7 @@ private fun SmallCard(
             color = DeskIndex,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.3.dp
+            letterSpacing = 1.3.sp
         )
         Column {
             Text(title, color = DeskText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)

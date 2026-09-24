@@ -74,7 +74,7 @@ fun JournalScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val token = remember { SessionManager.sessionToken(context) }
+    val token = remember { SessionManager.sessionToken(context).orEmpty() }
 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }

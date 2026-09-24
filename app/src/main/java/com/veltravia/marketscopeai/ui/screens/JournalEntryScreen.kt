@@ -74,7 +74,7 @@ fun JournalEntryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val token = remember { SessionManager.sessionToken(context) }
+    val token = remember { SessionManager.sessionToken(context).orEmpty() }
     val isNew = entryId.isBlank()
 
     var loading by remember { mutableStateOf(!isNew) }
@@ -444,6 +444,7 @@ private fun DirectionChip(label: String, selected: Boolean, tint: Color, onClick
     }
 }
 
+@Composable
 private fun JournalFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = TextPrimary,
     unfocusedTextColor = TextPrimary,
