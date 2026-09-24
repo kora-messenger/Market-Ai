@@ -33,7 +33,6 @@ import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Edit
@@ -425,18 +424,6 @@ fun ProfileScreen(
                 label = "Help & support",
                 onClick = {
                     val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
-                    context.startActivity(mail)
-                }
-            )
-            SettingsRow(
-                icon = Icons.Filled.CreditCard,
-                tint = PremiumIndigo,
-                label = "Facing issue with payment",
-                trailingText = "Contact support",
-                onClick = {
-                    val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com")).apply {
-                        putExtra(Intent.EXTRA_SUBJECT, "Payment issue - MarketScope AI")
-                    }
                     context.startActivity(mail)
                 }
             )

@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -609,6 +611,20 @@ fun SubscribeScreen(
                         )
                     }
                 }
+
+                // Payment trouble — always one tap from support at the
+                // bottom of the subscription screen, whatever plan state.
+                Spacer(Modifier.height(24.dp))
+                PremiumSecondaryButton(
+                    text = "Facing issue with payment \u00b7 Contact support",
+                    height = 42.dp,
+                    onClick = {
+                        val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com")).apply {
+                            putExtra(Intent.EXTRA_SUBJECT, "Payment issue - MarketScope AI")
+                        }
+                        context.startActivity(mail)
+                    }
+                )
             }
 
             Spacer(Modifier.height(32.dp))
