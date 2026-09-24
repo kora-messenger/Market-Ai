@@ -306,6 +306,7 @@ fun GradientPrimaryButton(
     showArrow: Boolean = true,
     shape: RoundedCornerShape = RoundedCornerShape(14.dp),
     loading: Boolean = false,
+    loadingText: String = "Analyzing",
     leadingIcon: ImageVector? = null
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -389,7 +390,7 @@ fun GradientPrimaryButton(
                 }
             }
             Text(
-                "Analyzing" + ".".repeat(dotCount),
+                loadingText + ".".repeat(dotCount),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = contentColor

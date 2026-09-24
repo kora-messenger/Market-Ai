@@ -245,7 +245,8 @@ fun FeedbackScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(24.dp))
                 GradientPrimaryButton(
-                    text = "Send your opinion",
+                    text = "Submit Opinion",
+                    loadingText = "Submitting",
                     enabled = !sending && !preparing && token != null && message.trim().length >= 3,
                     loading = sending,
                     onClick = {

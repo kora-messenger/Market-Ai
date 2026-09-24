@@ -473,6 +473,7 @@ fun AnalyzeFlow(
                     text = "Watch video  ·  +1 analysis",
                     enabled = !rewardBusy,
                     loading = rewardBusy,
+                    loadingText = "Loading",
                     height = 54.dp,
                     onClick = {
                         rewardBusy = true

@@ -235,6 +235,7 @@ fun AdminPremiumScreen(onBack: () -> Unit, embedded: Boolean = false, onSelectTa
         Spacer(Modifier.height(10.dp))
         GradientPrimaryButton(
             text = "Search users",
+            loadingText = "Searching",
             enabled = !searching && query.isNotBlank(),
             loading = searching,
             showArrow = false,

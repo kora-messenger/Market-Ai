@@ -505,6 +505,7 @@ fun AiTradePlanWizardScreen(
         Spacer(Modifier.height(28.dp))
         GradientPrimaryButton(
             text = if (page == 4) "Create Trade Plan" else "Continue",
+            loadingText = if (page == 4) "Creating" else "Continuing",
             enabled = if (page == 4) pageValid && !limitReached else pageValid,
             loading = generating,
             showArrow = page != 4,

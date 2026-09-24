@@ -483,6 +483,7 @@ fun AdminSignalsScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         GradientPrimaryButton(
             text = "Publish Signal",
+            loadingText = "Publishing",
             enabled = instrument != null && !saving,
             loading = saving,
             onClick = {

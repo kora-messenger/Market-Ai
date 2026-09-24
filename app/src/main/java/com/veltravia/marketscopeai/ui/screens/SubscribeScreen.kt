@@ -563,6 +563,7 @@ fun SubscribeScreen(
                                 text = "Subscribe with Google Play",
                                 enabled = !googleBusy,
                                 loading = googleBusy,
+                                loadingText = "Subscribing",
                                 height = 54.dp,
                                 onClick = { startGooglePlayCheckout() }
                             )

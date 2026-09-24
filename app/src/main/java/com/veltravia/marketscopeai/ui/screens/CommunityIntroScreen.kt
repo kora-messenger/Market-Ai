@@ -244,6 +244,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
 
         GradientPrimaryButton(
             text = if (alreadyJoined) "Continue" else "Unlock Community Access",
+            loadingText = if (alreadyJoined) "Continuing" else "Joining",
             enabled = !joining,
             loading = joining,
             onClick = { proceed() },

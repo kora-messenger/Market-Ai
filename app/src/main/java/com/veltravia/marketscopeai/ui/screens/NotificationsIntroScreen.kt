@@ -221,6 +221,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
 
         GradientPrimaryButton(
             text = "Turn On Notifications",
+            loadingText = "Enabling",
             enabled = !requesting,
             loading = requesting,
             onClick = {
