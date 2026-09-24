@@ -81,6 +81,8 @@ import com.veltravia.marketscopeai.ui.screens.HomeScreen
 import com.veltravia.marketscopeai.ui.screens.CalendarScreen
 import com.veltravia.marketscopeai.ui.screens.WallOfWinsScreen
 import com.veltravia.marketscopeai.ui.screens.RiskCalculatorScreen
+import com.veltravia.marketscopeai.ui.screens.JournalScreen
+import com.veltravia.marketscopeai.ui.screens.JournalEntryScreen
 import com.veltravia.marketscopeai.ui.screens.NotificationsScreen
 import com.veltravia.marketscopeai.ui.screens.AiTradePlanWizardScreen
 import com.veltravia.marketscopeai.ui.screens.AiTradePlanDetailScreen

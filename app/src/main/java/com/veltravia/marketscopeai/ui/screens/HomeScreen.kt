@@ -206,9 +206,12 @@ fun HomeScreen(
     val pullConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source != NestedScrollSource.UserInput || refreshing) return Offset.Zero
-                if (scrollState.value == 0 && available.y < 0f) {
-                    val newPull = (pullDistance + available.y).coerceAtLeast(0f)
+                if (refreshing) return Offset.Zero
+                val delta = available.y
+                if (delta > 0f && scrollState.value == 0) {
+                    // Finger pulled down while at the very top — grow the
+                    // indicator instead of (impossibly) scrolling further up.
+                    val newPull = (pullDistance + delta).coerceAtLeast(0f)
                     val consumed = newPull - pullDistance
                     pullDistance = newPull
                     return Offset(0f, consumed)
