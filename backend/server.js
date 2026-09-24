@@ -3171,6 +3171,59 @@ async function traderProfileContext(userRow) {
   return { text, enforcedMode };
 }
 
+/** AI LEARNING: the trader's REAL journal outcomes, fed into every new
+ *  analysis so the AI reasons from what actually happened on their last
+ *  trades — wins, losses, their own recorded lessons, and open positions —
+ *  instead of analyzing in a vacuum. Must never throw: a journal lookup
+ *  problem can never break an analysis. */
+async function recentTradeLearningContext(userRow) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT instrument, direction, entry_price, r_multiple, pnl, status, setup_tag, lesson, closed_at, opened_at
+       FROM trade_journal WHERE user_id = $1
+       ORDER BY COALESCE(closed_at, opened_at) DESC LIMIT 12`,
+      [userRow.id]
+    );
+    if (!rows.length) return { hasHistory: false, text: "" };
+    const openRows = rows.filter((r) => r.status === "open");
+    const closedRows = rows.filter((r) => r.status === "closed");
+    if (!openRows.length && !closedRows.length) return { hasHistory: false, text: "" };
+
+    const outcomeOf = (r) => {
+      const key = r.r_multiple != null ? Number(r.r_multiple) : (r.pnl != null ? Number(r.pnl) : null);
+      if (key == null) return "closed, outcome unrecorded";
+      const word = key > 0 ? "WON" : key < 0 ? "LOST" : "BREAKEVEN";
+      return r.r_multiple != null ? `${word} (${key.toFixed(2)}R)` : `${word} (P&L ${key.toFixed(2)})`;
+    };
+    const closedLines = closedRows.slice(0, 8).map((r, i) =>
+      `${i + 1}. ${(r.instrument || "unknown")} ${r.direction || ""} [${String(r.setup_tag || "no setup tag").slice(0, 40)}] — ${outcomeOf(r)}` +
+      (r.closed_at ? ` on ${new Date(r.closed_at).toISOString().slice(0, 10)}` : "") +
+      (r.lesson ? `; their recorded lesson: "${String(r.lesson).slice(0, 140)}"` : "")
+    );
+    const scored = closedRows.filter((r) => (r.r_multiple != null ? Number(r.r_multiple) : (r.pnl != null ? Number(r.pnl) : null)) != null);
+    const wins = scored.filter((r) => (r.r_multiple != null ? Number(r.r_multiple) : Number(r.pnl)) > 0).length;
+    const losses = scored.filter((r) => (r.r_multiple != null ? Number(r.r_multiple) : Number(r.pnl)) < 0).length;
+
+    const parts = [];
+    if (closedLines.length) {
+      parts.push(`Their last closed real trades (newest first):\n${closedLines.join("\n")}`);
+      parts.push(`Recent form from recorded outcomes: ${wins} win${wins === 1 ? "" : "s"}, ${losses} loss${losses === 1 ? "" : "es"}.`);
+    }
+    if (openRows.length) {
+      parts.push(`Currently OPEN positions: ${openRows.map((r) => `${r.instrument || "unknown"} ${r.direction || ""} @ ${r.entry_price}`).join("; ")}.`);
+    }
+    parts.push(
+      "LEARN from this real outcome history: reference their most recent trade on this same instrument if one appears (won or lost, and why if their lesson says so); do not immediately re-recommend the exact setup that just lost unless the charts clearly justify it; treat their recorded lessons as learned preferences; and if they hold an OPEN position in this instrument, do not hand them a conflicting trade without acknowledging it. Finally, include in your JSON a \"learningNote\": one or two plain sentences telling the trader exactly how their recent real trades shaped this call (empty string if no history was provided)."
+    );
+    return {
+      hasHistory: true,
+      text: `RECENT REAL TRADE OUTCOMES (from their trade journal — this is learning context):\n${parts.join("\n")}`
+    };
+  } catch (_e) {
+    return { hasHistory: false, text: "" };
+  }
+}
+
 const SYSTEM_PROMPT = `You are a senior market analyst. You receive two real chart screenshots of the same instrument:
 - a 4H (higher timeframe) chart and a 15M (lower timeframe) chart.
 The trader picked Scalp mode (favor 15M entries, quicker targets) or Swing mode (favor 4H structure, wider targets).
@@ -3186,10 +3239,11 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "estimatedDuration": "your best estimate of how long this setup may take to play out, as a short human string like '2h - 3h 30m', based on the timeframe and momentum shown",
   "thesis": "3-5 sentence reasoning grounded in what is visible on the charts",
   "invalidation": "what would invalidate this setup",
-  "keyLevels": [number]
+  "keyLevels": [number],
+  "learningNote": "one or two plain sentences on how the trader's recent REAL trade outcomes influenced this call — empty string if none were provided"
 }
 Prices must be plausible for the instrument shown on the charts. Provide a realistic estimated duration based on timeframe and momentum. If the setup is not clean, choose NO_TRADE with a clear thesis.
-If a trader profile is provided with the request it is BINDING, not a suggestion: give setups ONLY in their declared style and preferred timeframes, respect their stated risk per trade and capital when framing risk, obey their own entry criteria, and pitch the explanation to their experience level. If the charts offer no setup that fits their profile, respond NO_TRADE and say plainly why it doesn't fit THEIR way of trading — never hand them a different style's setup. If their active trade plan is included, the setup must comply with its risk rules, entry criteria and avoided conditions or it is NO_TRADE with the broken rule named.`;
+If a trader profile is provided with the request it is BINDING, not a suggestion: give setups ONLY in their declared style and preferred timeframes, respect their stated risk per trade and capital when framing risk, obey their own entry criteria, and pitch the explanation to their experience level. If the charts offer no setup that fits their profile, respond NO_TRADE and say plainly why it doesn't fit THEIR way of trading — never hand them a different style's setup. If their active trade plan is included, the setup must comply with its risk rules, entry criteria and avoided conditions or it is NO_TRADE with the broken rule named. If recent real trade outcomes are provided, LEARN from them: weigh what actually won and lost for this trader, reference their last trade on this same instrument when relevant, and say in learningNote how their history shaped your reasoning.`;
 
 function extractJson(text) {
   let t = (text || "").trim();
@@ -3242,6 +3296,7 @@ app.post("/api/analyze", requireAuth, async (req, res) => {
   }
 
   const profileCtx = await traderProfileContext(userRow);
+  const learnCtx = await recentTradeLearningContext(userRow);
   // The user's declared style wins: a Day Trader never gets swing setups
   // (and vice versa), even if the toggle on the form said otherwise.
   const enforcedMode = profileCtx.enforcedMode || mode;
@@ -3371,7 +3426,8 @@ Respond ONLY with JSON:
                 (livePrice != null
                   ? ` Verified current market price of ${instrument.display}: ${livePrice}. Cross-check the chart against this live market — if the chart and the live market contradict each other, say so in the thesis.`
                   : "") +
-                (traderProfile || "")
+                (traderProfile || "") +
+                (learnCtx.text ? "\n\n" + learnCtx.text : "")
             },
             { type: "image_url", image_url: { url: imageH4 } },
             { type: "image_url", image_url: { url: imageM15 } }
@@ -3407,6 +3463,7 @@ Respond ONLY with JSON:
       livePrice,
       marketVerified: livePrice != null,
       chartValidated: true,
+      hasTradeHistory: learnCtx.hasHistory,
       analysis,
       analyzedAt: new Date().toISOString()
     };
@@ -3441,11 +3498,12 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "estimatedDuration": "your best estimate of the holding period this setup needs, as a short human string like '2-6 months'",
   "thesis": "4-6 sentences grounded in the REAL performance numbers provided — cite the actual percentages, the 52-week range and trend you were given",
   "invalidation": "what would invalidate this view",
-  "keyLevels": [number]
+  "keyLevels": [number],
+  "learningNote": "one or two plain sentences on how the trader's recent REAL trade outcomes influenced this call — empty string if none were provided"
 }
 Hard rules: LONG pairs with recommendation BUY; SHORT with SELL; NO_TRADE with HOLD. All prices must be in the stock's own currency and near its real current price. Ground every claim in the provided data — never invent numbers.
 Critical: if the 3-month, 6-month, 1-year or YTD performance is strongly positive (double digits) but you are NOT recommending BUY, the FIRST sentence of your thesis MUST explicitly reconcile that apparent tension — e.g. explain the rally already looks priced in, that short-term momentum has stalled versus the longer-term trend, that you'd want a pullback before entering, or a valuation concern — so a trader skimming the performance numbers immediately understands why you are not chasing an already-strong stock rather than seeing a contradiction.
-If a trader profile is provided with the request it is BINDING, not a suggestion: shape the holding-period estimate (estimatedDuration) toward their declared style and preferred timeframes, respect their stated risk per trade and capital when framing position risk, obey their own entry criteria, and pitch the explanation to their experience level. A declared day trader should not be handed a 6-month buy-and-hold — if the profile conflicts with the setup, choose NO_TRADE/HOLD and say the mismatch plainly. If their active trade plan is included, the recommendation must comply with its risk rules and avoided conditions or it is NO_TRADE with the broken rule named.`;
+If a trader profile is provided with the request it is BINDING, not a suggestion: shape the holding-period estimate (estimatedDuration) toward their declared style and preferred timeframes, respect their stated risk per trade and capital when framing position risk, obey their own entry criteria, and pitch the explanation to their experience level. A declared day trader should not be handed a 6-month buy-and-hold — if the profile conflicts with the setup, choose NO_TRADE/HOLD and say the mismatch plainly. If their active trade plan is included, the recommendation must comply with its risk rules and avoided conditions or it is NO_TRADE with the broken rule named. If recent real trade outcomes are provided, LEARN from them: weigh what actually won and lost for this trader, reference their last trade on this same instrument when relevant, and say in learningNote how their history shaped your reasoning.`;
 
 /** Conservative, fully data-backed stock result used only when every AI
  * provider is unavailable or too slow. It never invents fundamentals: the
@@ -3525,7 +3583,8 @@ Respond with STRICT JSON only (no markdown fences), shape:
   "estimatedDuration": "short human-readable timeframe",
   "thesis": "4-6 factual sentences that clearly state this is an IPO-stage assessment",
   "invalidation": "what would invalidate this view",
-  "keyLevels": [number]
+  "keyLevels": [number],
+  "learningNote": "one or two plain sentences on how the trader's recent REAL trade outcomes influenced this call — empty string if none were provided"
 }`;
 
 // Resolve the one optional screenshot before batch quota preflight. This
@@ -3660,6 +3719,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
 
   const profileCtx = await traderProfileContext(userRow);
   const traderProfile = profileCtx.text;
+  const learnCtx = await recentTradeLearningContext(userRow);
   const trial = trialInfo(userRow);
   const premium = paidPremiumActive(userRow) || Boolean(await getEffectiveGrant(userRow.id));
   if (!trial.trialActive && !premium) {
@@ -3798,7 +3858,8 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
           (stats.sector ? `, sector: ${stats.sector}` : "") +
           (stats.tvRecommendation != null ? `. Aggregated technical rating of this stock on its exchange: ${stats.tvRecommendation} (-1 strong sell to +1 strong buy)` : "") +
           `. User query: "${resolvedQuery}". Decide: should a trader BUY this stock now or not, and with what confidence percentage?` +
-          (traderProfile || "")
+          (traderProfile || "") +
+          (learnCtx.text ? "\n\n" + learnCtx.text : "")
       }
     ];
     // The screenshot was already validated above and, when needed, its
@@ -3856,6 +3917,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       livePrice: stats.price,
       marketVerified: true,
       chartValidated: true,
+      hasTradeHistory: learnCtx.hasHistory,
       analysis,
       marketData: {
         price: stats.price, changePctToday: stats.changePctToday,

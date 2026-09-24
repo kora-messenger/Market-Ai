@@ -73,6 +73,7 @@ import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
+import com.veltravia.marketscopeai.ui.theme.PremiumIndigo
 import com.veltravia.marketscopeai.ui.theme.SurfaceDark
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
@@ -238,6 +239,7 @@ private fun TradeAnalysisBody(
     val estimatedDuration = analysis.optString("estimatedDuration", "")
     val thesis = analysis.optString("thesis", "")
     val invalidation = analysis.optString("invalidation", "")
+    val learningNote = analysis.optString("learningNote", "")
     val keyLevels = analysis.optJSONArray("keyLevels")
 
     // --- Logo row ---
@@ -550,6 +552,12 @@ private fun TradeAnalysisBody(
                 Text("Invalidation", style = MaterialTheme.typography.labelMedium, color = BearRed, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(invalidation, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 20.sp)
+            }
+            if (learningNote.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                Text("AI learning", style = MaterialTheme.typography.labelMedium, color = PremiumIndigo, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(learningNote, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 20.sp)
             }
             if (keyLevels != null && keyLevels.length() > 0) {
                 Spacer(Modifier.height(12.dp))
