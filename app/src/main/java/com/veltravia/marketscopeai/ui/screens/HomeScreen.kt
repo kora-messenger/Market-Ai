@@ -80,28 +80,28 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 // --- Compass Home palette (from the approved MarketScope Compass concept) ---
-private val DeskInk = Color(0xFF090F21)        // deep navy canvas
-private val InkCard = Color(0xFF121B31)        // slot surface
-private val InkCardBorder = Color(0xFF253451)
-private val InkSubCard = Color(0xFF141D34)    // small-card surface
-private val InkSubCardBorder = Color(0xFF29395C)
-private val DeskText = Color(0xFFF1F5FF)
-private val DeskBody = Color(0xFF91A1BD)
-private val DeskMuted = Color(0xFF7C87AA)
-private val DeskLavender = Color(0xFF95A7CE)
-private val DeskAccent = Color(0xFF8F92FF)     // eyebrow
-private val DeskIndex = Color(0xFF939AFF)
-private val DeskHighlight = Color(0xFF9DA9FF)
-private val DeskArrowBox = Color(0xFF242F4E)
-private val DeskArrowTint = Color(0xFFB0B9FF)
-private val OrbitLine = Color(0xFF3F4E7F)
-private val OrbitDash = Color(0xFF50679E)
-private val OrbitInner = Color(0xFF6073B3)
-private val NodeCyan = Color(0xFF89D7EB)
-private val NodeViolet = Color(0xFF8275F9)
-private val CoreBorder = Color(0xFF8397E2)
-private val UpGreen = Color(0xFF4ADE80)
-private val DownRed = Color(0xFFF87171)
+private val DeskInk = Color(0xFFFFFFFF)        // clean white canvas (app palette)
+private val InkCard = Color(0xFFF3F4F7)        // slot surface (soft gray)
+private val InkCardBorder = Color(0xFFE2E5EC)
+private val InkSubCard = Color(0xFFEAECF1)    // small-card surface
+private val InkSubCardBorder = Color(0xFFE2E5EC)
+private val DeskText = Color(0xFF0B0E14)
+private val DeskBody = Color(0xFF4B5567)
+private val DeskMuted = Color(0xFF8A93A6)
+private val DeskLavender = Color(0xFF4B5567)
+private val DeskAccent = Color(0xFF7C3AED)     // eyebrow (app violet)
+private val DeskIndex = Color(0xFF7C3AED)
+private val DeskHighlight = Color(0xFF7C3AED)
+private val DeskArrowBox = Color(0xFFEAECF1)
+private val DeskArrowTint = Color(0xFF0B0E14)
+private val OrbitLine = Color(0xFFDDE2EC)
+private val OrbitDash = Color(0xFFC8CEDC)
+private val OrbitInner = Color(0xFFB9C0D4)
+private val NodeCyan = Color(0xFF0891B2)
+private val NodeViolet = Color(0xFF7C3AED)
+private val CoreBorder = Color(0xFF0B0E14)
+private val UpGreen = Color(0xFF16A34A)
+private val DownRed = Color(0xFFDC2626)
 
 private data class CompassWatchRow(
     val id: String,
@@ -289,7 +289,7 @@ fun HomeScreen(
                 }
                 Text(
                     "THE TRADING DESK",
-                    color = Color(0xFF8091B3),
+                    color = Color(0xFF8A93A6),
                     style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 1.45.sp
                 )
@@ -299,12 +299,12 @@ fun HomeScreen(
                 Icon(
                     Icons.Filled.NotificationsNone,
                     contentDescription = "Notifications",
-                    tint = Color(0xFFC1D0F5),
+                    tint = Color(0xFF0B0E14),
                     modifier = Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(13.dp))
-                        .background(Color(0xFF121B32))
-                        .border(1.dp, Color(0xFF303C5A), RoundedCornerShape(13.dp))
+                        .background(Color(0xFFF3F4F7))
+                        .border(1.dp, Color(0xFFE2E5EC), RoundedCornerShape(13.dp))
                         .padding(9.dp)
                 )
             }
@@ -496,7 +496,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
                 .matchParentSize()
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0xFF556CFF).copy(alpha = 0.09f), Color.Transparent),
+                        colors = listOf(Color(0xFF7C3AED).copy(alpha = 0.06f), Color.Transparent),
                         radius = 460f
                     )
                 )
@@ -531,8 +531,8 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
             val topLeft = Offset(cx - r1, cy - r1)
             drawArc(
                 brush = Brush.sweepGradient(
-                    0.0f to Color(0xFF68C7ED),
-                    1.0f to Color(0xFF6369FF)
+                    0.0f to Color(0xFF0891B2),
+                    1.0f to Color(0xFF7C3AED)
                 ),
                 startAngle = 213f,
                 sweepAngle = 65f,
@@ -542,7 +542,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
                 style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
             )
             drawArc(
-                color = Color(0xFF555BE6),
+                color = Color(0xFF4F46E5),
                 startAngle = 232f,
                 sweepAngle = 21f,
                 useCenter = false,
@@ -567,7 +567,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
         // Cardinal labels around the compass.
         Text(
             "ASSESS",
-            color = Color(0xFF8C9EC4),
+            color = Color(0xFF8A93A6),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.7.sp,
@@ -576,7 +576,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
         Row(Modifier.fillMaxWidth().align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "MARKETS",
-                color = Color(0xFFA8B8D4),
+                color = Color(0xFF8A93A6),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 1.sp
@@ -584,7 +584,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
         }
         Text(
             "SIGNALS",
-            color = Color(0xFFA8B8D4),
+            color = Color(0xFF8A93A6),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.sp,
@@ -592,7 +592,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
         )
         Text(
             "REVIEW",
-            color = Color(0xFFA8B8D4),
+            color = Color(0xFF8A93A6),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.sp,
@@ -608,7 +608,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
-                        colors = listOf(Color(0xFF353B7C), Color(0xFF1C2750), Color(0xFF101A36)),
+                        colors = listOf(Color(0xFF20273F), Color(0xFF121830), Color(0xFF0B0E1C)),
                         center = Offset(x = 220f, y = 140f),
                         radius = 1600f
                     )
@@ -623,7 +623,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
                 Icon(
                     Icons.Filled.CandlestickChart,
                     contentDescription = null,
-                    tint = Color(0xFFA3CBFF),
+                    tint = Color(0xFFDCE6FF),
                     modifier = Modifier.size(28.dp)
                 )
                 Spacer(Modifier.height(6.dp))
@@ -637,7 +637,7 @@ private fun CompassFocus(onStartAnalysis: () -> Unit) {
                 Spacer(Modifier.height(5.dp))
                 Text(
                     "CHART OR STOCK ↗",
-                    color = Color(0xFFB3D1FF),
+                    color = Color(0xFFA5B4FC),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.7.sp
@@ -671,7 +671,7 @@ private fun Rail(index: String, title: String) {
             Modifier
                 .weight(1f)
                 .height(1.dp)
-                .background(Color(0xFF303C60))
+                .background(Color(0xFFE2E5EC))
         )
     }
 }
@@ -700,7 +700,7 @@ private fun SlotCard(
             Column(Modifier.weight(1f)) {
                 Text(title, color = DeskText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(3.dp))
-                Text(description, color = Color(0xFF8E9FBD), style = MaterialTheme.typography.labelSmall)
+                Text(description, color = Color(0xFF4B5567), style = MaterialTheme.typography.labelSmall)
             }
             if (onArrowClick != null) {
                 Box(
@@ -754,7 +754,7 @@ private fun RadarLine(primary: String, secondary: String, delta: Double?, onClic
     ) {
         Text(primary, color = DeskText, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
-        Text(secondary, color = Color(0xFFB3C0DC), style = MaterialTheme.typography.bodySmall)
+        Text(secondary, color = Color(0xFF8A93A6), style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.width(10.dp))
         val deltaText = delta?.let { (if (it >= 0) "+" else "") + String.format(java.util.Locale.US, "%.2f%%", it) } ?: "—"
         Text(
@@ -794,7 +794,7 @@ private fun SmallCard(
         Column {
             Text(title, color = DeskText, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(3.dp))
-            Text(description, color = Color(0xFF8596B8), style = MaterialTheme.typography.labelSmall)
+            Text(description, color = Color(0xFF8A93A6), style = MaterialTheme.typography.labelSmall)
         }
     }
 }
