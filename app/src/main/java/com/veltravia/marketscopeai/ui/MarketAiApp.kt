@@ -125,6 +125,13 @@ object PushRouter {
      * carried one) rather than just landing on a tab.
      */
     var pendingOpenNotifications by mutableStateOf(false)
+
+    /**
+     * A news-digest push was tapped — open the Calendar screen (News tab)
+     * directly so the user lands on the headlines behind the notification.
+     */
+    var pendingOpenCalendar by mutableStateOf(false)
+
     var pendingHighlightNotificationId by mutableStateOf<String?>(null)
 
     /**
@@ -283,6 +290,14 @@ fun MarketAiApp() {
             PushRouter.pendingHighlightNotificationId = null
             val encoded = highlightId?.let { java.net.URLEncoder.encode(it, "UTF-8") } ?: ""
             navController.navigate("notifications?highlightId=$encoded")
+        }
+    }
+
+    // News-digest push tapped — open the Calendar (News) directly.
+    LaunchedEffect(PushRouter.pendingOpenCalendar) {
+        if (PushRouter.pendingOpenCalendar) {
+            PushRouter.pendingOpenCalendar = false
+            navController.navigate("calendar")
         }
     }
 
@@ -527,7 +542,10 @@ fun MarketAiApp() {
             )
         }
         composable("calendar") {
-            CalendarScreen(onBack = { navController.popBackStack() })
+            CalendarScreen(
+                onBack = { navController.popBackStack() },
+                onSubscribe = { navController.navigate("subscribe") }
+            )
         }
         composable("wall_of_wins") {
             WallOfWinsScreen(onBack = { navController.popBackStack() })

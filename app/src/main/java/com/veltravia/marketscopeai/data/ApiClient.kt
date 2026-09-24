@@ -775,6 +775,36 @@ object ApiClient {
         request(request)
     }
 
+    /**
+     * Market news alerts opt-in (Calendar > News). Server-owned preference;
+     * a daily backend cron delivers the digest while it is on. Returns
+     * { enabled }.
+     */
+    suspend fun fetchNewsAlertsSetting(sessionToken: String): JSONObject = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/settings/news-notifications")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .get()
+            .build()
+        request(request)
+    }
+
+    /**
+     * Turn market news alerts on/off. Enabling is Premium-only — the backend
+     * re-checks entitlement and answers 403 with error "premium_required"
+     * for free accounts; request() surfaces that as the exception message so
+     * callers can show the upgrade popup instead of a generic error.
+     */
+    suspend fun setNewsAlertsEnabled(sessionToken: String, enabled: Boolean): JSONObject = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("enabled", enabled)
+        val request = Request.Builder()
+            .url("${ApiConfig.BASE_URL}/api/settings/news-notifications")
+            .addHeader("Authorization", "Bearer $sessionToken")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        request(request)
+    }
+
     /** Public monetization config: ad placements, free/premium limits, rewarded
      *  availability, enabled ad networks. No auth needed — nothing sensitive. */
     suspend fun fetchMonetizationConfig(): JSONObject = withContext(Dispatchers.IO) {

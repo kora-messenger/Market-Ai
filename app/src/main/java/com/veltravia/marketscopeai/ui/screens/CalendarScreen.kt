@@ -26,14 +26,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,12 +56,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.veltravia.marketscopeai.data.ApiClient
+import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
+import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -117,7 +124,7 @@ private fun timeAgo(publishedAt: Long?): String? {
  * this screen shows an honest error + retry.
  */
 @Composable
-fun CalendarScreen(onBack: () -> Unit) {
+fun CalendarScreen(onBack: () -> Unit, onSubscribe: () -> Unit) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = News, 1 = Economic calendar
     var news by remember { mutableStateOf<List<NewsItem>?>(null) }
@@ -126,6 +133,44 @@ fun CalendarScreen(onBack: () -> Unit) {
     var events by remember { mutableStateOf<List<CalendarEvent>?>(null) }
     var eventsError by remember { mutableStateOf<String?>(null) }
     var impactFilter by remember { mutableStateOf("all") }
+
+    // --- Market news alerts opt-in (Premium-only) ---
+    val sessionToken = remember { SessionManager.sessionToken(context) }
+    var newsAlertsOn by remember { mutableStateOf(false) }
+    var premiumGateOpen by remember { mutableStateOf(false) }
+
+    fun loadNewsAlerts() {
+        val token = sessionToken ?: return // signed out: card renders its sign-in hint
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val r = ApiClient.fetchNewsAlertsSetting(token)
+                newsAlertsOn = r.optBoolean("enabled", false)
+            } catch (_: Exception) {
+                // Silent: the card falls back to "off" and can be toggled again.
+            }
+        }
+    }
+
+    fun setNewsAlerts(want: Boolean) {
+        val token = sessionToken ?: return
+        // Enabling is Premium-only. Free/trial-expired accounts get the
+        // upgrade popup instead of a silent failure — checked locally for an
+        // instant response, and re-checked server-side on the actual call.
+        if (want && !SessionManager.effectivePremium(context)) {
+            premiumGateOpen = true
+            return
+        }
+        val previous = newsAlertsOn
+        newsAlertsOn = want // optimistic; reverted on server rejection
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                ApiClient.setNewsAlertsEnabled(token, want)
+            } catch (e: Exception) {
+                newsAlertsOn = previous
+                if (e.message == "premium_required") premiumGateOpen = true
+            }
+        }
+    }
 
     fun loadNews(category: String) {
         newsError = null
@@ -183,6 +228,7 @@ fun CalendarScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         loadNews("all")
         loadEvents()
+        loadNewsAlerts()
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -210,6 +256,23 @@ fun CalendarScreen(onBack: () -> Unit) {
 
         if (selectedTab == 0) {
             // ---------- NEWS ----------
+            NewsAlertsCard(
+                enabled = newsAlertsOn,
+                signedIn = sessionToken != null,
+                onToggle = { want -> setNewsAlerts(want) }
+            )
+            Spacer(Modifier.height(10.dp))
+
+            if (premiumGateOpen) {
+                NewsAlertsPremiumGateDialog(
+                    onDismiss = { premiumGateOpen = false },
+                    onSubscribe = {
+                        premiumGateOpen = false
+                        onSubscribe()
+                    }
+                )
+            }
+
             CategoryChips(
                 options = listOf("all" to "All", "forex" to "Forex", "crypto" to "Crypto", "stocks" to "Stocks"),
                 selected = newsCategory,
@@ -672,4 +735,106 @@ private fun EventsSkeleton() {
             }
         }
     }
+}
+
+/**
+ * Opt-in card for market news alerts at the top of the News tab. Premium
+ * feature — free users see the upgrade popup the moment they flip the
+ * switch (handled by the caller), never a silent failure.
+ */
+@Composable
+private fun NewsAlertsCard(
+    enabled: Boolean,
+    signedIn: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceLight)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Box(
+            Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(AccentViolet.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Notifications, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Market news alerts",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
+            Text(
+                if (!signedIn) "Sign in to manage news alerts."
+                else if (enabled) "You're receiving daily market news updates."
+                else "Get the day's top market headlines delivered to you. Premium feature.",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Switch(
+            checked = enabled,
+            enabled = signedIn,
+            onCheckedChange = onToggle,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = AccentViolet,
+                checkedBorderColor = AccentViolet,
+                uncheckedThumbColor = TextSecondary,
+                uncheckedTrackColor = Color.White,
+                uncheckedBorderColor = TextSecondary
+            )
+        )
+    }
+}
+
+/**
+ * Premium gate for news alerts — shown when a free user flips the switch on.
+ * Cancel, the system back button, or tapping anywhere outside all close it;
+ * Subscribe goes straight to the Subscribe screen.
+ */
+@Composable
+private fun NewsAlertsPremiumGateDialog(
+    onDismiss: () -> Unit,
+    onSubscribe: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnClickOutside = true),
+        title = {
+            Text(
+                "Market news alerts",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+        },
+        text = {
+            Text(
+                "Market news alerts are only available for Premium subscribers. Subscribe to Premium and get the day's most important market headlines delivered straight to you.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onSubscribe) {
+                Text("Subscribe", color = AccentViolet, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextMuted)
+            }
+        }
+    )
 }

@@ -1,0 +1,29 @@
+name: News digest cron
+
+# Delivers the latest market headlines to Premium users who turned on
+# "Market news alerts" in Calendar > News. Runs twice a day (08:00 and
+# 14:00 Lagos time); the backend skips users whose Premium lapsed and
+# skips the whole run when no fresh headlines exist.
+
+on:
+  schedule:
+    # 07:00 UTC = 08:00 Africa/Lagos — morning digest
+    - cron: "0 7 * * *"
+    # 13:00 UTC = 14:00 Africa/Lagos — afternoon digest
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+jobs:
+  news-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send the news digest
+        run: |
+          curl -sS --fail-with-body -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "$RENDER_URL/api/cron/news-digest"
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}

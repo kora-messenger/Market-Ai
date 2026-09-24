@@ -20,6 +20,7 @@ const { fetchTrending, fetchLiveQuotes } = require("./src/trending");
 const { fetchWatchlist, WATCHLIST } = require("./src/markets");
 const { fetchCandles, INTERVALS } = require("./src/candles");
 const { fetchEconomicCalendar, fetchMarketNews } = require("./src/newsCalendar");
+const { freshHeadlines, digestBody } = require("./src/newsDigest");
 const { searchStock, bestMatch, fetchStockStats, searchNgxIpo } = require("./src/stocks");
 const r2 = require("./src/r2");
 const { processExpiredDeletions } = require("./src/accountDeletion");
@@ -459,6 +460,7 @@ async function initDb() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_key TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS news_notifications BOOLEAN NOT NULL DEFAULT false;
     CREATE TABLE IF NOT EXISTS daily_signals (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       author TEXT NOT NULL DEFAULT 'owner',
@@ -7905,6 +7907,103 @@ app.delete("/api/push/register", requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "Could not remove the push token", detail: String(err.message || err) });
+  }
+});
+
+// --- Market news alerts (Premium-only opt-in) ---------------------------------
+// Users opt in from the Calendar > News screen; a daily cron then delivers
+// the freshest headlines as a push + in-app notification. The preference is
+// server-owned: enabling is Premium-only and re-checked on every digest send
+// so a lapsed plan silently stops the alerts.
+
+app.get("/api/settings/news-notifications", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT news_notifications FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+    res.json({ enabled: !!rows[0].news_notifications });
+  } catch (err) {
+    res.status(500).json({ error: "Could not load your news alerts setting" });
+  }
+});
+
+app.post("/api/settings/news-notifications", requireAuth, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  const enabled = !!req.body.enabled;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, trial_started_at, is_premium, premium_expires_at FROM users WHERE google_sub = $1`,
+      [req.session.sub]
+    );
+    if (!rows.length) return res.status(404).json({ error: "User not found" });
+
+    // Enabling is a Premium perk (paid sub, admin grant or active trial).
+    // Turning OFF is always allowed — even a lapsed plan can silence alerts.
+    if (enabled) {
+      const trial = trialInfo(rows[0]);
+      const grant = await getEffectiveGrant(rows[0].id);
+      const premium = paidPremiumActive(rows[0]) || !!grant || trial.trialActive;
+      if (!premium) {
+        return res.status(403).json({
+          error: "premium_required",
+          message: "Market news alerts are only available for Premium subscribers."
+        });
+      }
+    }
+
+    await pool.query(
+      `UPDATE users SET news_notifications = $1 WHERE id = $2`,
+      [enabled, rows[0].id]
+    );
+    res.json({ enabled });
+  } catch (err) {
+    res.status(500).json({ error: "Could not save your news alerts setting" });
+  }
+});
+
+// Daily news digest — called by the GitHub Actions cron (CRON_SECRET).
+// Sends the freshest headlines to every opted-in user whose Premium is
+// still active. Skips silently when nothing new was published.
+app.post("/api/cron/news-digest", async (req, res) => {
+  if (!CRON_SECRET || req.headers["x-cron-secret"] !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!pool) return res.status(503).json({ error: "Database is not configured." });
+  try {
+    const items = await fetchMarketNews();
+    const now = Date.now();
+    const fresh = freshHeadlines(items, now, 8 * 3600 * 1000, 3);
+    const body = digestBody(fresh);
+    if (!fresh.length || !body) {
+      return res.json({ sent: 0, skipped: "no fresh headlines in the digest window" });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, trial_started_at, is_premium, premium_expires_at FROM users WHERE news_notifications = true`
+    );
+
+    let sent = 0;
+    let skippedNotPremium = 0;
+    for (const row of rows) {
+      const trial = trialInfo(row);
+      const grant = await getEffectiveGrant(row.id);
+      const premium = paidPremiumActive(row) || !!grant || trial.trialActive;
+      if (!premium) { skippedNotPremium++; continue; }
+
+      await notifyUser(row.id, {
+        title: "Market news update",
+        body,
+        type: "news",
+        data: { route: "calendar" }
+      });
+      sent++;
+    }
+    res.json({ sent, skippedNotPremium, headlines: fresh.length });
+  } catch (err) {
+    res.status(500).json({ error: "News digest failed", detail: String(err.message || err) });
   }
 });
 

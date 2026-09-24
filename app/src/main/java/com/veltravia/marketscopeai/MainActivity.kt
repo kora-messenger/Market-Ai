@@ -34,6 +34,11 @@ class MainActivity : ComponentActivity() {
             com.veltravia.marketscopeai.ui.PushRouter.pendingOpenNotifications = true
             return
         }
+        if (route == "calendar") {
+            // News-digest push tapped — open the Calendar's News tab.
+            com.veltravia.marketscopeai.ui.PushRouter.pendingOpenCalendar = true
+            return
+        }
         if (route.startsWith("market/")) {
             // Price-alert push tapped — open that instrument's Market View.
             com.veltravia.marketscopeai.ui.PushRouter.pendingMarketId = route.removePrefix("market/")
