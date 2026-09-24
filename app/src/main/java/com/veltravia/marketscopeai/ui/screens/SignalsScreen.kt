@@ -74,6 +74,7 @@ import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
+import com.veltravia.marketscopeai.ui.theme.PremiumIndigo
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
@@ -994,16 +995,16 @@ private fun LockedSignalsCard(historyCount: Int = 0) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(SurfaceLight)
-            .border(1.dp, GoldAmber.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+            .border(1.dp, PremiumIndigo.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.Icon(Icons.Filled.Lock, contentDescription = null, tint = GoldAmber, modifier = Modifier.size(16.dp))
+            androidx.compose.material3.Icon(Icons.Filled.Lock, contentDescription = null, tint = PremiumIndigo, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(
                 "DAILY SIGNALS · PREMIUM",
                 style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
-                color = GoldAmber,
+                color = PremiumIndigo,
                 fontWeight = FontWeight.Bold
             )
         }

@@ -12,6 +12,10 @@ val AccentViolet = Color(0xFF7C3AED)  // secondary accent (deep violet)
 val BullGreen = Color(0xFF16A34A)
 val BearRed = Color(0xFFDC2626)
 val GoldAmber = Color(0xFFD97706)
+/** Premium identity color — royal indigo, the exact midpoint of the app's
+ *  violet→cyan brand gradient. Used for premium badges, chips and premium-
+ *  locked cards so premium reads as part of the app family (never gold). */
+val PremiumIndigo = Color(0xFF4F46E5)
 
 /** A genuine near-black — used for deliberate dark-accent surfaces (CTA
  *  buttons, badge circles) that should stay dark for contrast even though

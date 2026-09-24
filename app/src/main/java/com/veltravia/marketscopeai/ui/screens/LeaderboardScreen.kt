@@ -49,7 +49,7 @@ import com.veltravia.marketscopeai.data.ApiClient
 import com.veltravia.marketscopeai.data.SessionManager
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
-import com.veltravia.marketscopeai.ui.theme.GoldAmber
+import com.veltravia.marketscopeai.ui.theme.PremiumIndigo
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -328,7 +328,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                                 modifier = Modifier.weight(1f)
                             )
                             if (w.isPremium) {
-                                Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = PremiumIndigo, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
                             }
                             Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
@@ -418,7 +418,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                                         )
                                         if (e.isPremium) {
                                             Spacer(Modifier.width(4.dp))
-                                            Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(13.dp))
+                                            Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = PremiumIndigo, modifier = Modifier.size(13.dp))
                                         }
                                     }
                                     Text(

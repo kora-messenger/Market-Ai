@@ -118,7 +118,7 @@ import com.veltravia.marketscopeai.ui.components.pressScale
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.draw.drawBehind
 import com.veltravia.marketscopeai.ui.theme.AccentCyan
-import com.veltravia.marketscopeai.ui.theme.GoldAmber
+import com.veltravia.marketscopeai.ui.theme.PremiumIndigo
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
@@ -1249,7 +1249,7 @@ private fun FeaturedProofRow(
                                 )
                                 if (proof.authorIsPremium) {
                                     Spacer(Modifier.width(3.dp))
-                                    Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(12.dp))
+                                    Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = PremiumIndigo, modifier = Modifier.size(12.dp))
                                 }
                             }
                             if (proof.outcomeTag != null) {
@@ -1437,7 +1437,7 @@ private fun PostCard(
                     RoleBadge(post.authorRole, post.isTeam)
                 } else if (post.authorIsPremium) {
                     Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(13.dp))
+                    Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = PremiumIndigo, modifier = Modifier.size(13.dp))
                 }
                 if (post.isPinned) {
                     Spacer(Modifier.width(6.dp))
@@ -2203,7 +2203,7 @@ private fun CommentRow(
                     Text(displayHandle(comment.authorName, comment.authorUsername), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                     if (comment.authorIsPremium) {
                         Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(13.dp))
+                        Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = PremiumIndigo, modifier = Modifier.size(13.dp))
                     }
                     if (comment.authorRole.equals("admin", true) || comment.authorRole.equals("moderator", true) || comment.authorRole.equals("mentor", true)) {
                         Spacer(Modifier.width(6.dp))

@@ -62,7 +62,7 @@ import com.veltravia.marketscopeai.ui.components.GradientPrimaryButton
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
-import com.veltravia.marketscopeai.ui.theme.GoldAmber
+import com.veltravia.marketscopeai.ui.theme.PremiumIndigo
 import com.veltravia.marketscopeai.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -377,7 +377,7 @@ private fun PremiumUserCard(user: JSONObject, expanded: Boolean, onClick: () -> 
         grant != null && grant.optString("kind") == "lifetime" ->
             Triple(AccentViolet.copy(alpha = 0.12f), AccentViolet, "Lifetime")
         grant != null -> Triple(AccentViolet.copy(alpha = 0.12f), AccentViolet, grant.optString("label", "Premium"))
-        paid -> Triple(GoldAmber.copy(alpha = 0.15f), GoldAmber, "Premium")
+        paid -> Triple(PremiumIndigo.copy(alpha = 0.14f), PremiumIndigo, "Premium")
         trial -> Triple(Color(0xFF0891B2).copy(alpha = 0.12f), Color(0xFF0891B2), "Trial")
         else -> Triple(BearRed.copy(alpha = 0.1f), BearRed, "Free")
     }
@@ -490,7 +490,7 @@ private fun PremiumStatusCard(user: JSONObject, onGrant: () -> Unit, onRevoke: (
         Spacer(Modifier.height(8.dp))
         StatusRow(
             icon = Icons.Filled.WorkspacePremium,
-            tint = GoldAmber,
+            tint = PremiumIndigo,
             label = "Admin grant",
             value = when {
                 grant == null -> "None"

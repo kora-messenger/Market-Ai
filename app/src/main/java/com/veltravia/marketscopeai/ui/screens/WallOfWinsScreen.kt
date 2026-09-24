@@ -66,7 +66,7 @@ import com.veltravia.marketscopeai.ui.theme.AccentCyan
 import com.veltravia.marketscopeai.ui.theme.AccentViolet
 import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
-import com.veltravia.marketscopeai.ui.theme.GoldAmber
+import com.veltravia.marketscopeai.ui.theme.PremiumIndigo
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
@@ -343,7 +343,7 @@ private fun WallWinCard(w: JSONObject, onClick: () -> Unit, onOpenImage: () -> U
             Text(w.optString("authorName", "Trader"), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             if (w.optBoolean("authorIsPremium", false)) {
                 Spacer(Modifier.width(3.dp))
-                Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(11.dp))
+                Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = PremiumIndigo, modifier = Modifier.size(11.dp))
             }
             Spacer(Modifier.width(4.dp))
             Text(winDate(w.optString("createdAt", "")), fontSize = 9.sp, color = TextMuted)
@@ -376,7 +376,7 @@ private fun WinDetailSheet(
                     Text(win.optString("authorName", "Trader"), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     if (win.optBoolean("authorIsPremium", false)) {
                         Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = GoldAmber, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Filled.Verified, contentDescription = "Premium member", tint = PremiumIndigo, modifier = Modifier.size(14.dp))
                     }
                 }
                 Text(win.optString("instrument", "") + " · " + (if (isLong) "LONG" else "SHORT"), fontSize = 11.sp, color = if (isLong) BullGreen else BearRed, fontWeight = FontWeight.SemiBold)

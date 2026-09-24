@@ -99,6 +99,7 @@ import com.veltravia.marketscopeai.ui.theme.BearRed
 import com.veltravia.marketscopeai.ui.theme.BullGreen
 import com.veltravia.marketscopeai.ui.theme.BorderSubtle
 import com.veltravia.marketscopeai.ui.theme.GoldAmber
+import com.veltravia.marketscopeai.ui.theme.PremiumIndigo
 import com.veltravia.marketscopeai.ui.theme.SurfaceLight
 import com.veltravia.marketscopeai.ui.theme.TextMuted
 import com.veltravia.marketscopeai.ui.theme.TextPrimary
@@ -400,7 +401,7 @@ fun ProfileScreen(
         SettingsGroup {
             SettingsRow(
                 icon = Icons.Filled.WorkspacePremium,
-                tint = GoldAmber,
+                tint = PremiumIndigo,
                 label = if (planEffectivePremium) "Subscribed" else "Upgrade to Premium",
                 trailingText = planTrailingLabel,
                 onClick = onOpenSubscribe
@@ -834,7 +835,7 @@ private fun AccountSummaryCard(
                         Icon(
                             Icons.Filled.Verified,
                             contentDescription = "Premium verified",
-                            tint = GoldAmber,
+                            tint = PremiumIndigo,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -990,7 +991,7 @@ private fun HandleEditDialog(
 private fun PlanChip(isPremium: Boolean, trialActive: Boolean, trialDaysRemaining: Int, plan: String, onClick: () -> Unit) {
     val (bg, fg, label) = when {
         plan == "lifetime" -> Triple(AccentViolet.copy(alpha = 0.14f), AccentViolet, "LIFETIME")
-        isPremium || plan == "premium" -> Triple(GoldAmber.copy(alpha = 0.15f), GoldAmber, "PRO")
+        isPremium || plan == "premium" -> Triple(PremiumIndigo.copy(alpha = 0.14f), PremiumIndigo, "PRO")
         trialActive -> Triple(AccentCyan.copy(alpha = 0.12f), AccentCyan, "${trialDaysRemaining}D")
         else -> Triple(BearRed.copy(alpha = 0.1f), BearRed, "FREE")
     }
