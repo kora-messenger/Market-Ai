@@ -259,6 +259,13 @@ fun MarketAiApp() {
         }
     }
 
+    // Warm the profile caches in the background (and wake the sleeping
+    // Render server) while the user is still on Home, so opening Profile
+    // shows fresh values immediately instead of waiting on a live call.
+    LaunchedEffect(Unit) {
+        com.veltravia.marketscopeai.data.ProfilePrefetch.prefetch(context)
+    }
+
     // Deep link marketscopeai://subscribe (trial-expired email button).
     LaunchedEffect(PushRouter.pendingSubscribe) {
         if (PushRouter.pendingSubscribe) {
