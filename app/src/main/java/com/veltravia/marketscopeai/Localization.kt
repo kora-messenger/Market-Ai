@@ -123,7 +123,7 @@ private val de = mapOf(
     "3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle." to "3–20 Zeichen — Kleinbuchstaben, Zahlen, Punkte oder Unterstriche. Andere Trader sehen es als @Handle.",
     "e.g. euro.trader" to "z. B. euro.trader",
     "Analyses run" to "Ausgeführte Analysen",
-    "Saved trades" to "Gespeicherte Trades"
+    "Saved trades" to "Gespeicherte Trades",
     "+ Add another option" to "+ Weitere Option hinzufügen",
     "1 MONTH" to "1 MONAT",
     "1 WEEK" to "1 WOCHE",
@@ -545,7 +545,7 @@ private val es = mapOf(
     "3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle." to "3–20 caracteres: letras minúsculas, números, puntos o guiones bajos. Otros traders lo verán como @usuario.",
     "e.g. euro.trader" to "p. ej. euro.trader",
     "Analyses run" to "Análisis realizados",
-    "Saved trades" to "Trades guardados"
+    "Saved trades" to "Trades guardados",
     "+ Add another option" to "+ Añadir otra opción",
     "1 MONTH" to "1 MES",
     "1 WEEK" to "1 SEMANA",
@@ -967,7 +967,7 @@ private val fr = mapOf(
     "3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle." to "3–20 caractères : lettres minuscules, chiffres, points ou tirets bas. Les autres traders le verront sous la forme @identifiant.",
     "e.g. euro.trader" to "ex. euro.trader",
     "Analyses run" to "Analyses effectuées",
-    "Saved trades" to "Trades enregistrés"
+    "Saved trades" to "Trades enregistrés",
     "+ Add another option" to "+ Ajouter une autre option",
     "1 MONTH" to "1 MOIS",
     "1 WEEK" to "1 SEMAINE",
@@ -1389,7 +1389,7 @@ private val pt = mapOf(
     "3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle." to "3–20 caracteres: letras minúsculas, números, pontos ou underlines. Outros traders verão como @identificador.",
     "e.g. euro.trader" to "ex.: euro.trader",
     "Analyses run" to "Análises realizadas",
-    "Saved trades" to "Trades salvos"
+    "Saved trades" to "Trades salvos",
     "+ Add another option" to "+ Adicionar outra opção",
     "1 MONTH" to "1 MÊS",
     "1 WEEK" to "1 SEMANA",
@@ -1811,7 +1811,7 @@ private val it = mapOf(
     "3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle." to "3–20 caratteri: lettere minuscole, numeri, punti o trattini bassi. Gli altri trader lo vedranno come @handle.",
     "e.g. euro.trader" to "es. euro.trader",
     "Analyses run" to "Analisi effettuate",
-    "Saved trades" to "Trade salvati"
+    "Saved trades" to "Trade salvati",
     "+ Add another option" to "+ Aggiungi un'altra opzione",
     "1 MONTH" to "1 MESE",
     "1 WEEK" to "1 SETTIMANA",
