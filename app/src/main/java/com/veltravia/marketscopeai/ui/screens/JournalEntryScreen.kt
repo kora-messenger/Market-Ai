@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -197,7 +199,7 @@ fun JournalEntryScreen(
             loadError != null -> Column(Modifier.fillMaxWidth().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(loadError ?: "", color = BearRed)
                 Spacer(Modifier.height(10.dp))
-                Button(onClick = onBack) { Text("Back") }
+                Button(onClick = onBack) { Text(t("Back")) }
             }
             else -> {
                 Spacer(Modifier.height(12.dp))
@@ -207,7 +209,7 @@ fun JournalEntryScreen(
                     onValueChange = { instrument = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("e.g. XAU/USD or AAPL", color = TextMuted) },
+                    placeholder = { Text(t("e.g. XAU/USD or AAPL"), color = TextMuted) },
                     colors = JournalFieldColors()
                 )
                 Spacer(Modifier.height(12.dp))
@@ -256,7 +258,7 @@ fun JournalEntryScreen(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            placeholder = { Text("blank = still open", color = TextMuted) },
+                            placeholder = { Text(t("blank = still open"), color = TextMuted) },
                             colors = JournalFieldColors()
                         )
                     }
@@ -298,7 +300,7 @@ fun JournalEntryScreen(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            placeholder = { Text("lots / shares", color = TextMuted) },
+                            placeholder = { Text(t("lots / shares"), color = TextMuted) },
                             colors = JournalFieldColors()
                         )
                     }
@@ -323,7 +325,7 @@ fun JournalEntryScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    placeholder = { Text("your account currency", color = TextMuted) },
+                    placeholder = { Text(t("your account currency"), color = TextMuted) },
                     colors = JournalFieldColors()
                 )
                 Spacer(Modifier.height(12.dp))
@@ -334,7 +336,7 @@ fun JournalEntryScreen(
                     onValueChange = { setupTag = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("e.g. London breakout, 4H pullback", color = TextMuted) },
+                    placeholder = { Text(t("e.g. London breakout, 4H pullback"), color = TextMuted) },
                     colors = JournalFieldColors()
                 )
                 Spacer(Modifier.height(12.dp))
@@ -344,7 +346,7 @@ fun JournalEntryScreen(
                     value = notes,
                     onValueChange = { notes = it },
                     modifier = Modifier.fillMaxWidth().height(88.dp),
-                    placeholder = { Text("What did you see when you took it?", color = TextMuted) },
+                    placeholder = { Text(t("What did you see when you took it?"), color = TextMuted) },
                     colors = JournalFieldColors()
                 )
                 Spacer(Modifier.height(12.dp))
@@ -354,12 +356,11 @@ fun JournalEntryScreen(
                     value = lesson,
                     onValueChange = { lesson = it },
                     modifier = Modifier.fillMaxWidth().height(88.dp),
-                    placeholder = { Text("What did the outcome teach you?", color = TextMuted) },
+                    placeholder = { Text(t("What did the outcome teach you?"), color = TextMuted) },
                     colors = JournalFieldColors()
                 )
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    "R and win rate are computed from your own stop distance and exit. A closed trade with neither R nor P&L stays undecided — it is never counted as a win or a loss.",
+                Text(t("R and win rate are computed from your own stop distance and exit. A closed trade with neither R nor P&L stays undecided — it is never counted as a win or a loss."),
                     color = TextMuted,
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -390,7 +391,7 @@ fun JournalEntryScreen(
                     TextButton(onClick = { showDeleteConfirm = true }) {
                         Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.height(16.dp).width(16.dp), tint = BearRed)
                         Spacer(Modifier.width(6.dp))
-                        Text("Remove from journal", color = BearRed)
+                        Text(t("Remove from journal"), color = BearRed)
                     }
                 }
                 Spacer(Modifier.height(32.dp))
@@ -401,8 +402,8 @@ fun JournalEntryScreen(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Remove this trade?") },
-            text = { Text("This permanently deletes the entry and its lesson from your journal.") },
+            title = { Text(t("Remove this trade?")) },
+            text = { Text(t("This permanently deletes the entry and its lesson from your journal.")) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
@@ -414,9 +415,9 @@ fun JournalEntryScreen(
                             saveError = err.message ?: "Could not delete the trade."
                         }
                     }
-                }) { Text("Remove", color = BearRed) }
+                }) { Text(t("Remove"), color = BearRed) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Keep", color = TextMuted) } }
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text(t("Keep"), color = TextMuted) } }
         )
     }
 }

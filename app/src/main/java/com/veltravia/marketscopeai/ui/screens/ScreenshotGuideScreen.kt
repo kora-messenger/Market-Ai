@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -108,15 +110,13 @@ fun ScreenshotGuideScreen(
             Spacer(Modifier.height(8.dp))
         }
 
-        Text(
-            "Chart Analysis Guide",
+        Text(t("Chart Analysis Guide"),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(8.dp))
-        Text(
-            "A clear screenshot helps MarketScope AI read your charts precisely and return stronger entries, SL, and TP.",
+        Text(t("A clear screenshot helps MarketScope AI read your charts precisely and return stronger entries, SL, and TP."),
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -127,7 +127,7 @@ fun ScreenshotGuideScreen(
             quality = ChartQuality.GOOD,
             badgeText = "\u2713 Good",
             badgeColor = BullGreen,
-            title = "Ideal Screenshot",
+            title = t("Ideal Screenshot"),
             description = "Candles are crisp, wicks visible, and enough history is shown to understand recent market structure.",
             onExpand = { expanded = ChartQuality.GOOD }
         )
@@ -138,7 +138,7 @@ fun ScreenshotGuideScreen(
             quality = ChartQuality.BAD,
             badgeText = "\u2715 Bad",
             badgeColor = BearRed,
-            title = "Avoid This",
+            title = t("Avoid This"),
             description = "Blurry or over-compressed. Wicks and bodies get hidden, or too little recent history is shown \u2014 structure becomes unreadable.",
             onExpand = { expanded = ChartQuality.BAD }
         )
@@ -211,8 +211,7 @@ fun ScreenshotGuideScreen(
                             .height(420.dp)
                     )
                     Spacer(Modifier.height(20.dp))
-                    Text(
-                        "Tap anywhere to close",
+                    Text(t("Tap anywhere to close"),
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.fillMaxWidth(),
@@ -260,7 +259,7 @@ private fun ExampleCard(
             OutlinedButton(onClick = onExpand) {
                 Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Tap to expand")
+                Text(t("Tap to expand"))
             }
         }
     }
@@ -408,8 +407,7 @@ private fun ChecklistCard() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Info, contentDescription = null, tint = GoldAmber, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text(
-                "Quick checklist for better results",
+            Text(t("Quick checklist for better results"),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = GoldAmber

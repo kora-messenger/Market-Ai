@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -166,8 +168,7 @@ fun TrendingSection(onOpenMarket: (String) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = BullGreen, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text(
-                "Trending",
+            Text(t("Trending"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -180,16 +181,14 @@ fun TrendingSection(onOpenMarket: (String) -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         when {
-            error != null -> Text(
-                "Trending is temporarily unavailable.",
+            error != null -> Text(t("Trending is temporarily unavailable."),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )
             tokens == null -> Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(modifier = Modifier.size(22.dp), color = BullGreen, strokeWidth = 2.dp)
             }
-            tokens!!.isEmpty() -> Text(
-                "No trending data right now.",
+            tokens!!.isEmpty() -> Text(t("No trending data right now."),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )

@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -237,8 +239,7 @@ fun CalendarScreen(onBack: () -> Unit, onSubscribe: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Text(
-                "Calendar",
+            Text(t("Calendar"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center)
@@ -675,7 +676,7 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
         TextButton(onClick = onRetry) {
             Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Retry", fontWeight = FontWeight.Bold, color = AccentCyan)
+            Text(t("Retry"), fontWeight = FontWeight.Bold, color = AccentCyan)
         }
     }
 }
@@ -767,8 +768,7 @@ private fun NewsAlertsCard(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                "Market news alerts",
+            Text(t("Market news alerts"),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = TextPrimary
@@ -812,28 +812,26 @@ private fun NewsAlertsPremiumGateDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(dismissOnClickOutside = true),
         title = {
-            Text(
-                "Market news alerts",
+            Text(t("Market news alerts"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
         },
         text = {
-            Text(
-                "Market news alerts are only available for Premium subscribers. Subscribe to Premium and get the day's most important market headlines delivered straight to you.",
+            Text(t("Market news alerts are only available for Premium subscribers. Subscribe to Premium and get the day's most important market headlines delivered straight to you."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
         },
         confirmButton = {
             TextButton(onClick = onSubscribe) {
-                Text("Subscribe", color = AccentViolet, fontWeight = FontWeight.Bold)
+                Text(t("Subscribe"), color = AccentViolet, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextMuted)
+                Text(t("Cancel"), color = TextMuted)
             }
         }
     )

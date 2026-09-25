@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -106,8 +108,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Text(
-                "Risk Calculator",
+            Text(t("Risk Calculator"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center)
@@ -115,7 +116,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("Instrument", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(t("Instrument"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier
@@ -141,7 +142,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search instruments", color = TextMuted) },
+                placeholder = { Text(t("Search instruments"), color = TextMuted) },
                 singleLine = true,
                 colors = fieldColors()
             )
@@ -179,12 +180,12 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(20.dp))
-        Text("Your capital (USD)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(t("Your capital (USD)"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         NumberField(capital, { capital = it; result = null }, "e.g. 10000")
 
         Spacer(Modifier.height(20.dp))
-        Text("Entry & Stop (optional)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(t("Entry & Stop (optional)"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             NumberField(entry, { entry = it }, "Entry", Modifier.weight(1f))
@@ -192,7 +193,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
         }
         Spacer(Modifier.height(10.dp))
         PremiumSecondaryButton(
-            text = "Generate stoploss distance",
+            text = t("Generate stoploss distance"),
             onClick = {
                 val e = parse(entry); val s = parse(stop)
                 val ps = instrument?.pointSize ?: Double.NaN
@@ -206,12 +207,12 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
         )
 
         Spacer(Modifier.height(16.dp))
-        Text("Stop loss distance (points)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(t("Stop loss distance (points)"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         NumberField(distance, { distance = it; result = null }, "e.g. 40")
 
         Spacer(Modifier.height(16.dp))
-        Text("Risk % of capital", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(t("Risk % of capital"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         NumberField(riskPct, { riskPct = it; result = null }, "e.g. 1")
 
@@ -230,7 +231,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(22.dp))
         GradientPrimaryButton(
-            text = "Calculate position size",
+            text = t("Calculate position size"),
             enabled = instrument != null,
             onClick = {
                 val cap = parse(capital)
@@ -270,8 +271,7 @@ fun RiskCalculatorScreen(onBack: () -> Unit) {
         }
 
         Spacer(Modifier.height(12.dp))
-        Text(
-            "Estimates only — verify against your broker's exact contract specs before trading.",
+        Text(t("Estimates only — verify against your broker's exact contract specs before trading."),
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted
         )

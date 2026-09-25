@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,13 +49,11 @@ fun ChartUploadScreen(
             }
             Spacer(Modifier.width(4.dp))
             Column {
-                Text(
-                    "Analyze the market",
+                Text(t("Analyze the market"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    "Upload two chart screenshots or research a stock",
+                Text(t("Upload two chart screenshots or research a stock"),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )

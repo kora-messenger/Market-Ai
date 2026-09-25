@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -107,8 +109,7 @@ fun JournalScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Text(
-                "Trade Journal",
+            Text(t("Trade Journal"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center)
@@ -132,7 +133,7 @@ fun JournalScreen(
                     Button(onClick = { load() }, colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)) {
                         Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Retry")
+                        Text(t("Retry"))
                     }
                 }
             }
@@ -144,15 +145,13 @@ fun JournalScreen(
                 ) {
                     Icon(Icons.Filled.Book, contentDescription = null, tint = SurfaceLight, modifier = Modifier.size(52.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        "No trades logged yet",
+                    Text(t("No trades logged yet"),
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Log your real trades after you take them. Over time this shows what actually works for you — your win rate, average R, and the lessons worth keeping.",
+                    Text(t("Log your real trades after you take them. Over time this shows what actually works for you — your win rate, average R, and the lessons worth keeping."),
                         color = TextMuted,
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodySmall
@@ -161,7 +160,7 @@ fun JournalScreen(
                     Button(onClick = { onOpenEntry("") }, colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)) {
                         Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Log your first trade")
+                        Text(t("Log your first trade"))
                     }
                 }
             }
@@ -191,7 +190,7 @@ fun JournalScreen(
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Log a trade")
+                Text(t("Log a trade"))
             }
         }
     }
@@ -207,7 +206,7 @@ private fun JournalStatsCard(stats: JSONObject?) {
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Your record", fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(t("Your record"), fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.weight(1f))
             val open = stats?.optInt("openTrades", 0) ?: 0
             if (open > 0) {
@@ -238,8 +237,7 @@ private fun JournalStatsCard(stats: JSONObject?) {
         val decided = (stats?.optInt("wins", 0) ?: 0) + (stats?.optInt("losses", 0) ?: 0)
         if (decided == 0) {
             Spacer(Modifier.height(8.dp))
-            Text(
-                "Close a trade by adding its exit price — wins, losses and R are only counted from your own numbers.",
+            Text(t("Close a trade by adding its exit price — wins, losses and R are only counted from your own numbers."),
                 color = TextMuted,
                 style = MaterialTheme.typography.labelSmall
             )

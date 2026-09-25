@@ -545,7 +545,7 @@ fun SubscribeScreen(
                         InfoBox("You're on the $planTrailingLabel plan. Enjoy unlimited access!")
                         Spacer(Modifier.height(16.dp))
                         GradientPrimaryButton(
-                            text = "Subscribed",
+                            text = t("Subscribed"),
                             enabled = false,
                             loading = false,
                             showArrow = false,
@@ -556,7 +556,7 @@ fun SubscribeScreen(
                     selectedTab == 0 -> {
                         // Free tab: nothing to buy — a nudge toward Premium instead.
                         PremiumSecondaryButton(
-                            text = "See what Premium unlocks",
+                            text = t("See what Premium unlocks"),
                             onClick = { selectedTab = 1 },
                             height = 48.dp
                         )
@@ -575,7 +575,7 @@ fun SubscribeScreen(
 
                         if (playAvailableForSelection) {
                             GradientPrimaryButton(
-                                text = "Subscribe with Google Play",
+                                text = t("Subscribe with Google Play"),
                                 enabled = !googleBusy,
                                 loading = googleBusy,
                                 loadingText = "Subscribing",
@@ -585,7 +585,7 @@ fun SubscribeScreen(
                         } else {
                             InfoBox("Google Play billing is not available for this plan yet. No payment will be taken.")
                             GradientPrimaryButton(
-                                text = "Subscribe with Google Play",
+                                text = t("Subscribe with Google Play"),
                                 enabled = false,
                                 loading = false,
                                 height = 54.dp,
@@ -621,7 +621,7 @@ fun SubscribeScreen(
                         Spacer(Modifier.height(12.dp))
 
                         PremiumSecondaryButton(
-                            text = "Check subscription status",
+                            text = t("Check subscription status"),
                             onClick = { refreshStatus() },
                             height = 46.dp
                         )

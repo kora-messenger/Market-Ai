@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -168,8 +170,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
             }
             Column(Modifier.weight(1f)) {
-                Text(
-                    "Top Contributors",
+                Text(t("Top Contributors"),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -200,8 +201,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            "We couldn't load the standings — tap refresh to try again.",
+                        Text(t("We couldn't load the standings — tap refresh to try again."),
                             fontSize = 12.sp, color = Color(0xFFB45309),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                         )
@@ -216,10 +216,9 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(14.dp)) {
-                        Text("How it works", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                        Text(t("How it works"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Standings reset every Monday and everyone starts at zero. Earn points from real activity:",
+                        Text(t("Standings reset every Monday and everyone starts at zero. Earn points from real activity:"),
                             fontSize = 12.sp, lineHeight = 17.sp, color = TextMuted
                         )
                         Spacer(Modifier.height(6.dp))
@@ -296,7 +295,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
 
                 // Last week's winners
                 if (lastWeekWinners.isNotEmpty()) {
-                    Text("Last week's top 5", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                    Text(t("Last week's top 5"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                     Spacer(Modifier.height(8.dp))
                     lastWeekWinners.forEach { w ->
                         Row(
@@ -354,14 +353,12 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(40.dp))
                         Spacer(Modifier.height(10.dp))
-                        Text(
-                            "A fresh week just started",
+                        Text(t("A fresh week just started"),
                             fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
                         Spacer(Modifier.height(4.dp))
-                        Text(
-                            "No standings yet. Post, comment and react to climb.",
+                        Text(t("No standings yet. Post, comment and react to climb."),
                             fontSize = 12.sp, color = TextMuted
                         )
                     }
@@ -455,8 +452,7 @@ fun LeaderboardScreen(onBack: () -> Unit) {
                     }
                 } else if (entries.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Post, comment and react to earn points and appear here.",
+                    Text(t("Post, comment and react to earn points and appear here."),
                         fontSize = 11.5.sp,
                         color = TextMuted,
                         modifier = Modifier.padding(horizontal = 4.dp)

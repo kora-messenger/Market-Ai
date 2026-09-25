@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.graphics.Paint
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
@@ -319,14 +321,13 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                 )
                 Spacer(Modifier.width(8.dp))
             }
-            Text(
-                "over the visible range",
+            Text(t("over the visible range"),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )
             if (priceError && bigPrice == null) {
                 Spacer(Modifier.width(8.dp))
-                Text("spot price unavailable", style = MaterialTheme.typography.bodySmall, color = BearRed)
+                Text(t("spot price unavailable"), style = MaterialTheme.typography.bodySmall, color = BearRed)
             }
         }
 
@@ -365,10 +366,10 @@ fun MarketViewScreen(instrumentId: String, onBack: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text("TradingView could not be reached and live candles are temporarily unavailable.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text(t("TradingView could not be reached and live candles are temporarily unavailable."), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                     Spacer(Modifier.height(12.dp))
                     GradientPrimaryButton(
-                        text = "Retry",
+                        text = t("Retry"),
                         enabled = true,
                         onClick = { retryKey++ },
                         height = 44.dp,
@@ -511,8 +512,7 @@ private fun PriceAlertSection(instrumentId: String, display: String, livePrice: 
             )
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    "Price alerts",
+                Text(t("Price alerts"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -555,7 +555,7 @@ private fun PriceAlertSection(instrumentId: String, display: String, livePrice: 
             OutlinedTextField(
                 value = priceInput,
                 onValueChange = { priceInput = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                label = { Text("Target price") },
+                label = { Text(t("Target price")) },
                 singleLine = true,
                 isError = alertError != null,
                 supportingText = alertError?.let { { Text(it, color = BearRed) } },

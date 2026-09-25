@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -110,7 +112,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AccentCyan)
             }
-            Text("Your Opinion", style = MaterialTheme.typography.titleLarge,
+            Text(t("Your Opinion"), style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold, color = TextPrimary)
         }
         Column(
@@ -126,15 +128,15 @@ fun FeedbackScreen(onBack: () -> Unit) {
                     Icon(Icons.Filled.CheckCircle, contentDescription = null,
                         tint = AccentCyan, modifier = Modifier.size(54.dp))
                     Spacer(Modifier.height(18.dp))
-                    Text("Thanks for helping shape MarketScope AI",
+                    Text(t("Thanks for helping shape MarketScope AI"),
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                         color = TextPrimary, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
-                    Text("Your message has reached our team. We read every submission, though we may not reply individually.",
+                    Text(t("Your message has reached our team. We read every submission, though we may not reply individually."),
                         style = MaterialTheme.typography.bodyMedium, color = TextSecondary,
                         textAlign = TextAlign.Center)
                     Spacer(Modifier.height(26.dp))
-                    GradientPrimaryButton(text = "Done", enabled = true, onClick = onBack)
+                    GradientPrimaryButton(text = t("Done"), enabled = true, onClick = onBack)
                 }
             } else {
                 Surface(
@@ -148,23 +150,23 @@ fun FeedbackScreen(onBack: () -> Unit) {
                             modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("We'd love to hear from you",
+                            Text(t("We'd love to hear from you"),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold, color = TextPrimary)
                             Spacer(Modifier.height(7.dp))
-                            Text("MarketScope AI grows with the people who use it. Tell us what's working, what could be better, or which features you'd like to see. Your perspective helps guide what we build next.",
+                            Text(t("MarketScope AI grows with the people who use it. Tell us what's working, what could be better, or which features you'd like to see. Your perspective helps guide what we build next."),
                                 style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         }
                     }
                 }
                 Spacer(Modifier.height(26.dp))
-                Text("What's on your mind?", style = MaterialTheme.typography.titleSmall,
+                Text(t("What's on your mind?"), style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = message,
                     onValueChange = { if (it.length <= 4000) message = it },
-                    placeholder = { Text("Share an idea, request a feature, or tell us about your experience…") },
+                    placeholder = { Text(t("Share an idea, request a feature, or tell us about your experience…")) },
                     minLines = 6,
                     maxLines = 12,
                     shape = RoundedCornerShape(16.dp),
@@ -178,7 +180,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
                     color = TextMuted, modifier = Modifier.align(Alignment.End).padding(top = 5.dp))
                 Spacer(Modifier.height(18.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Add pictures", style = MaterialTheme.typography.titleSmall,
+                    Text(t("Add pictures"), style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold, color = TextPrimary)
                     Spacer(Modifier.width(8.dp))
                     Text("Optional · ${photos.size}/4", style = MaterialTheme.typography.labelMedium,
@@ -237,7 +239,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(14.dp))
-                Text("Your feedback is sent with your account so our team can review it. Pictures are optional and visible only to the team.",
+                Text(t("Your feedback is sent with your account so our team can review it. Pictures are optional and visible only to the team."),
                     style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 error?.let {
                     Spacer(Modifier.height(12.dp))
@@ -245,7 +247,7 @@ fun FeedbackScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(24.dp))
                 GradientPrimaryButton(
-                    text = "Submit Opinion",
+                    text = t("Submit Opinion"),
                     loadingText = "Submitting",
                     enabled = !sending && !preparing && token != null && message.trim().length >= 3,
                     loading = sending,

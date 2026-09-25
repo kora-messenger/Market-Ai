@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -137,8 +139,7 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             PremiumSegmentedProgress(current = 3, total = 4, modifier = Modifier.weight(1f))
-            Text(
-                "First signal",
+            Text(t("First signal"),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
@@ -146,8 +147,7 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
 
         Spacer(Modifier.height(24.dp))
 
-        Text(
-            "WHAT COMES NEXT · ILLUSTRATIVE",
+        Text(t("WHAT COMES NEXT · ILLUSTRATIVE"),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp,
@@ -157,13 +157,13 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = "Picture the next 12 trades you take",
+            text = t("Picture the next 12 trades you take"),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
         )
         Text(
-            text = "with MarketScope AI.",
+            text = t("with MarketScope AI."),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = AccentCyan
@@ -200,7 +200,7 @@ fun ProjectionIntroScreen(onContinue: () -> Unit) {
         Spacer(Modifier.height(28.dp))
 
         GradientPrimaryButton(
-            text = "Analyze Now!",
+            text = t("Analyze Now!"),
             enabled = true,
             onClick = { onContinue() },
             showArrow = true,
@@ -244,7 +244,7 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text("Starting", style = MaterialTheme.typography.labelSmall, color = CardLabel)
+                Text(t("Starting"), style = MaterialTheme.typography.labelSmall, color = CardLabel)
                 Spacer(Modifier.height(2.dp))
                 Text(
                     usd.format(projection.startingEquity),
@@ -260,7 +260,7 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
                 modifier = Modifier.size(16.dp)
             )
             Column(horizontalAlignment = Alignment.End) {
-                Text("Projected", style = MaterialTheme.typography.labelSmall, color = CardLabel)
+                Text(t("Projected"), style = MaterialTheme.typography.labelSmall, color = CardLabel)
                 Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -298,13 +298,13 @@ private fun ProjectionCard(projection: ProjectionEngine.ProjectionResult, usd: N
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChartLegendSwatch(color = AccentCyan, dashed = false, width = 14.dp, height = 3.dp)
                     Spacer(Modifier.width(5.dp))
-                    Text("Trading your plan", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = AccentCyan)
+                    Text(t("Trading your plan"), fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = AccentCyan)
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChartLegendSwatch(color = DriftGray, dashed = true, width = 14.dp, height = 2.dp)
                     Spacer(Modifier.width(5.dp))
-                    Text("Trading on feel", fontSize = 9.sp, color = CardStats)
+                    Text(t("Trading on feel"), fontSize = 9.sp, color = CardStats)
                 }
             }
         }
@@ -569,8 +569,7 @@ private fun FocusCard(timeframes: List<String>) {
             .background(SurfaceLight)
             .padding(16.dp)
     ) {
-        Text(
-            "Your 1-Month Focus",
+        Text(t("Your 1-Month Focus"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface
@@ -603,8 +602,7 @@ private fun FocusCard(timeframes: List<String>) {
         }
 
         Spacer(Modifier.height(12.dp))
-        Text(
-            "No single setup defines a trader — a dozen disciplined ones start to.",
+        Text(t("No single setup defines a trader — a dozen disciplined ones start to."),
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted
         )

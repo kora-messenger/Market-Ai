@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -119,8 +121,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             PremiumSegmentedProgress(current = 3, total = 4, modifier = Modifier.weight(1f))
-            Text(
-                "First signal",
+            Text(t("First signal"),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
@@ -149,15 +150,13 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
 
             Spacer(Modifier.height(24.dp))
 
-            Text(
-                "You've been navigating the markets alone.",
+            Text(t("You've been navigating the markets alone."),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 textAlign = TextAlign.Center
             )
-            Text(
-                "Not anymore.",
+            Text(t("Not anymore."),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = AccentCyan,
@@ -166,8 +165,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
 
             Spacer(Modifier.height(10.dp))
 
-            Text(
-                "Community access unlocks the moment you complete setup.",
+            Text(t("Community access unlocks the moment you complete setup."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -201,8 +199,7 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
                         color = TextSecondary
                     )
                 } else {
-                    Text(
-                        "Growing every day",
+                    Text(t("Growing every day"),
                         style = MaterialTheme.typography.labelMedium,
                         color = TextMuted
                     )
@@ -215,17 +212,17 @@ fun CommunityIntroScreen(onJoined: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             CommunityBenefitRow(
                 icon = Icons.Filled.RecordVoiceOver,
-                title = "Mentor updates",
+                title = t("Mentor updates"),
                 description = "See what the desk is watching, live"
             )
             CommunityBenefitRow(
                 icon = Icons.Filled.ShowChart,
-                title = "Free signals",
+                title = t("Free signals"),
                 description = "Selected setups, before they become Premium-only"
             )
             CommunityBenefitRow(
                 icon = Icons.Filled.CheckCircle,
-                title = "Member wins",
+                title = t("Member wins"),
                 description = "Real results shared by real members"
             )
         }

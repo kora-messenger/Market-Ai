@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -346,8 +348,7 @@ fun LearningHubScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
             }
             Column {
-                Text(
-                    "Learning Hub",
+                Text(t("Learning Hub"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -398,7 +399,7 @@ fun LearningHubScreen(
                 ) {
                     Text(error ?: "", color = TextSecondary, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(10.dp))
-                    TextButton(onClick = { load() }) { Text("Retry") }
+                    TextButton(onClick = { load() }) { Text(t("Retry")) }
                 }
             }
             else -> {
@@ -420,7 +421,7 @@ fun LearningHubScreen(
 
                 if (visible.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No lessons in this category yet.", color = TextMuted)
+                        Text(t("No lessons in this category yet."), color = TextMuted)
                     }
                 } else {
                     // Compact, single-column list — a fixed-square grid card leaves
@@ -602,8 +603,7 @@ fun LearningPatternScreen(slug: String, onBack: () -> Unit) {
             IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
             }
-            Text(
-                "Learning Hub",
+            Text(t("Learning Hub"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -731,8 +731,7 @@ private fun LessonBody(p: LearningPattern) {
             ) {
                 PatternDiagram(p.diagram, accent)
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Illustrative sketch — not a real chart.",
+                Text(t("Illustrative sketch — not a real chart."),
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     textAlign = TextAlign.Center,
@@ -791,8 +790,7 @@ private fun LessonBody(p: LearningPattern) {
         }
 
         Spacer(Modifier.height(24.dp))
-        Text(
-            "Educational content only — not financial advice.",
+        Text(t("Educational content only — not financial advice."),
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
             textAlign = TextAlign.Center,

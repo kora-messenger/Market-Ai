@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -133,8 +135,7 @@ internal fun AnalyzeInstrumentPickerSheet(
         }
 
         Column(Modifier.padding(horizontal = 20.dp)) {
-            Text(
-                "Select Instrument",
+            Text(t("Select Instrument"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -145,7 +146,7 @@ internal fun AnalyzeInstrumentPickerSheet(
                     value = query,
                     onValueChange = { query = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Search instruments…") },
+                    placeholder = { Text(t("Search instruments…")) },
                     singleLine = true
                 )
                 Spacer(Modifier.width(10.dp))
@@ -232,8 +233,7 @@ internal fun AnalyzeChartsSection(
 ) {
     AnalyzeSectionLabel("Upload Your Charts")
     Spacer(Modifier.height(6.dp))
-    Text(
-        "For the most accurate results, upload sharp images where every price figure is clearly legible.",
+    Text(t("For the most accurate results, upload sharp images where every price figure is clearly legible."),
         style = MaterialTheme.typography.bodySmall,
         color = TextMuted
     )
@@ -357,15 +357,15 @@ internal fun AnalyzeModeSection(
     Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         AnalyzeFocusOption(
-            title = "Scalp",
-            subtitle = "Quick moves, 15M",
+            title = t("Scalp"),
+            subtitle = t("Quick moves, 15M"),
             selected = mode == "scalp",
             onClick = { onModeChange("scalp") },
             modifier = Modifier.weight(1f)
         )
         AnalyzeFocusOption(
-            title = "Swing",
-            subtitle = "Wider targets, 4H",
+            title = t("Swing"),
+            subtitle = t("Wider targets, 4H"),
             selected = mode == "swing",
             onClick = { onModeChange("swing") },
             modifier = Modifier.weight(1f)
@@ -411,8 +411,7 @@ private fun AnalyzeFocusOption(
 @Composable
 internal fun AnalyzeDisclaimerFooter() {
     Spacer(Modifier.height(18.dp))
-    Text(
-        "This is not financial advice and should not be considered as such. Always do your own research and consult with a financial advisor before making any trading decisions.",
+    Text(t("This is not financial advice and should not be considered as such. Always do your own research and consult with a financial advisor before making any trading decisions."),
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
         color = TextMuted,
         textAlign = TextAlign.Center,

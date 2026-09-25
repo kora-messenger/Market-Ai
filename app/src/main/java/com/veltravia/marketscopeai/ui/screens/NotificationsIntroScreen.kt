@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -106,8 +108,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             PremiumSegmentedProgress(current = 3, total = 4, modifier = Modifier.weight(1f))
-            Text(
-                "First signal",
+            Text(t("First signal"),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
@@ -136,15 +137,13 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
 
             Spacer(Modifier.height(24.dp))
 
-            Text(
-                "Strong setups move fast.",
+            Text(t("Strong setups move fast."),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
                 textAlign = TextAlign.Center
             )
-            Text(
-                "Stay ahead of them.",
+            Text(t("Stay ahead of them."),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = AccentCyan,
@@ -153,8 +152,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
 
             Spacer(Modifier.height(10.dp))
 
-            Text(
-                "Great entries can vanish in minutes, not hours.",
+            Text(t("Great entries can vanish in minutes, not hours."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -181,16 +179,14 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Free signals, included",
+                    Text(t("Free signals, included"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Once notifications are enabled, free signals are published straight to the community — the fastest way to catch them in time.",
+                Text(t("Once notifications are enabled, free signals are published straight to the community — the fastest way to catch them in time."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.92f)
                 )
@@ -202,17 +198,17 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             NotificationBenefitRow(
                 icon = Icons.Filled.ShowChart,
-                title = "Signal drops",
+                title = t("Signal drops"),
                 description = "Fires the moment a setup goes live"
             )
             NotificationBenefitRow(
                 icon = Icons.Filled.SupportAgent,
-                title = "Mentor commentary",
+                title = t("Mentor commentary"),
                 description = "Live follow-through on active trade ideas"
             )
             NotificationBenefitRow(
                 icon = Icons.Filled.Schedule,
-                title = "Your analysis results",
+                title = t("Your analysis results"),
                 description = "Updates on the trades you've already run"
             )
         }
@@ -220,7 +216,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
         Spacer(Modifier.height(28.dp))
 
         GradientPrimaryButton(
-            text = "Turn On Notifications",
+            text = t("Turn On Notifications"),
             loadingText = "Enabling",
             enabled = !requesting,
             loading = requesting,
@@ -242,7 +238,7 @@ fun NotificationsIntroScreen(onDone: () -> Unit) {
         Spacer(Modifier.height(16.dp))
 
         Text(
-            text = "Maybe later",
+            text = t("Maybe later"),
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
             modifier = Modifier

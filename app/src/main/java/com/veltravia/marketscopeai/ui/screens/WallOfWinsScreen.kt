@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -138,11 +140,10 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
             }
-            Text("Wall of Wins", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(t("Wall of Wins"), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
         Spacer(Modifier.height(4.dp))
-        Text(
-            "Real wins shared by MarketScope AI traders — every proof is tied to a settled signal and passed review.",
+        Text(t("Real wins shared by MarketScope AI traders — every proof is tied to a settled signal and passed review."),
             fontSize = 12.sp, color = TextMuted
         )
         Spacer(Modifier.height(14.dp))
@@ -166,7 +167,7 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
                 Text(loadError!!, fontSize = 13.sp, color = BearRed)
                 Spacer(Modifier.height(10.dp))
                 GradientPrimaryButton(
-                    text = "Retry",
+                    text = t("Retry"),
                     enabled = true,
                     onClick = { loading = true; loadError = null; wins.clear(); retryKey++ },
                     height = 44.dp,
@@ -176,10 +177,9 @@ fun WallOfWinsScreen(onBack: () -> Unit) {
             wins.isEmpty() -> Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = BullGreen, modifier = Modifier.size(34.dp))
                 Spacer(Modifier.height(10.dp))
-                Text("No wins shared yet", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(t("No wins shared yet"), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    "When a signal closes in profit, share your result — the strongest proofs are featured here.",
+                Text(t("When a signal closes in profit, share your result — the strongest proofs are featured here."),
                     fontSize = 12.sp, color = TextMuted
                 )
             }
@@ -418,10 +418,10 @@ private fun WinDetailSheet(
         ) {
             Icon(Icons.Filled.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Reshare this win", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text(t("Reshare this win"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
         }
         Spacer(Modifier.height(6.dp))
-        Text("Long-press to copy instead", fontSize = 10.sp, color = TextMuted)
+        Text(t("Long-press to copy instead"), fontSize = 10.sp, color = TextMuted)
         if (canRepost) {
             Spacer(Modifier.height(14.dp))
             Button(onClick = onRepost, enabled = !reposting && !win.optBoolean("isReposted"),

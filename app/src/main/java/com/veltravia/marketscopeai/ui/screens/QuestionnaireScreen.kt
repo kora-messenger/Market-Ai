@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
@@ -309,8 +311,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             line2 = "Where are you on the path?"
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            "There are no wrong answers — honest input is what tailors every analysis to you.",
+                        Text(t("There are no wrong answers — honest input is what tailors every analysis to you."),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -388,8 +389,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             line2 = "They're built — let's build yours."
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            "The way you trade informs every idea, level and timeframe we send your way.",
+                        Text(t("The way you trade informs every idea, level and timeframe we send your way."),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -400,7 +400,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                         Row(verticalAlignment = Alignment.Bottom) {
                             QuestionLabel("Assets")
                             Spacer(Modifier.width(6.dp))
-                            Text("— pick every market you trade", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text(t("— pick every market you trade"), style = MaterialTheme.typography.bodySmall, color = TextMuted)
                         }
                         Spacer(Modifier.height(12.dp))
                         PremiumPillRow(
@@ -499,7 +499,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp),
-                            placeholder = { Text("Describe your entry routine", color = TextMuted) },
+                            placeholder = { Text(t("Describe your entry routine"), color = TextMuted) },
                             colors = PremiumFieldColors()
                         )
                     }
@@ -512,8 +512,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             line2 = "Your reactions usually do."
                         )
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Every trader falls into patterns — the disciplined ones know theirs, and we'll flag yours before they get expensive.",
+                        Text(t("Every trader falls into patterns — the disciplined ones know theirs, and we'll flag yours before they get expensive."),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
@@ -523,8 +522,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                     StaggeredBlock(key = pageIdx, index = 1) {
                         QuestionLabel("What's actually been costing you money?")
                         Spacer(Modifier.height(2.dp))
-                        Text(
-                            "Select every one that applies",
+                        Text(t("Select every one that applies"),
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted
                         )
@@ -550,7 +548,7 @@ fun QuestionnaireScreen(onDone: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp),
-                            placeholder = { Text("Describe what a typical trading day looks like for you.", color = TextMuted) },
+                            placeholder = { Text(t("Describe what a typical trading day looks like for you."), color = TextMuted) },
                             colors = PremiumFieldColors()
                         )
                         Spacer(Modifier.height(12.dp))
@@ -673,7 +671,7 @@ private fun PremiumCapitalField(capital: String, onCapitalChange: (String) -> Un
                 color = AccentViolet
             )
         },
-        placeholder = { Text("e.g. 500", color = TextMuted) },
+        placeholder = { Text(t("e.g. 500"), color = TextMuted) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         colors = PremiumFieldColors()

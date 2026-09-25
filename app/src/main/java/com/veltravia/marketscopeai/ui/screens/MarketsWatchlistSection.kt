@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -119,8 +121,7 @@ fun MarketsWatchlistSection(onOpenMarket: (String) -> Unit) {
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Watchlist",
+            Text(t("Watchlist"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -133,8 +134,7 @@ fun MarketsWatchlistSection(onOpenMarket: (String) -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         when {
-            error != null -> Text(
-                "Live market data is temporarily unavailable.",
+            error != null -> Text(t("Live market data is temporarily unavailable."),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )

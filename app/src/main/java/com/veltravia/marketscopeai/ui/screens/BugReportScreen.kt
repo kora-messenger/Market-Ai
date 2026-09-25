@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -149,8 +151,7 @@ fun BugReportScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = AccentCyan, modifier = Modifier.size(22.dp))
             }
-            Text(
-                "Report a bug",
+            Text(t("Report a bug"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -180,15 +181,13 @@ fun BugReportScreen(onBack: () -> Unit) {
                         modifier = Modifier.size(56.dp)
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        "Thanks — your report is with the team",
+                    Text(t("Thanks — your report is with the team"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        "We'll review it and follow up through your email if we need more detail.",
+                    Text(t("We'll review it and follow up through your email if we need more detail."),
                         fontSize = 13.sp,
                         color = TextMuted,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -206,7 +205,7 @@ fun BugReportScreen(onBack: () -> Unit) {
                             .padding(horizontal = 28.dp, vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Done", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text(t("Done"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                     }
                 }
             } else {
@@ -222,8 +221,7 @@ fun BugReportScreen(onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Filled.BugReport, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            "Tell us what went wrong — the more detail, the faster we can fix it.",
+                        Text(t("Tell us what went wrong — the more detail, the faster we can fix it."),
                             fontSize = 12.5.sp,
                             color = TextMuted,
                             modifier = Modifier.weight(1f)
@@ -234,12 +232,12 @@ fun BugReportScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
 
                 // Description
-                Text("What happened?", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                Text(t("What happened?"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    placeholder = { Text("Describe the bug — what you did and what went wrong", fontSize = 13.5.sp, color = Color(0xFF94A3B8)) },
+                    placeholder = { Text(t("Describe the bug — what you did and what went wrong"), fontSize = 13.5.sp, color = Color(0xFF94A3B8)) },
                     minLines = 4,
                     shape = RoundedCornerShape(12.dp),
                     textStyle = MaterialTheme.typography.bodyMedium,
@@ -255,12 +253,12 @@ fun BugReportScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
 
                 // Screenshots (up to 4)
-                Text("Screenshots", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                Text(t("Screenshots"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
                 Spacer(Modifier.height(6.dp))
                 if (pickedImages.isEmpty() && !processing) {
                     AttachCard(
                         icon = { Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp)) },
-                        title = "Add screenshots",
+                        title = t("Add screenshots"),
                         helper = "Up to 4 — error messages, the screen that glitched, anything helpful.",
                         onClick = {
                             pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -319,7 +317,7 @@ fun BugReportScreen(onBack: () -> Unit) {
                                                 ) {
                                                     Icon(Icons.Filled.Add, contentDescription = null, tint = if (pickedImages.size < 4) AccentCyan else Color(0xFFCBD5E1), modifier = Modifier.size(18.dp))
                                                     Spacer(Modifier.height(3.dp))
-                                                    Text("Add", fontSize = 11.sp, color = TextMuted)
+                                                    Text(t("Add"), fontSize = 11.sp, color = TextMuted)
                                                 }
                                             }
                                         }
@@ -334,12 +332,12 @@ fun BugReportScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
 
                 // One screen recording
-                Text("Screen recording", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                Text(t("Screen recording"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
                 Spacer(Modifier.height(6.dp))
                 if (videoDataUrl == null) {
                     AttachCard(
                         icon = { Icon(Icons.Filled.OndemandVideo, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(20.dp)) },
-                        title = "Add a screen recording",
+                        title = t("Add a screen recording"),
                         helper = "Optional — one clip, up to 15MB. Perfect for showing the bug in motion.",
                         onClick = {
                             pickVideo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
@@ -359,7 +357,7 @@ fun BugReportScreen(onBack: () -> Unit) {
                             Icon(Icons.Filled.OndemandVideo, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("Recording attached", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                Text(t("Recording attached"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
                                 Text(videoLabel ?: "", fontSize = 11.5.sp, color = TextMuted)
                             }
                             Surface(
@@ -427,8 +425,7 @@ fun BugReportScreen(onBack: () -> Unit) {
                     if (sending) {
                         CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                     } else {
-                        Text(
-                            "Send report",
+                        Text(t("Send report"),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
@@ -436,8 +433,7 @@ fun BugReportScreen(onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Sent with your account, app version and device model so we can reproduce it.",
+                Text(t("Sent with your account, app version and device model so we can reproduce it."),
                     fontSize = 11.sp,
                     color = TextMuted,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,

@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -104,7 +106,7 @@ fun ReferralScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
             }
-            Text("Invite friends", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+            Text(t("Invite friends"), color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 10.dp))
         }
         Column(
@@ -117,9 +119,9 @@ fun ReferralScreen(onBack: () -> Unit) {
                 Icon(Icons.Filled.CardGiftcard, contentDescription = null, tint = Color.White, modifier = Modifier.size(38.dp))
             }
             Spacer(Modifier.height(22.dp))
-            Text("Share the advantage", color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text(t("Share the advantage"), color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
             Spacer(Modifier.height(8.dp))
-            Text("Invite a new trader. When they use your code and finish their first analysis, your account earns an extra day of Premium access.",
+            Text(t("Invite a new trader. When they use your code and finish their first analysis, your account earns an extra day of Premium access."),
                 color = TextSecondary, fontSize = 15.sp, lineHeight = 22.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(24.dp))
 
@@ -131,7 +133,7 @@ fun ReferralScreen(onBack: () -> Unit) {
             if (loading) CircularProgressIndicator(color = AccentViolet)
             if (error != null) {
                 Text(error!!, color = Color(0xFFB91C1C), textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 12.dp))
-                PremiumSecondaryButton(text = "Try again", onClick = {
+                PremiumSecondaryButton(text = t("Try again"), onClick = {
                     error = null; loading = true
                     scope.launch {
                         try {
@@ -147,17 +149,17 @@ fun ReferralScreen(onBack: () -> Unit) {
             }
             if (code.isNotBlank() && link.isNotBlank()) {
                 Column(Modifier.fillMaxWidth().background(SurfaceLight, RoundedCornerShape(20.dp)).padding(18.dp)) {
-                    Text("YOUR INVITE CODE", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(t("YOUR INVITE CODE"), color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(code, color = TextPrimary, fontSize = 27.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp, modifier = Modifier.weight(1f))
                         IconButton(onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("MarketScope AI invite code", code))
+                            clipboard.setPrimaryClip(ClipData.newPlainText(t("MarketScope AI invite code"), code))
                             copied = true
                         }) { Icon(if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy, contentDescription = "Copy invite code", tint = AccentViolet) }
                     }
-                    Text("Friends enter this code in Invite friends after signing in. They must do so before their first analysis or purchase.",
+                    Text(t("Friends enter this code in Invite friends after signing in. They must do so before their first analysis or purchase."),
                         color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp)
                 }
                 Spacer(Modifier.height(16.dp))
@@ -171,16 +173,16 @@ fun ReferralScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(30.dp))
             Column(Modifier.fillMaxWidth()) {
-                Text("Have a friend's code?", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                Text(t("Have a friend's code?"), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 19.sp)
                 Spacer(Modifier.height(6.dp))
-                Text("If you're new, add it within 7 days of joining, before completing an analysis or buying a plan.",
+                Text(t("If you're new, add it within 7 days of joining, before completing an analysis or buying a plan."),
                     color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp)
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = enteredCode,
                     onValueChange = { enteredCode = it.uppercase().take(12); applyMessage = null },
                     enabled = !applied && !applying,
-                    label = { Text("Enter invite code") },
+                    label = { Text(t("Enter invite code")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -203,10 +205,10 @@ fun ReferralScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(30.dp))
             Column(Modifier.fillMaxWidth()) {
-                Text("Your invitations", color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(t("Your invitations"), color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
                 if (!loading && error == null && invitees.isEmpty()) {
-                    Text("No one has used your code yet. Share it with a friend to get started.", color = TextSecondary,
+                    Text(t("No one has used your code yet. Share it with a friend to get started."), color = TextSecondary,
                         fontSize = 14.sp, modifier = Modifier.fillMaxWidth().background(SurfaceLight, RoundedCornerShape(16.dp)).padding(20.dp))
                 }
                 invitees.forEach { invitee ->
@@ -225,7 +227,7 @@ fun ReferralScreen(onBack: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(28.dp))
-            Text("Bonus days give Premium access, not cash or community posting privileges. Each milestone rewards you once per eligible new account.",
+            Text(t("Bonus days give Premium access, not cash or community posting privileges. Each milestone rewards you once per eligible new account."),
                 color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(26.dp))
         }

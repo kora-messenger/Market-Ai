@@ -100,7 +100,7 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
             Spacer(Modifier.height(28.dp))
 
             Text(
-                text = "WELCOME TO MARKETSCOPE AI",
+                text = t("WELCOME TO MARKETSCOPE AI"),
                 style = MaterialTheme.typography.labelMedium,
                 letterSpacing = 2.sp,
                 color = TextSecondary
@@ -109,7 +109,7 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "Let's analyze your chart",
+                text = t("Let's analyze your chart"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,

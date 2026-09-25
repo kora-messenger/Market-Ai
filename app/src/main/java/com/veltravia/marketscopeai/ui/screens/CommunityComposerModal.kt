@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -111,7 +113,7 @@ fun ComposeFab(
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 20.dp, bottom = 96.dp)) {
             if (open) {
                 ComposeFabPill(
-                    label = "Poll",
+                    label = t("Poll"),
                     icon = { Icon(Icons.Filled.HowToVote, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(17.dp)) },
                     scale = pillScale,
                     alpha = pillAlpha,
@@ -119,7 +121,7 @@ fun ComposeFab(
                 )
                 Spacer(Modifier.height(10.dp))
                 ComposeFabPill(
-                    label = "Post",
+                    label = t("Post"),
                     icon = { Icon(Icons.Filled.Create, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(17.dp)) },
                     scale = pillScale,
                     alpha = pillAlpha,
@@ -288,7 +290,7 @@ fun PublishComposerModal(
                         // --- quick-insert pair chips -----------------------------------
                         Spacer(Modifier.height(12.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Quick pairs", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF94A3B8))
+                            Text(t("Quick pairs"), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF94A3B8))
                             Spacer(Modifier.width(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 QUICK_PAIRS.forEach { pair ->
@@ -318,7 +320,7 @@ fun PublishComposerModal(
                     if (isPoll) {
                         // --- poll options -----------------------------------------------
                         Spacer(Modifier.height(16.dp))
-                        Text("Options", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(t("Options"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
                         Spacer(Modifier.height(6.dp))
                         pollOptions.forEachIndexed { index, option ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -357,8 +359,7 @@ fun PublishComposerModal(
                                 onClick = onAddPollOption,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    "+ Add another option",
+                                Text(t("+ Add another option"),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF0F766E),
@@ -381,10 +382,9 @@ fun PublishComposerModal(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Allow comments", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                    Text(t("Allow comments"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
                                     Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        "Members can reply under this poll. You can remove any comment later.",
+                                    Text(t("Members can reply under this poll. You can remove any comment later."),
                                         fontSize = 12.sp,
                                         color = Color(0xFF475569),
                                         lineHeight = 16.sp
@@ -409,7 +409,7 @@ fun PublishComposerModal(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Images", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1f))
+                            Text(t("Images"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1f))
                             Text(
                                 "${pickedImages.size}/4",
                                 fontSize = 11.sp,
@@ -442,10 +442,9 @@ fun PublishComposerModal(
                                     }
                                     Spacer(Modifier.width(14.dp))
                                     Column {
-                                        Text("Add images to your post", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
+                                        Text(t("Add images to your post"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF0F172A))
                                         Spacer(Modifier.height(2.dp))
-                                        Text(
-                                            "Up to 4 — they show as a grid on your post.",
+                                        Text(t("Up to 4 — they show as a grid on your post."),
                                             fontSize = 12.sp,
                                             color = Color(0xFF64748B),
                                             lineHeight = 16.sp
@@ -505,7 +504,7 @@ fun PublishComposerModal(
                                                         ) {
                                                             Icon(Icons.Filled.Add, contentDescription = null, tint = if (pickedImages.size < 4) Color(0xFF0F766E) else Color(0xFFCBD5E1), modifier = Modifier.size(18.dp))
                                                             Spacer(Modifier.height(3.dp))
-                                                            Text("Add", fontSize = 11.sp, color = Color(0xFF64748B))
+                                                            Text(t("Add"), fontSize = 11.sp, color = Color(0xFF64748B))
                                                         }
                                                     }
                                                 }
@@ -532,7 +531,7 @@ fun PublishComposerModal(
                         // --- outcome tag (our own feature) ----------------------------------
                         if (pickedImages.isNotEmpty()) {
                             Spacer(Modifier.height(12.dp))
-                            Text("Your trade note (not reviewed)", fontSize = 11.5.sp, color = TextMuted)
+                            Text(t("Your trade note (not reviewed)"), fontSize = 11.5.sp, color = TextMuted)
                             Spacer(Modifier.height(6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf("tp" to "TP hit", "sl" to "SL hit").forEach { (tag, label) ->
@@ -562,7 +561,7 @@ fun PublishComposerModal(
                     // author sees exactly what readers will see under the post.
                     if (!isPoll && text.text.isNotBlank() && firstUrlIn(text.text) != null) {
                         Spacer(Modifier.height(16.dp))
-                        Text("Link preview", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
+                        Text(t("Link preview"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextMuted)
                         Spacer(Modifier.height(6.dp))
                         if (linkPreview != null) {
                             LinkPreviewCard(linkPreview)

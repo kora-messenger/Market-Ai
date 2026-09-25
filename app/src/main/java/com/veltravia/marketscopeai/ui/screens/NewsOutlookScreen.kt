@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -229,8 +231,7 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
             IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
             }
-            Text(
-                "News Outlook",
+            Text(t("News Outlook"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
@@ -248,15 +249,13 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
                 .padding(horizontal = 20.dp)
         ) {
             Spacer(Modifier.height(6.dp))
-            Text(
-                "Very important news today",
+            Text(t("Very important news today"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextPrimary
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                "The three highest-impact events on the schedule — the ones most likely to move the markets you trade.",
+            Text(t("The three highest-impact events on the schedule — the ones most likely to move the markets you trade."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted
             )
@@ -272,7 +271,7 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(16.dp))
-            Text("SELECT TIMEZONE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted)
+            Text(t("SELECT TIMEZONE"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = TextMuted)
             Spacer(Modifier.height(6.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -306,12 +305,12 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
                     Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(error ?: "", color = TextSecondary, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = { load() }) { Text("Retry") }
+                        TextButton(onClick = { load() }) { Text(t("Retry")) }
                     }
                 }
                 filtered.isEmpty() -> {
                     Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-                        Text("No events match your filters right now.", color = TextSecondary, textAlign = TextAlign.Center)
+                        Text(t("No events match your filters right now."), color = TextSecondary, textAlign = TextAlign.Center)
                     }
                 }
                 else -> {
@@ -320,8 +319,7 @@ fun NewsOutlookScreen(onBack: () -> Unit) {
                         Spacer(Modifier.height(12.dp))
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        "For the complete schedule, open the Calendar tab.",
+                    Text(t("For the complete schedule, open the Calendar tab."),
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted,
                         modifier = Modifier.fillMaxWidth(),
@@ -445,8 +443,7 @@ private fun OutlookEventCard(ev: OutlookEvent, zoneId: String, token: String?) {
             )
         } else {
             Spacer(Modifier.height(8.dp))
-            Text(
-                "Forecast not yet published",
+            Text(t("Forecast not yet published"),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
@@ -466,7 +463,7 @@ private fun OutlookEventCard(ev: OutlookEvent, zoneId: String, token: String?) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("AI DIRECTIONAL IMPLICATION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = AccentViolet)
+                        Text(t("AI DIRECTIONAL IMPLICATION"), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = AccentViolet)
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(implication ?: "", style = MaterialTheme.typography.bodySmall, color = TextSecondary, lineHeight = 18.sp)
@@ -544,11 +541,11 @@ private fun AiButton(loading: Boolean, onClick: () -> Unit) {
         if (loading) {
             CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Thinking…", color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+            Text(t("Thinking…"), color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
         } else {
             Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Get AI Directional Implication", color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+            Text(t("Get AI Directional Implication"), color = Color.White, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -563,12 +560,12 @@ private fun TimezonePickerSheet(current: TzOption, onDismiss: () -> Unit, onSele
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text("Select timezone", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(t("Select timezone"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Search city or region") },
+                placeholder = { Text(t("Search city or region")) },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(),
@@ -610,7 +607,7 @@ private fun FilterSheet(
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text("Filter", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(t("Filter"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.height(16.dp))
 
             Column(
@@ -620,12 +617,12 @@ private fun FilterSheet(
                     .background(SurfaceLight)
                     .padding(14.dp)
             ) {
-                Text("Impact", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(t("Impact"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("High impact only", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                        Text("Show only events the calendar marks high impact", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                        Text(t("High impact only"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                        Text(t("Show only events the calendar marks high impact"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
                     }
                     Switch(
                         checked = highImpactOnly,
@@ -636,9 +633,9 @@ private fun FilterSheet(
             }
 
             Spacer(Modifier.height(16.dp))
-            Text("Currencies", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(t("Currencies"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.height(4.dp))
-            Text("Narrow the feed to specific currencies", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            Text(t("Narrow the feed to specific currencies"), style = MaterialTheme.typography.labelSmall, color = TextMuted)
             Spacer(Modifier.height(10.dp))
 
             val rows = CURRENCY_CHIPS.chunked(5)
@@ -674,7 +671,7 @@ private fun FilterSheet(
                     .clickable { onDismiss() }
                     .padding(vertical = 14.dp)
             ) {
-                Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(t("Done"), color = Color.White, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(12.dp))
         }

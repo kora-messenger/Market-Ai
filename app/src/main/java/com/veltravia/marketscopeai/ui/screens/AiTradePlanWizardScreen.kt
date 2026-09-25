@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -246,8 +248,7 @@ fun AiTradePlanWizardScreen(
             IconButton(onClick = handleBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Text(
-                "Trade Plan",
+            Text(t("Trade Plan"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center)
@@ -310,7 +311,7 @@ fun AiTradePlanWizardScreen(
                     Row(verticalAlignment = Alignment.Bottom) {
                         WizardLabel("Assets traded")
                         Spacer(Modifier.width(6.dp))
-                        Text("— every market this plan covers", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        Text(t("— every market this plan covers"), style = MaterialTheme.typography.bodySmall, color = TextMuted)
                     }
                     Spacer(Modifier.height(10.dp))
                     WizardPillRow(
@@ -463,8 +464,7 @@ fun AiTradePlanWizardScreen(
             // ------------------------------------------------ Step 5: Review
             else -> {
                 StaggeredBlock(key = page, index = 0) {
-                    Text(
-                        "Review your inputs",
+                    Text(t("Review your inputs"),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -553,8 +553,7 @@ fun AiTradePlanWizardScreen(
             }
         )
         Spacer(Modifier.height(12.dp))
-        Text(
-            "Your plan is written by our AI from your answers, your profile and your real activity, then saved to your account.",
+        Text(t("Your plan is written by our AI from your answers, your profile and your real activity, then saved to your account."),
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
             modifier = Modifier.align(Alignment.CenterHorizontally)

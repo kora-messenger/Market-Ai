@@ -729,7 +729,7 @@ private fun DeleteAccountSheet(
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 PremiumSecondaryButton(
-                    text = "Cancel",
+                    text = t("Cancel"),
                     onClick = onDismiss,
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
@@ -737,7 +737,7 @@ private fun DeleteAccountSheet(
                     shape = RoundedCornerShape(12.dp)
                 )
                 PremiumSecondaryButton(
-                    text = "Delete Account",
+                    text = t("Delete Account"),
                     onClick = onConfirm,
                     enabled = canDelete,
                     modifier = Modifier.weight(1f),
@@ -905,7 +905,7 @@ private fun AccountSummaryCard(
         Spacer(Modifier.height(14.dp))
 
         GradientPrimaryButton(
-            text = "Invite friends",
+            text = t("Invite friends"),
             enabled = true,
             onClick = onInvite,
             modifier = Modifier.fillMaxWidth(),

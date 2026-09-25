@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -154,7 +156,7 @@ fun SavedScreen(
                     modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("MarketScope AI", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                Text(t("MarketScope AI"), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
             }
             Spacer(Modifier.height(16.dp))
             Box(
@@ -169,14 +171,14 @@ fun SavedScreen(
         // --- Saved daily signals (Signals tab bookmark) ---
         if (savedDaily == null) {
             item {
-                Text("Saved daily signals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(t("Saved daily signals"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(12.dp))
                 SavedDailySignalsSkeleton()
                 Spacer(Modifier.height(20.dp))
             }
         } else if (savedDaily!!.length() > 0) {
             item {
-                Text("Saved daily signals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(t("Saved daily signals"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(12.dp))
             }
             items(
@@ -231,10 +233,9 @@ fun SavedScreen(
                             Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(28.dp))
                         }
                         Spacer(Modifier.height(16.dp))
-                        Text("No trade plans created yet.", color = TextSecondary, fontWeight = FontWeight.Medium)
+                        Text(t("No trade plans created yet."), color = TextSecondary, fontWeight = FontWeight.Medium)
                         Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Answer five quick steps and our AI writes your personal trading playbook.",
+                        Text(t("Answer five quick steps and our AI writes your personal trading playbook."),
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -247,7 +248,7 @@ fun SavedScreen(
                                 .clickable { onCreateTradePlan() }
                                 .padding(horizontal = 28.dp, vertical = 14.dp)
                         ) {
-                            Text("Create Trade Plan", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
+                            Text(t("Create Trade Plan"), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(28.dp))
                     }
@@ -258,7 +259,7 @@ fun SavedScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Trade Plans", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text(t("Trade Plans"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                         IconButton(onClick = onCreateTradePlan) {
                             Icon(Icons.Filled.Add, contentDescription = "New trade plan", tint = AccentViolet)
                         }
@@ -277,7 +278,7 @@ fun SavedScreen(
 
         // --- Saved signals header + filters ---
         item {
-            Text("Saved signals", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(t("Saved signals"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SignalFilter.entries.forEach { f ->
@@ -305,7 +306,7 @@ fun SavedScreen(
             analysesError != null -> item {
                 EmptyState(
                     icon = { Icon(Icons.Filled.BookmarkBorder, null, tint = TextMuted, modifier = Modifier.size(48.dp)) },
-                    title = "Couldn't reach history",
+                    title = t("Couldn't reach history"),
                     subtitle = analysesError ?: ""
                 )
             }
@@ -316,7 +317,7 @@ fun SavedScreen(
                 EmptyState(
                     icon = { Icon(Icons.Filled.BookmarkBorder, null, tint = TextMuted, modifier = Modifier.size(48.dp)) },
                     title = if (filter == SignalFilter.ALL) "No saved signals yet" else "No ${filter.label.lowercase()} signals yet",
-                    subtitle = "Run an analysis and it will be stored here automatically"
+                    subtitle = t("Run an analysis and it will be stored here automatically")
                 )
             }
             else -> {
@@ -452,7 +453,7 @@ private fun SavedSignalCard(item: JSONObject, onOpen: (String) -> Unit) {
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("View Details", color = AccentCyan, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
+                Text(t("View Details"), color = AccentCyan, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.width(4.dp))
                 Text("›", color = AccentCyan, fontWeight = FontWeight.Bold)
             }

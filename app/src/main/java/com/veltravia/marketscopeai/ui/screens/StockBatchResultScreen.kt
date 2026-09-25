@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +47,7 @@ fun StockBatchResultScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("No stock results were found.", color = TextMuted)
+            Text(t("No stock results were found."), color = TextMuted)
         }
         return
     }
@@ -56,7 +58,7 @@ fun StockBatchResultScreen(
             onBack = onBack,
             continueCta = continueCta,
             onOpenBrokerInfo = onOpenBrokerInfo,
-            title = "Stock Analysis"
+            title = t("Stock Analysis")
         )
         return
     }

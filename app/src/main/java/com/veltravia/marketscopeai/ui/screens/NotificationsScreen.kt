@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -145,8 +147,7 @@ fun NotificationsScreen(onBack: () -> Unit, highlightId: String? = null) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Text(
-                "Notifications",
+            Text(t("Notifications"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center)
@@ -162,8 +163,7 @@ fun NotificationsScreen(onBack: () -> Unit, highlightId: String? = null) {
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "Turn on notifications so signals and community replies reach you.",
+                Text(t("Turn on notifications so signals and community replies reach you."),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
                     modifier = Modifier.weight(1f)
@@ -179,7 +179,7 @@ fun NotificationsScreen(onBack: () -> Unit, highlightId: String? = null) {
                         SessionManager.setNotificationsEnabled(context, true)
                     }
                 }) {
-                    Text("Turn on", fontWeight = FontWeight.Bold, color = AccentCyan)
+                    Text(t("Turn on"), fontWeight = FontWeight.Bold, color = AccentCyan)
                 }
             }
         }
@@ -187,7 +187,7 @@ fun NotificationsScreen(onBack: () -> Unit, highlightId: String? = null) {
 
         when {
             rows == null && error == null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text("Loading…", color = TextSecondary)
+                Text(t("Loading…"), color = TextSecondary)
             }
             error != null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 Text(error ?: "", color = TextSecondary)
@@ -200,10 +200,9 @@ fun NotificationsScreen(onBack: () -> Unit, highlightId: String? = null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Filled.NotificationsNone, contentDescription = null, tint = TextMuted, modifier = Modifier.size(48.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text("No notifications yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(t("No notifications yet"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            "New Daily Signals and activity on your community posts will appear here.",
+                        Text(t("New Daily Signals and activity on your community posts will appear here."),
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -225,7 +224,7 @@ fun NotificationsScreen(onBack: () -> Unit, highlightId: String? = null) {
                     }) {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.size(4.dp))
-                        Text("Mark all as read")
+                        Text(t("Mark all as read"))
                     }
                 }
                 LazyColumn(

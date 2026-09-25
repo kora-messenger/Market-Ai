@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import com.veltravia.marketscopeai.ui.roleStyle
 import com.veltravia.marketscopeai.ui.components.ImageViewerDialog
 
@@ -724,8 +726,7 @@ fun CommunityScreen(
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "MarketScope AI Community",
+                            Text(t("MarketScope AI Community"),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onBackground
@@ -808,7 +809,7 @@ fun CommunityScreen(
                             ) {
                                 Icon(Icons.Filled.Groups, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(48.dp))
                                 Spacer(Modifier.height(14.dp))
-                                Text("No posts yet", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                                Text(t("No posts yet"), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
                                 Spacer(Modifier.height(6.dp))
                                 Text(
                                     if (joined) "Be the first to share a win, a setup, or a thought."
@@ -943,12 +944,12 @@ fun CommunityScreen(
                     ) {
                         Icon(Icons.Filled.CloudOff, contentDescription = null, tint = TextMuted, modifier = Modifier.size(44.dp))
                         Spacer(Modifier.height(14.dp))
-                        Text("Couldn't load the feed", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                        Text(t("Couldn't load the feed"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                         Spacer(Modifier.height(6.dp))
                         Text(msg, fontSize = 13.sp, color = TextMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         Spacer(Modifier.height(18.dp))
                         GradientPrimaryButton(
-                            text = "Retry",
+                            text = t("Retry"),
                             enabled = true,
                             onClick = { load(reset = true) },
                             height = 44.dp,
@@ -963,8 +964,7 @@ fun CommunityScreen(
                             .padding(horizontal = 16.dp)
                             .fillMaxWidth()
                     ) {
-                        Text(
-                            "We couldn't reach the community — tap refresh to try again.",
+                        Text(t("We couldn't reach the community — tap refresh to try again."),
                             fontSize = 12.sp,
                             color = Color(0xFFB45309),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
@@ -1033,10 +1033,9 @@ fun CommunityScreen(
     deleteTarget?.let { post ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete this post?", fontWeight = FontWeight.Bold) },
+            title = { Text(t("Delete this post?"), fontWeight = FontWeight.Bold) },
             text = {
-                Text(
-                    "The post and its comments will be removed permanently. This cannot be undone.",
+                Text(t("The post and its comments will be removed permanently. This cannot be undone."),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -1046,12 +1045,12 @@ fun CommunityScreen(
                     deleteTarget = null
                     deletePost(post)
                 }) {
-                    Text("Delete", fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
+                    Text(t("Delete"), fontWeight = FontWeight.SemiBold, color = Color(0xFFDC2626))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deleteTarget = null }) {
-                    Text("Cancel", fontWeight = FontWeight.SemiBold)
+                    Text(t("Cancel"), fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -1166,7 +1165,7 @@ private fun PinnedPostsWidget(
                 ) {
                     Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("Top 5", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFB45309))
+                    Text(t("Top 5"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFB45309))
                 }
             }
         }
@@ -1174,8 +1173,7 @@ private fun PinnedPostsWidget(
             Spacer(Modifier.height(8.dp))
             Surface(color = Color.White, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(vertical = 6.dp)) {
-                    Text(
-                        "Curated pinned posts",
+                    Text(t("Curated pinned posts"),
                         fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = TextMuted,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
@@ -1215,8 +1213,7 @@ private fun FeaturedProofRow(
     onOpenImage: (ProofPost) -> Unit
 ) {
     Column {
-        Text(
-            "Featured trader proof this week",
+        Text(t("Featured trader proof this week"),
             fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onBackground
         )
@@ -1298,8 +1295,7 @@ private fun WeeklyCompetitionCard(onOpen: () -> Unit) {
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    "Weekly Competition",
+                Text(t("Weekly Competition"),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -1342,8 +1338,7 @@ private fun MemberComposerNote() {
             modifier = Modifier.size(18.dp)
         )
         Spacer(Modifier.width(10.dp))
-        Text(
-            "Posting is reserved for the MarketScope AI team and mentors. You can still react and join the conversation in the comments.",
+        Text(t("Posting is reserved for the MarketScope AI team and mentors. You can still react and join the conversation in the comments."),
             fontSize = 12.sp,
             color = TextMuted,
             lineHeight = 17.sp
@@ -1414,7 +1409,7 @@ private fun PostCard(
             // self-reported TP/SL is displayed differently and never repostable.
             if (post.isRepost && post.outcomeTag == "win") {
                 Surface(color = BullGreen.copy(alpha = 0.13f), shape = RoundedCornerShape(8.dp)) {
-                    Text("PROFIT HIT · TEAM REPOST", color = BullGreen, fontSize = 10.sp,
+                    Text(t("PROFIT HIT · TEAM REPOST"), color = BullGreen, fontSize = 10.sp,
                         fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                 }
                 Spacer(Modifier.height(4.dp))
@@ -1575,7 +1570,7 @@ private fun PostCard(
                                 ) {
                                     Icon(Icons.Filled.Email, contentDescription = null, tint = roleMeta.text, modifier = Modifier.size(11.dp))
                                     Spacer(Modifier.width(3.dp))
-                                    Text("Message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = roleMeta.text)
+                                    Text(t("Message"), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = roleMeta.text)
                                 }
                             }
                             Spacer(Modifier.width(8.dp))
@@ -1903,7 +1898,7 @@ private fun PollBody(post: CommunityPost, onVote: (String) -> Unit) {
         ) {
             Icon(Icons.Filled.Share, contentDescription = "Reshare poll", tint = TextMuted, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Reshare poll", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+            Text(t("Reshare poll"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
         }
     }
 }
@@ -2007,7 +2002,7 @@ private fun CommentsSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Comments", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                    Text(t("Comments"), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                     Text(relativeTime(post.createdAt), fontSize = 11.sp, color = TextMuted)
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
@@ -2034,8 +2029,8 @@ private fun CommentsSheet(
                     Modifier.fillMaxWidth().padding(vertical = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Be the first to reply", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onBackground)
-                    Text("Start the conversation.", fontSize = 12.sp, color = TextMuted)
+                    Text(t("Be the first to reply"), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onBackground)
+                    Text(t("Start the conversation."), fontSize = 12.sp, color = TextMuted)
                 }
                 else -> {
                     val roots = comments.filter { it.parentId == null }
@@ -2058,7 +2053,7 @@ private fun CommentsSheet(
             }
 
             loadError?.let { e ->
-                Text("We couldn't load the comments — tap refresh to try again.", fontSize = 11.sp, color = Color(0xFFDC2626), modifier = Modifier.padding(vertical = 4.dp))
+                Text(t("We couldn't load the comments — tap refresh to try again."), fontSize = 11.sp, color = Color(0xFFDC2626), modifier = Modifier.padding(vertical = 4.dp))
             }
 
             replyTo?.let { target ->
@@ -2220,7 +2215,7 @@ private fun CommentRow(
                 if (!comment.pending) {
                     Spacer(Modifier.height(2.dp))
                     Surface(color = Color.Transparent, shape = RoundedCornerShape(6.dp), onClick = onReply) {
-                        Text("Reply", fontSize = 10.5.sp, fontWeight = FontWeight.Medium, color = AccentCyan, modifier = Modifier.padding(top = 1.dp))
+                        Text(t("Reply"), fontSize = 10.5.sp, fontWeight = FontWeight.Medium, color = AccentCyan, modifier = Modifier.padding(top = 1.dp))
                     }
                 }
             }

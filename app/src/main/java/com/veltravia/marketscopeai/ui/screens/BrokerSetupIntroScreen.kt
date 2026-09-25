@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -92,8 +94,7 @@ fun BrokerSetupIntroScreen(
                 .background(BullGreen.copy(alpha = 0.15f))
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
-            Text(
-                "Optional, but highly recommended",
+            Text(t("Optional, but highly recommended"),
                 style = MaterialTheme.typography.labelMedium,
                 color = BullGreen,
                 fontWeight = FontWeight.SemiBold
@@ -102,8 +103,7 @@ fun BrokerSetupIntroScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        Text(
-            "Our recommended broker setup",
+        Text(t("Our recommended broker setup"),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
@@ -111,8 +111,7 @@ fun BrokerSetupIntroScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        Text(
-            "For the most accurate chart readings, use a broker that closely matches the environment MarketScope AI is tested against.",
+        Text(t("For the most accurate chart readings, use a broker that closely matches the environment MarketScope AI is tested against."),
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -144,13 +143,11 @@ fun BrokerSetupIntroScreen(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Text(
-                        "Recommended broker for MarketScope AI",
+                    Text(t("Recommended broker for MarketScope AI"),
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted
                     )
-                    Text(
-                        "Non-US regions",
+                    Text(t("Non-US regions"),
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted.copy(alpha = 0.7f)
                     )
@@ -170,7 +167,7 @@ fun BrokerSetupIntroScreen(
             BrokerBulletRow(
                 icon = Icons.Filled.ShowChart,
                 iconTint = BullGreen,
-                text = "Great fit for MarketScope AI-style 4H & 15M chart analysis."
+                text = t("Great fit for MarketScope AI-style 4H & 15M chart analysis.")
             )
             Spacer(Modifier.height(10.dp))
             BrokerBulletRow(
@@ -182,7 +179,7 @@ fun BrokerSetupIntroScreen(
             BrokerBulletRow(
                 icon = Icons.Filled.FiberManualRecord,
                 iconTint = GoldAmber,
-                text = "Less mismatch between what MarketScope AI expects and your broker's pricing."
+                text = t("Less mismatch between what MarketScope AI expects and your broker's pricing.")
             )
 
             Spacer(Modifier.height(14.dp))
@@ -198,8 +195,7 @@ fun BrokerSetupIntroScreen(
         Row(verticalAlignment = Alignment.Top) {
             Icon(Icons.Filled.Public, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text(
-                "MarketScope AI works with any major broker (including US brokers). This recommendation only applies where our partner is available.",
+            Text(t("MarketScope AI works with any major broker (including US brokers). This recommendation only applies where our partner is available."),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )

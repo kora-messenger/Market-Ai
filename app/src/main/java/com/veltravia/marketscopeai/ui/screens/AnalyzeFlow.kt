@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.net.Uri
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -256,7 +258,7 @@ fun AnalyzeFlow(
                 ) {
                     AnalyzeTabInfo(
                         icon = { Icon(Icons.Filled.CurrencyExchange, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp)) },
-                        text = "You're on the Forex tab. Upload your 4H and 15M forex chart screenshots here for the best results — a crypto or stock screenshot won't be accepted on this tab."
+                        text = t("You're on the Forex tab. Upload your 4H and 15M forex chart screenshots here for the best results — a crypto or stock screenshot won't be accepted on this tab.")
                     )
                     Spacer(Modifier.height(20.dp))
                     AnalyzeSectionLabel("Choose instrument")
@@ -297,7 +299,7 @@ fun AnalyzeFlow(
                 ) {
                     AnalyzeTabInfo(
                         icon = { Icon(Icons.Filled.CurrencyBitcoin, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp)) },
-                        text = "You're on the Crypto tab. Upload your 4H and 15M crypto chart screenshots here for the best results — a forex or stock screenshot won't be accepted on this tab."
+                        text = t("You're on the Crypto tab. Upload your 4H and 15M crypto chart screenshots here for the best results — a forex or stock screenshot won't be accepted on this tab.")
                     )
                     Spacer(Modifier.height(20.dp))
                     AnalyzeSectionLabel("Choose instrument")
@@ -338,7 +340,7 @@ fun AnalyzeFlow(
                 ) {
                     AnalyzeTabInfo(
                         icon = { Icon(Icons.Filled.TrendingUp, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp)) },
-                        text = "Enter up to 3 stock names and optionally attach 1 screenshot of a different stock. Each stock receives its own market research, recommendation and confidence score."
+                        text = t("Enter up to 3 stock names and optionally attach 1 screenshot of a different stock. Each stock receives its own market research, recommendation and confidence score.")
                     )
                     Spacer(Modifier.height(20.dp))
                     AnalyzeSectionLabel("Which stock?")
@@ -380,7 +382,7 @@ fun AnalyzeFlow(
                         TextButton(onClick = { stockNames = stockNames + "" }) {
                             Icon(Icons.Filled.Add, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Add another stock", color = AccentCyan)
+                            Text(t("Add another stock"), color = AccentCyan)
                         }
                     }
                     Text(
@@ -413,8 +415,7 @@ fun AnalyzeFlow(
                         onClick = { doStockAnalysis(stockNames, stockImage) { stkError = it } }
                     )
                     Spacer(Modifier.height(14.dp))
-                    Text(
-                        "Each stock counts as one daily analysis. Results open in a stock-only swipe view, with one complete result page for every company.",
+                    Text(t("Each stock counts as one daily analysis. Results open in a stock-only swipe view, with one complete result page for every company."),
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -427,7 +428,7 @@ fun AnalyzeFlow(
     if (insufficientBatchMessage != null) {
         AlertDialog(
             onDismissRequest = { insufficientBatchMessage = null },
-            title = { Text("Insufficient daily trades") },
+            title = { Text(t("Insufficient daily trades")) },
             text = {
                 Text(
                     insufficientBatchMessage ?: "You do not have enough daily analyses remaining for every stock in this request.",
@@ -438,10 +439,10 @@ fun AnalyzeFlow(
                 TextButton(onClick = {
                     insufficientBatchMessage = null
                     onUpgradeRequired()
-                }) { Text("Subscribe", color = AccentViolet, fontWeight = FontWeight.SemiBold) }
+                }) { Text(t("Subscribe"), color = AccentViolet, fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = {
-                TextButton(onClick = { insufficientBatchMessage = null }) { Text("Maybe later") }
+                TextButton(onClick = { insufficientBatchMessage = null }) { Text(t("Maybe later")) }
             }
         )
     }
@@ -456,11 +457,10 @@ fun AnalyzeFlow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(10.dp))
-                    Text("Daily free limit reached", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text(t("Daily free limit reached"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(
-                    "You've used all your free AI analyses for today. Watch one short video to unlock an extra analysis — or go Premium for unlimited, ad-free analyses.",
+                Text(t("You've used all your free AI analyses for today. Watch one short video to unlock an extra analysis — or go Premium for unlimited, ad-free analyses."),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -470,7 +470,7 @@ fun AnalyzeFlow(
                     Spacer(Modifier.height(12.dp))
                 }
                 GradientPrimaryButton(
-                    text = "Watch video  ·  +1 analysis",
+                    text = t("Watch video  ·  +1 analysis"),
                     enabled = !rewardBusy,
                     loading = rewardBusy,
                     loadingText = "Loading",
@@ -504,7 +504,7 @@ fun AnalyzeFlow(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.WorkspacePremium, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Go Premium — unlimited analyses, ad-free", color = AccentViolet)
+                        Text(t("Go Premium — unlimited analyses, ad-free"), color = AccentViolet)
                     }
                 }
                 Spacer(Modifier.height(18.dp))

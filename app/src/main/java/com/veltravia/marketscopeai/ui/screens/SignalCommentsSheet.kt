@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -377,7 +379,7 @@ fun SignalCommentsSheet(
             // --- Header ---
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Live updates & Comments", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text(t("Live updates & Comments"), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     if (instrument.isNotBlank()) {
                         Text(instrument, fontSize = 11.sp, color = TextMuted)
                     }
@@ -402,10 +404,10 @@ fun SignalCommentsSheet(
                                 Modifier.size(7.dp).clip(CircleShape).background(BullGreen)
                             )
                             Spacer(Modifier.width(7.dp))
-                            Text("Live updates", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(t("Live updates"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                             Spacer(Modifier.width(8.dp))
                             if (updates.isEmpty() && !isAdmin) {
-                                Text("None yet on this signal", fontSize = 11.sp, color = TextMuted)
+                                Text(t("None yet on this signal"), fontSize = 11.sp, color = TextMuted)
                             }
                             if (isAdmin) {
                                 Spacer(Modifier.weight(1f))
@@ -419,7 +421,7 @@ fun SignalCommentsSheet(
                                 ) {
                                     Icon(Icons.Filled.Add, contentDescription = null, tint = AccentViolet, modifier = Modifier.size(13.dp))
                                     Spacer(Modifier.width(3.dp))
-                                    Text("Post update", fontSize = 11.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold)
+                                    Text(t("Post update"), fontSize = 11.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -458,7 +460,7 @@ fun SignalCommentsSheet(
                                 Spacer(Modifier.height(8.dp))
                                 Row {
                                     TextButton(onClick = { showUpdateComposer = false; replyTo = null; updateInput = TextFieldValue("") }) {
-                                        Text("Cancel", fontSize = 12.sp, color = TextMuted)
+                                        Text(t("Cancel"), fontSize = 12.sp, color = TextMuted)
                                     }
                                     Spacer(Modifier.weight(1f))
                                     val postEnabled = updateInput.text.isNotBlank()
@@ -477,8 +479,7 @@ fun SignalCommentsSheet(
                                             ) { postUpdate(replyTo) }
                                             .padding(horizontal = 16.dp, vertical = 7.dp)
                                     ) {
-                                        Text(
-                                            "Post",
+                                        Text(t("Post"),
                                             fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White
                                         )
                                     }
@@ -492,7 +493,7 @@ fun SignalCommentsSheet(
                             showUpdateComposer = true
                         }) }
                         if (updates.isEmpty() && !showUpdateComposer) {
-                            Text("The mentor desk posts trade management notes here.", fontSize = 11.sp, color = TextMuted)
+                            Text(t("The mentor desk posts trade management notes here."), fontSize = 11.sp, color = TextMuted)
                         }
                         Spacer(Modifier.height(16.dp))
 
@@ -501,14 +502,13 @@ fun SignalCommentsSheet(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = BullGreen, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(7.dp))
-                                Text("Win proofs", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Text(t("Win proofs"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                                 Spacer(Modifier.width(6.dp))
                                 Text("${testimonials.count { it.status == "approved" }}", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
                             }
                             Spacer(Modifier.height(8.dp))
                             if (testimonials.isEmpty()) {
-                                Text(
-                                    "No trade results shared yet. Use Post my TP or Post my SL on the signal card.",
+                                Text(t("No trade results shared yet. Use Post my TP or Post my SL on the signal card."),
                                     fontSize = 11.5.sp, color = TextMuted
                                 )
                             } else {
@@ -529,9 +529,9 @@ fun SignalCommentsSheet(
                                                 Text(timeAgo(t.createdAt), fontSize = 10.sp, color = TextMuted)
                                             }
                                             if (t.status == "pending") {
-                                                Text("In review", fontSize = 10.sp, color = GoldAmber, fontWeight = FontWeight.SemiBold)
+                                                Text(t("In review"), fontSize = 10.sp, color = GoldAmber, fontWeight = FontWeight.SemiBold)
                                             } else if (t.status == "rejected") {
-                                                Text("Not approved", fontSize = 10.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
+                                                Text(t("Not approved"), fontSize = 10.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
                                             } else {
                                                 Text(if (isWin) "TP result" else "SL result", fontSize = 10.sp, color = if (isWin) BullGreen else BearRed, fontWeight = FontWeight.SemiBold)
                                             }
@@ -591,7 +591,7 @@ fun SignalCommentsSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(7.dp))
-                            Text("Comments", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(t("Comments"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                             Spacer(Modifier.width(6.dp))
                             Text("${comments.size}", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.SemiBold)
                         }
@@ -599,8 +599,8 @@ fun SignalCommentsSheet(
 
                         if (comments.isEmpty() && loadError == null) {
                             Column(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("No comments yet", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
-                                Text("Be the first to discuss this call.", fontSize = 12.sp, color = TextMuted)
+                                Text(t("No comments yet"), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                                Text(t("Be the first to discuss this call."), fontSize = 12.sp, color = TextMuted)
                             }
                         }
                         comments.forEach { c ->
@@ -642,8 +642,8 @@ fun SignalCommentsSheet(
                     )
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Screenshot attached", fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
-                        Text("Visible to everyone after mentor review", fontSize = 10.sp, color = GoldAmber)
+                        Text(t("Screenshot attached"), fontSize = 11.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
+                        Text(t("Visible to everyone after mentor review"), fontSize = 10.sp, color = GoldAmber)
                     }
                     IconButton(onClick = { attachedImage = null }, modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Filled.Close, contentDescription = "Remove attachment", tint = TextMuted, modifier = Modifier.size(15.dp))
@@ -655,7 +655,7 @@ fun SignalCommentsSheet(
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it },
-                    placeholder = { Text("Add a comment…", fontSize = 13.sp, color = TextMuted) },
+                    placeholder = { Text(t("Add a comment…"), fontSize = 13.sp, color = TextMuted) },
                     shape = RoundedCornerShape(14.dp),
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -770,8 +770,7 @@ private fun MentorUpdateRow(update: SignalUpdate, isAdmin: Boolean, onReply: () 
                 }
             }
             if (isAdmin) {
-                Text(
-                    "Follow-up",
+                Text(t("Follow-up"),
                     fontSize = 10.sp, color = AccentViolet, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
@@ -873,14 +872,14 @@ private fun TraderCommentRow(
                         modifier = Modifier.height(32.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp)
                     ) {
-                        Text("Approve", fontSize = 11.sp, color = BullGreen, fontWeight = FontWeight.SemiBold)
+                        Text(t("Approve"), fontSize = 11.sp, color = BullGreen, fontWeight = FontWeight.SemiBold)
                     }
                     OutlinedButton(
                         onClick = onReject,
                         modifier = Modifier.height(32.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp)
                     ) {
-                        Text("Reject", fontSize = 11.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
+                        Text(t("Reject"), fontSize = 11.sp, color = BearRed, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

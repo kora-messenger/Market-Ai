@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,8 +72,7 @@ fun InstrumentPickerScreen(
                     tint = MaterialTheme.colorScheme.onBackground
                 )
             }
-            Text(
-                "Choose Instrument",
+            Text(t("Choose Instrument"),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -83,7 +84,7 @@ fun InstrumentPickerScreen(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search 102 instruments") },
+            placeholder = { Text(t("Search 102 instruments")) },
             leadingIcon = {
                 Icon(Icons.Filled.Search, contentDescription = "Search", tint = TextSecondary)
             },

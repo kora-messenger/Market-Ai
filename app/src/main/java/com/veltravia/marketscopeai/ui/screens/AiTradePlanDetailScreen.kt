@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -172,8 +174,7 @@ fun AiTradePlanDetailScreen(
 
                 val checklist = content.optJSONArray("checklist")
                 if (checklist != null && checklist.length() > 0) {
-                    Text(
-                        "Pre-market checklist",
+                    Text(t("Pre-market checklist"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -194,8 +195,7 @@ fun AiTradePlanDetailScreen(
                             .padding(horizontal = 18.dp, vertical = 16.dp)
                     ) {
                         Column {
-                            Text(
-                                "Bottom line",
+                            Text(t("Bottom line"),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White.copy(alpha = 0.85f)
@@ -212,8 +212,7 @@ fun AiTradePlanDetailScreen(
                     Spacer(Modifier.height(16.dp))
                 }
 
-                Text(
-                    "This plan is educational guidance generated from your own inputs, not financial advice.",
+                Text(t("This plan is educational guidance generated from your own inputs, not financial advice."),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -226,7 +225,7 @@ fun AiTradePlanDetailScreen(
     if (confirmDelete && plan != null) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete this plan?") },
+            title = { Text(t("Delete this plan?")) },
             text = { Text("\"${plan!!.optString("name")}\" will be removed permanently. You can create a new one afterwards.") },
             confirmButton = {
                 TextButton(onClick = {
@@ -245,10 +244,10 @@ fun AiTradePlanDetailScreen(
                             onBack()
                         }
                     }
-                }) { Text("Delete", color = BearRed, fontWeight = FontWeight.SemiBold) }
+                }) { Text(t("Delete"), color = BearRed, fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+                TextButton(onClick = { confirmDelete = false }) { Text(t("Cancel")) }
             }
         )
     }

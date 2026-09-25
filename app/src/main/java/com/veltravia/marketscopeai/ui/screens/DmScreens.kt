@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -150,8 +152,8 @@ fun DmThreadsScreen(onBack: () -> Unit, onOpenThread: (String) -> Unit) {
             }
             Spacer(Modifier.width(4.dp))
             Column {
-                Text("Messages", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                Text("Private chats with team & mentors", fontSize = 11.sp, color = TextMuted)
+                Text(t("Messages"), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                Text(t("Private chats with team & mentors"), fontSize = 11.sp, color = TextMuted)
             }
         }
 
@@ -331,7 +333,7 @@ fun DmChatScreen(threadId: String, onBack: () -> Unit) {
                     Spacer(Modifier.width(6.dp))
                     RoleBadge(counterpartRole)
                 }
-                Text("Private conversation", fontSize = 10.sp, color = TextMuted)
+                Text(t("Private conversation"), fontSize = 10.sp, color = TextMuted)
             }
         }
 
@@ -341,8 +343,7 @@ fun DmChatScreen(threadId: String, onBack: () -> Unit) {
                     CircularProgressIndicator(color = AccentCyan)
                 }
                 messages.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        "This conversation is private between the two of you. Send the first message.",
+                    Text(t("This conversation is private between the two of you. Send the first message."),
                         fontSize = 13.sp, color = TextMuted,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
@@ -398,7 +399,7 @@ fun DmChatScreen(threadId: String, onBack: () -> Unit) {
                         draft = it
                         sendFailed = false
                     },
-                    placeholder = { Text("Message...", fontSize = 14.sp) },
+                    placeholder = { Text(t("Message..."), fontSize = 14.sp) },
                     maxLines = 4,
                     shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.weight(1f)
@@ -431,8 +432,7 @@ fun DmChatScreen(threadId: String, onBack: () -> Unit) {
             }
         }
         if (sendFailed) {
-            Text(
-                "Message didn't send — check your connection and try again.",
+            Text(t("Message didn't send — check your connection and try again."),
                 fontSize = 11.sp, color = Color(0xFFE11D48),
                 modifier = Modifier
                     .fillMaxWidth()

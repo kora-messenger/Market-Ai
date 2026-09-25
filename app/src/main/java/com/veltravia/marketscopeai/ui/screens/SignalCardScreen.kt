@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -158,7 +160,7 @@ fun SignalCardScreen(
                 ) {
                     CircularProgressIndicator(color = AccentCyan)
                     Spacer(Modifier.height(16.dp))
-                    Text("Loading analysis…", color = TextMuted)
+                    Text(t("Loading analysis…"), color = TextMuted)
                 }
             }
             else -> {
@@ -194,8 +196,7 @@ fun SignalCardScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-        Text(
-            "MarketScope AI provides AI-generated analysis for educational purposes only and is not financial advice. Trade at your own risk.",
+        Text(t("MarketScope AI provides AI-generated analysis for educational purposes only and is not financial advice. Trade at your own risk."),
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
             modifier = Modifier.padding(vertical = 16.dp)
@@ -254,7 +255,7 @@ private fun TradeAnalysisBody(
             modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp))
         )
         Spacer(Modifier.width(8.dp))
-        Text("MarketScope AI", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(t("MarketScope AI"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 
     Spacer(Modifier.height(14.dp))
@@ -271,7 +272,7 @@ private fun TradeAnalysisBody(
         ) {
             Icon(Icons.Filled.Save, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Saved", style = MaterialTheme.typography.labelMedium, color = TextSecondary, fontWeight = FontWeight.SemiBold)
+            Text(t("Saved"), style = MaterialTheme.typography.labelMedium, color = TextSecondary, fontWeight = FontWeight.SemiBold)
         }
     }
 
@@ -291,13 +292,11 @@ private fun TradeAnalysisBody(
             Icon(Icons.Filled.Radar, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(
-                    "AI is monitoring this stock for you",
+                Text(t("AI is monitoring this stock for you"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    "We're watching its market live and will notify you as it improves or weakens — with clear keep-or-sell advice on each update.",
+                Text(t("We're watching its market live and will notify you as it improves or weakens — with clear keep-or-sell advice on each update."),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -317,20 +316,17 @@ private fun TradeAnalysisBody(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Recommended broker for MarketScope AI",
+                Text(t("Recommended broker for MarketScope AI"),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    "Executions similar to what we test MarketScope AI's analysis against.",
+                Text(t("Executions similar to what we test MarketScope AI's analysis against."),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
             }
             Spacer(Modifier.width(8.dp))
-            Text(
-                "Learn why",
+            Text(t("Learn why"),
                 style = MaterialTheme.typography.labelMedium,
                 color = AccentCyan,
                 fontWeight = FontWeight.SemiBold,
@@ -350,7 +346,7 @@ private fun TradeAnalysisBody(
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             if (isStock) {
                 GradientPrimaryButton(
-                    text = "Estimate share order",
+                    text = t("Estimate share order"),
                     enabled = true,
                     onClick = { showShareOrderSheet = true },
                     height = 48.dp,
@@ -359,15 +355,14 @@ private fun TradeAnalysisBody(
                     leadingIcon = Icons.Filled.ShoppingCart
                 )
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Sizing uses the AI's entry & stop and today's live price — adjust your risk to your own comfort.",
+                Text(t("Sizing uses the AI's entry & stop and today's live price — adjust your risk to your own comfort."),
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             } else {
                 GradientPrimaryButton(
-                    text = "Get lotsize for this trade",
+                    text = t("Get lotsize for this trade"),
                     enabled = true,
                     onClick = { showLotSheet = true },
                     height = 48.dp,
@@ -376,8 +371,7 @@ private fun TradeAnalysisBody(
                     leadingIcon = Icons.Filled.Calculate
                 )
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Sizing uses the AI's entry & stop — adjust your risk to your own comfort.",
+                Text(t("Sizing uses the AI's entry & stop — adjust your risk to your own comfort."),
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -459,8 +453,8 @@ private fun TradeAnalysisBody(
         // trade-level snapshot (entry/SL/TP/RR) that forex and crypto rely
         // on is redundant here — keep only the two verdict cards.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SnapshotCard(title = "STRENGTH", value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
-            SnapshotCard(title = "TRADE IDEA", value = ideaLabel, color = dirColor, weight = 1f, onCopy = { copy(ideaLabel) })
+            SnapshotCard(title = t("STRENGTH"), value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
+            SnapshotCard(title = t("TRADE IDEA"), value = ideaLabel, color = dirColor, weight = 1f, onCopy = { copy(ideaLabel) })
         }
         Spacer(Modifier.height(16.dp))
     } else {
@@ -474,7 +468,7 @@ private fun TradeAnalysisBody(
                 title = "TREND", value = trendLabel, color = dirColor, weight = 1f, onCopy = { copy(trendLabel) },
                 icon = if (isLong) Icons.Filled.TrendingUp else Icons.Filled.TrendingDown
             )
-            SnapshotCard(title = "TRADE IDEA", value = ideaLabel, color = dirColor, weight = 1f, onCopy = { copy(ideaLabel) })
+            SnapshotCard(title = t("TRADE IDEA"), value = ideaLabel, color = dirColor, weight = 1f, onCopy = { copy(ideaLabel) })
         }
         Spacer(Modifier.height(10.dp))
 
@@ -493,15 +487,15 @@ private fun TradeAnalysisBody(
             Spacer(Modifier.height(10.dp))
             // Row 3: INITIAL TP + FINAL TP
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                SnapshotCard(title = "INITIAL TP", value = initialTp, color = BullGreen, weight = 1f, onCopy = { copy(initialTp) })
-                SnapshotCard(title = "FINAL TP", value = finalTp, color = BullGreen, weight = 1f, onCopy = { copy(finalTp) })
+                SnapshotCard(title = t("INITIAL TP"), value = initialTp, color = BullGreen, weight = 1f, onCopy = { copy(initialTp) })
+                SnapshotCard(title = t("FINAL TP"), value = finalTp, color = BullGreen, weight = 1f, onCopy = { copy(finalTp) })
             }
             Spacer(Modifier.height(10.dp))
             // Row 4: RR RATIO + STRENGTH
             val rrText = if (rr > 0) "1 : ${trimNum(rr)}" else "—"
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                SnapshotCard(title = "RR RATIO", value = rrText, weight = 1f, onCopy = { copy(rrText) })
-                SnapshotCard(title = "STRENGTH", value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
+                SnapshotCard(title = t("RR RATIO"), value = rrText, weight = 1f, onCopy = { copy(rrText) })
+                SnapshotCard(title = t("STRENGTH"), value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
             }
             Spacer(Modifier.height(10.dp))
             // Row 5: ESTIMATE (real AI-generated duration)
@@ -514,7 +508,7 @@ private fun TradeAnalysisBody(
         } else {
             // NO_TRADE — show the derived labels but not fabricated trade levels.
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                SnapshotCard(title = "STRENGTH", value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
+                SnapshotCard(title = t("STRENGTH"), value = strengthLabel, color = dirColor, weight = 1f, onCopy = { copy(strengthLabel) })
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -549,19 +543,19 @@ private fun TradeAnalysisBody(
             Text(thesis, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 20.sp)
             if (invalidation.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
-                Text("Invalidation", style = MaterialTheme.typography.labelMedium, color = BearRed, fontWeight = FontWeight.SemiBold)
+                Text(t("Invalidation"), style = MaterialTheme.typography.labelMedium, color = BearRed, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(invalidation, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 20.sp)
             }
             if (learningNote.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
-                Text("AI learning", style = MaterialTheme.typography.labelMedium, color = PremiumIndigo, fontWeight = FontWeight.SemiBold)
+                Text(t("AI learning"), style = MaterialTheme.typography.labelMedium, color = PremiumIndigo, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(learningNote, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, lineHeight = 20.sp)
             }
             if (keyLevels != null && keyLevels.length() > 0) {
                 Spacer(Modifier.height(12.dp))
-                Text("Key levels", style = MaterialTheme.typography.labelMedium, color = AccentCyan, fontWeight = FontWeight.SemiBold)
+                Text(t("Key levels"), style = MaterialTheme.typography.labelMedium, color = AccentCyan, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     (0 until keyLevels.length()).joinToString("  •  ") { formatPrice(keyLevels.optDouble(it)) },
@@ -639,7 +633,7 @@ private fun LotSizeSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
-            Text("Trade details", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(t("Trade details"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
             Text(
                 if (instrument != null) "${instrument.display} • point size ${trimNum(instrument.pointSize)}"
@@ -649,7 +643,7 @@ private fun LotSizeSheet(
             )
             Spacer(Modifier.height(16.dp))
 
-            Text("Entry & Stop (optional)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            Text(t("Entry & Stop (optional)"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SheetField(entry, { entry = it }, "Entry", Modifier.weight(1f))
@@ -658,7 +652,7 @@ private fun LotSizeSheet(
             Spacer(Modifier.height(10.dp))
 
             PremiumSecondaryButton(
-                text = "Generate stoploss distance",
+                text = t("Generate stoploss distance"),
                 onClick = {
                     // Real computation from the instrument's actual point size:
                     // distance (points) = |entry - stop| / pointSize
@@ -692,7 +686,7 @@ private fun LotSizeSheet(
             }
 
             GradientPrimaryButton(
-                text = "Calculate position size",
+                text = t("Calculate position size"),
                 enabled = true,
                 onClick = {
                     val d = parse(distance)
@@ -740,8 +734,7 @@ private fun LotSizeSheet(
                 Spacer(Modifier.height(14.dp))
             }
 
-            Text(
-                "Estimates only — verify against your broker's exact contract specs before trading.",
+            Text(t("Estimates only — verify against your broker's exact contract specs before trading."),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )
@@ -787,8 +780,7 @@ private fun IpoOfferSection(ipo: JSONObject?, copy: (String) -> Unit) {
         SnapshotCard("IMPLIED MARKET CAP", marketCap, weight = 1f, onCopy = { copy(marketCap) })
     }
     Spacer(Modifier.height(8.dp))
-    Text(
-        "Verified from the official Nigerian Exchange announcement. No post-listing chart history exists yet.",
+    Text(t("Verified from the official Nigerian Exchange announcement. No post-listing chart history exists yet."),
         style = MaterialTheme.typography.bodySmall,
         color = TextMuted
     )
@@ -832,23 +824,23 @@ private fun MarketPerformanceSection(marketData: JSONObject, copy: (String) -> U
 
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         SnapshotCard(title = "TODAY", value = pctText(changeToday), color = pctColor(changeToday), weight = 1f, onCopy = { copy(pctText(changeToday)) })
-        SnapshotCard(title = "1 WEEK", value = pctText(perf1W), color = pctColor(perf1W), weight = 1f, onCopy = { copy(pctText(perf1W)) })
+        SnapshotCard(title = t("1 WEEK"), value = pctText(perf1W), color = pctColor(perf1W), weight = 1f, onCopy = { copy(pctText(perf1W)) })
     }
     Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        SnapshotCard(title = "1 MONTH", value = pctText(perf1M), color = pctColor(perf1M), weight = 1f, onCopy = { copy(pctText(perf1M)) })
-        SnapshotCard(title = "3 MONTHS", value = pctText(perf3M), color = pctColor(perf3M), weight = 1f, onCopy = { copy(pctText(perf3M)) })
+        SnapshotCard(title = t("1 MONTH"), value = pctText(perf1M), color = pctColor(perf1M), weight = 1f, onCopy = { copy(pctText(perf1M)) })
+        SnapshotCard(title = t("3 MONTHS"), value = pctText(perf3M), color = pctColor(perf3M), weight = 1f, onCopy = { copy(pctText(perf3M)) })
     }
     Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        SnapshotCard(title = "6 MONTHS", value = pctText(perf6M), color = pctColor(perf6M), weight = 1f, onCopy = { copy(pctText(perf6M)) })
-        SnapshotCard(title = "1 YEAR", value = pctText(perf1Y), color = pctColor(perf1Y), weight = 1f, onCopy = { copy(pctText(perf1Y)) })
+        SnapshotCard(title = t("6 MONTHS"), value = pctText(perf6M), color = pctColor(perf6M), weight = 1f, onCopy = { copy(pctText(perf6M)) })
+        SnapshotCard(title = t("1 YEAR"), value = pctText(perf1Y), color = pctColor(perf1Y), weight = 1f, onCopy = { copy(pctText(perf1Y)) })
     }
     Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         SnapshotCard(title = "YTD", value = pctText(perfYTD), color = pctColor(perfYTD), weight = 1f, onCopy = { copy(pctText(perfYTD)) })
         val rangeText = if (!low52w.isNaN() && !high52w.isNaN()) "${formatPrice(low52w)} – ${formatPrice(high52w)}" else "—"
-        SnapshotCard(title = "52-WEEK RANGE", value = rangeText, weight = 1f, onCopy = { copy(rangeText) })
+        SnapshotCard(title = t("52-WEEK RANGE"), value = rangeText, weight = 1f, onCopy = { copy(rangeText) })
     }
     if (!rsi.isNaN() || !peRatio.isNaN()) {
         Spacer(Modifier.height(10.dp))
@@ -862,7 +854,7 @@ private fun MarketPerformanceSection(marketData: JSONObject, copy: (String) -> U
             }
             SnapshotCard(title = "RSI", value = rsiText, color = rsiColor, weight = 1f, onCopy = { copy(rsiText) })
             val peText = if (!peRatio.isNaN()) trimNum(peRatio) else "—"
-            SnapshotCard(title = "P/E RATIO", value = peText, weight = 1f, onCopy = { copy(peText) })
+            SnapshotCard(title = t("P/E RATIO"), value = peText, weight = 1f, onCopy = { copy(peText) })
         }
     }
 }
@@ -929,7 +921,7 @@ private fun ShareOrderSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
-            Text("Share order estimate", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(t("Share order estimate"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
             Text(instrumentDisplay, style = MaterialTheme.typography.bodySmall, color = TextMuted)
             Spacer(Modifier.height(16.dp))
@@ -938,7 +930,7 @@ private fun ShareOrderSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Order Type", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text(t("Order Type"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                 Text(orderType, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.height(4.dp))
@@ -950,7 +942,7 @@ private fun ShareOrderSheet(
             )
             Spacer(Modifier.height(16.dp))
 
-            Text("Entry & Stop (optional)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            Text(t("Entry & Stop (optional)"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SheetField(entry, { entry = it; result = null }, "Entry ($currency)", Modifier.weight(1f))
@@ -973,7 +965,7 @@ private fun ShareOrderSheet(
             }
 
             GradientPrimaryButton(
-                text = "Calculate shares to buy",
+                text = t("Calculate shares to buy"),
                 enabled = true,
                 onClick = {
                     val e = parse(entry).takeUnless { it.isNaN() } ?: referencePrice
@@ -1011,25 +1003,24 @@ private fun ShareOrderSheet(
                         .padding(16.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Number of Shares", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        Text(t("Number of Shares"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         Text("${"%,.0f".format(r.shares)}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AccentCyan)
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Estimated Cost", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        Text(t("Estimated Cost"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         Text("$currency ${"%,.2f".format(r.estimatedCost)}", fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Risk Amount", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                        Text(t("Risk Amount"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
                         Text("$currency ${"%,.2f".format(r.riskAmountLocal)}", fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Spacer(Modifier.height(14.dp))
             }
 
-            Text(
-                "Estimates only — MarketScope AI doesn't place orders. Buy shares through your own broker or brokerage app.",
+            Text(t("Estimates only — MarketScope AI doesn't place orders. Buy shares through your own broker or brokerage app."),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted
             )

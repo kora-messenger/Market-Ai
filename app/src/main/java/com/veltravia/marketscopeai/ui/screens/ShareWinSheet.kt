@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -177,8 +179,7 @@ fun ShareWinSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    "Share your result",
+                Text(t("Share your result"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -205,7 +206,7 @@ fun ShareWinSheet(
                     .fillMaxWidth()
                     .height(110.dp),
                 placeholder = {
-                    Text("Share your comment about this signal...", color = TextMuted, fontSize = 13.sp)
+                    Text(t("Share your comment about this signal..."), color = TextMuted, fontSize = 13.sp)
                 },
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -263,7 +264,7 @@ fun ShareWinSheet(
                 ) {
                     Icon(Icons.Filled.Image, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Attach trader proof screenshot", fontSize = 13.sp, color = TextSecondary)
+                    Text(t("Attach trader proof screenshot"), fontSize = 13.sp, color = TextSecondary)
                 }
             }
             Spacer(Modifier.height(6.dp))
@@ -280,7 +281,7 @@ fun ShareWinSheet(
 
             Spacer(Modifier.height(14.dp))
             PremiumSecondaryButton(
-                text = "Share now",
+                text = t("Share now"),
                 onClick = { submit() },
                 enabled = !sending,
                 loading = sending,
@@ -291,7 +292,7 @@ fun ShareWinSheet(
             )
             Spacer(Modifier.height(6.dp))
             PremiumSecondaryButton(
-                text = "Share my win to apps",
+                text = t("Share my win to apps"),
                 onClick = { shareToApps() },
                 height = 44.dp
             )

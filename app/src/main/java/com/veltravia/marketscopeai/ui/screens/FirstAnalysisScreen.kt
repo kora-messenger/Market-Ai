@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,8 +69,7 @@ fun FirstAnalysisScreen(
             horizontalArrangement = Arrangement.End
         ) {
             TextButton(onClick = onSkip) {
-                Text(
-                    "Skip",
+                Text(t("Skip"),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = TextSecondary
@@ -82,8 +83,7 @@ fun FirstAnalysisScreen(
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
-        Text(
-            "Your first analysis starts here.",
+        Text(t("Your first analysis starts here."),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = TextSecondary

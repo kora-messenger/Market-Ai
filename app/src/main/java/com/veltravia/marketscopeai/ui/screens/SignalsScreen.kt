@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -176,8 +178,7 @@ fun SignalsScreen(
             )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    "Daily Signals",
+                Text(t("Daily Signals"),
                     style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -196,7 +197,7 @@ fun SignalsScreen(
                         .clickable { onOpenAdmin() }
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
-                    Text("Post", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                    Text(t("Post"), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                 }
             }
         }
@@ -217,9 +218,8 @@ fun SignalsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Recent wins", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text(
-                        "Wall of Wins →",
+                    Text(t("Recent wins"), style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text(t("Wall of Wins →"),
                         style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = AccentCyan,
@@ -248,7 +248,7 @@ fun SignalsScreen(
             // --- Feed or locked card ---
             when {
                 entitled || feedLocked -> {
-                    Text("Live trades", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text(t("Live trades"), style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Spacer(Modifier.height(12.dp))
                     val feed = signals
                     if (feedError != null) {
@@ -268,8 +268,7 @@ fun SignalsScreen(
                             }
                             Spacer(Modifier.height(14.dp))
                         }
-                        Text(
-                            "Outcomes are resolved automatically against live market prices every 15 minutes.",
+                        Text(t("Outcomes are resolved automatically against live market prices every 15 minutes."),
                             style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
                             color = TextMuted
                         )
@@ -381,7 +380,7 @@ private fun GlanceCard(stats: JSONObject?, range: String, onRangeChange: (String
             androidx.compose.material3.CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(22.dp))
             Spacer(Modifier.height(6.dp))
         } else if (stats.optBoolean("error", false)) {
-            Text("Stats unavailable right now.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Text(t("Stats unavailable right now."), style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = TextSecondary)
         } else {
             val wins = stats.optInt("wins", 0)
             val losses = stats.optInt("losses", 0)
@@ -751,10 +750,9 @@ private fun DailySignalCard(item: JSONObject, isAdmin: Boolean = false, onOpenDe
             ) {
                 Icon(Icons.Filled.Share, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Reshare", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                Text(t("Reshare"), color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             }
-            Text(
-                "View Details",
+            Text(t("View Details"),
                 color = AccentCyan,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
@@ -973,7 +971,7 @@ private fun LockedSignalsCard(historyCount: Int = 0) {
     if (showDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("MarketScope AI Premium", fontWeight = FontWeight.Bold) },
+            title = { Text(t("MarketScope AI Premium"), fontWeight = FontWeight.Bold) },
             text = {
                 Text(
                     "Daily Signals is a Premium feature. Your 7-day free trial has ended. " +
@@ -985,7 +983,7 @@ private fun LockedSignalsCard(historyCount: Int = 0) {
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { showDialog = false }) {
-                    Text("Okay", fontWeight = FontWeight.SemiBold)
+                    Text(t("Okay"), fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -1001,23 +999,20 @@ private fun LockedSignalsCard(historyCount: Int = 0) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.Icon(Icons.Filled.Lock, contentDescription = null, tint = PremiumIndigo, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text(
-                "DAILY SIGNALS · PREMIUM",
+            Text(t("DAILY SIGNALS · PREMIUM"),
                 style = androidx.compose.material3.MaterialTheme.typography.labelMedium,
                 color = PremiumIndigo,
                 fontWeight = FontWeight.Bold
             )
         }
         Spacer(Modifier.height(10.dp))
-        Text(
-            "Unlock the exact daily trade setups",
+        Text(t("Unlock the exact daily trade setups"),
             style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
             color = TextPrimary,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(6.dp))
-        Text(
-            "Every day, the MarketScope AI team curates trade setups and shares live updates on each one until it closes — right here, for premium members. One AI-generated call is published daily too, and every outcome is resolved against live market prices.",
+        Text(t("Every day, the MarketScope AI team curates trade setups and shares live updates on each one until it closes — right here, for premium members. One AI-generated call is published daily too, and every outcome is resolved against live market prices."),
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )
@@ -1039,11 +1034,10 @@ private fun LockedSignalsCard(historyCount: Int = 0) {
                 .clickable { showDialog = true },
             contentAlignment = Alignment.Center
         ) {
-            Text("See what's live today", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(t("See what's live today"), color = Color.White, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(8.dp))
-        Text(
-            "Your free trial has ended. Premium billing is coming soon — the stats above stay free.",
+        Text(t("Your free trial has ended. Premium billing is coming soon — the stats above stay free."),
             style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
             color = TextMuted,
             textAlign = TextAlign.Center,
@@ -1059,15 +1053,13 @@ private fun EmptyFeedNote() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(20.dp))
-        Text(
-            "No live signals right now.",
+        Text(t("No live signals right now."),
             style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = TextPrimary
         )
         Spacer(Modifier.height(6.dp))
-        Text(
-            "The team publishes curated setups and the AI posts one daily call — check back soon.",
+        Text(t("The team publishes curated setups and the AI posts one daily call — check back soon."),
             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
             color = TextMuted,
             textAlign = TextAlign.Center
@@ -1082,8 +1074,7 @@ private fun ErrorNote(message: String) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(20.dp))
-        Text(
-            "Couldn't load signals",
+        Text(t("Couldn't load signals"),
             style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = TextPrimary
@@ -1146,8 +1137,7 @@ fun DailySignalDetailScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
-            Text(
-                "Trade Analysis",
+            Text(t("Trade Analysis"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Center)
@@ -1165,7 +1155,7 @@ fun DailySignalDetailScreen(
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = AccentCyan)
                     Spacer(Modifier.height(16.dp))
-                    Text("Loading signal...", color = TextMuted)
+                    Text(t("Loading signal..."), color = TextMuted)
                 }
             }
             else -> {
@@ -1307,7 +1297,7 @@ fun DailySignalDetailScreen(
                     )
                     SnapshotTile(
                         icon = Icons.Filled.Check,
-                        label = "TRADE IDEA",
+                        label = t("TRADE IDEA"),
                         value = if (isLong) "Buy" else "Sell",
                         tint = dirColor,
                         modifier = Modifier.weight(1f)
@@ -1320,13 +1310,13 @@ fun DailySignalDetailScreen(
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SnapshotTile(icon = null, label = "INITIAL TP", value = if (!firstTp.isNaN()) fmt(firstTp) else "—", tint = BullGreen, modifier = Modifier.weight(1f))
-                    SnapshotTile(icon = null, label = "FINAL TP", value = if (!finalTp.isNaN()) fmt(finalTp) else "—", tint = BullGreen, modifier = Modifier.weight(1f))
+                    SnapshotTile(icon = null, label = t("INITIAL TP"), value = if (!firstTp.isNaN()) fmt(firstTp) else "—", tint = BullGreen, modifier = Modifier.weight(1f))
+                    SnapshotTile(icon = null, label = t("FINAL TP"), value = if (!finalTp.isNaN()) fmt(finalTp) else "—", tint = BullGreen, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SnapshotTile(icon = null, label = "R:R RATIO", value = if (!rr.isNaN()) "1:${"%.2f".format(rr)}" else "—", tint = GoldAmber, modifier = Modifier.weight(1f))
-                    SnapshotTile(icon = null, label = "STRENGTH", value = strength.replaceFirstChar { it.uppercase() }, tint = AccentViolet, modifier = Modifier.weight(1f))
+                    SnapshotTile(icon = null, label = t("R:R RATIO"), value = if (!rr.isNaN()) "1:${"%.2f".format(rr)}" else "—", tint = GoldAmber, modifier = Modifier.weight(1f))
+                    SnapshotTile(icon = null, label = t("STRENGTH"), value = strength.replaceFirstChar { it.uppercase() }, tint = AccentViolet, modifier = Modifier.weight(1f))
                 }
                 if (!lastPrice.isNaN() || (status == "closed" && !exitPrice.isNaN())) {
                     Spacer(Modifier.height(10.dp))
@@ -1342,7 +1332,7 @@ fun DailySignalDetailScreen(
                 // --- Take-profit targets: one row per TP, green tick once hit ---
                 if (tps != null && tps.length() > 0) {
                     Spacer(Modifier.height(20.dp))
-                    Text("TAKE PROFIT TARGETS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
+                    Text(t("TAKE PROFIT TARGETS"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
                     Spacer(Modifier.height(8.dp))
                     for (tpIndex in 0 until tps.length()) {
                         val tpVal = tps.optDouble(tpIndex, Double.NaN)
@@ -1456,7 +1446,7 @@ fun DailySignalDetailScreen(
                     ) {
                         Icon(Icons.Filled.Share, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(15.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Reshare", color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text(t("Reshare"), color = AccentCyan, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     }
                     Row(
                         modifier = Modifier
@@ -1489,8 +1479,7 @@ fun DailySignalDetailScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-        Text(
-            "MarketScope AI provides AI-generated signals for educational purposes only and is not financial advice. Trade at your own risk.",
+        Text(t("MarketScope AI provides AI-generated signals for educational purposes only and is not financial advice. Trade at your own risk."),
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
             modifier = Modifier.padding(vertical = 16.dp)
