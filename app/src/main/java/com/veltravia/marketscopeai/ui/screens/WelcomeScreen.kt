@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -211,8 +213,7 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                Text(
-                    "Continue with Google",
+                Text(t("Continue with Google"),
                     color = Color(0xFF1F1F1F),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium
@@ -221,8 +222,7 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
 
             if (clientId.isBlank()) {
                 Spacer(Modifier.height(14.dp))
-                Text(
-                    "Google sign-in is temporarily unavailable. Please try again shortly.",
+                Text(t("Google sign-in is temporarily unavailable. Please try again shortly."),
                     style = MaterialTheme.typography.labelMedium,
                     color = TextSecondary,
                     textAlign = TextAlign.Center
@@ -275,8 +275,7 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
 
             Spacer(Modifier.height(20.dp))
 
-            Text(
-                "By Veltravia Technologies",
+            Text(t("By Veltravia Technologies"),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextSecondary
             )

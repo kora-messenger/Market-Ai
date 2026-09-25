@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.data
 
+import com.veltravia.marketscopeai.L10n
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -73,6 +75,7 @@ object ApiClient {
             .put("mode", mode)
             .put("imageH4", imageH4DataUrl)
             .put("imageM15", imageM15DataUrl)
+            .put("language", L10n.languageTag)
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/analyze")
             .addHeader("Authorization", "Bearer $sessionToken")
@@ -179,6 +182,7 @@ object ApiClient {
     ): JSONObject = withContext(Dispatchers.IO) {
         val payload = JSONObject()
             .put("name", name)
+            .put("language", L10n.languageTag)
         if (imageDataUrl != null) payload.put("image", imageDataUrl)
         val request = Request.Builder()
             .url("${ApiConfig.BASE_URL}/api/analyze/stock")

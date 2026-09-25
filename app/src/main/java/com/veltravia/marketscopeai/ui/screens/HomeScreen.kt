@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -230,11 +232,11 @@ fun HomeScreen(
     // Prioritize real, working features in the collapsed row; the three
     // not-yet-built tools only appear once the user explicitly expands.
     val primaryActions = listOf(
-        QuickAction("News Outlook", Icons.AutoMirrored.Filled.Article, onOpenNewsOutlook),
-        QuickAction("Risk calculator", Icons.Filled.Calculate, onOpenRiskCalculator),
-        QuickAction("Community", Icons.Filled.Groups) { onSwitchTab(2) },
-        QuickAction("Signals", Icons.AutoMirrored.Filled.ShowChart) { onSwitchTab(1) },
-        QuickAction("Saved", Icons.Filled.Bookmark) { onSwitchTab(3) },
+        QuickAction(t("News Outlook"), Icons.AutoMirrored.Filled.Article, onOpenNewsOutlook),
+        QuickAction(t("Risk calculator"), Icons.Filled.Calculate, onOpenRiskCalculator),
+        QuickAction(t("Community"), Icons.Filled.Groups) { onSwitchTab(2) },
+        QuickAction(t("Signals"), Icons.AutoMirrored.Filled.ShowChart) { onSwitchTab(1) },
+        QuickAction(t("Saved"), Icons.Filled.Bookmark) { onSwitchTab(3) },
         QuickAction("Share", Icons.Filled.Share) {
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -244,9 +246,9 @@ fun HomeScreen(
         }
     )
     val moreActions = listOf(
-        QuickAction("Learning hub", Icons.Filled.School, onOpenLearningHub),
+        QuickAction(t("Learning hub"), Icons.Filled.School, onOpenLearningHub),
         QuickAction("Trade Plan", Icons.Filled.Assignment, onCreateTradePlan),
-        QuickAction("Calendar", Icons.Filled.CalendarMonth) { onOpenCalendar() }
+        QuickAction(t("Calendar"), Icons.Filled.CalendarMonth) { onOpenCalendar() }
     )
 
     Column(
@@ -305,8 +307,7 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
-                Text(
-                    "Trade with data-driven confidence.",
+                Text(t("Trade with data-driven confidence."),
                     style = MaterialTheme.typography.bodySmall,
                     color = AccentCyan,
                     maxLines = 1
@@ -316,7 +317,7 @@ fun HomeScreen(
                 val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
                 runCatching { context.startActivity(mail) }
             }) {
-                Icon(Icons.Filled.Email, contentDescription = "Contact support", tint = TextSecondary)
+                Icon(Icons.Filled.Email, contentDescription = t("Contact support"), tint = TextSecondary)
             }
             IconButton(onClick = onOpenNotifications) {
                 Icon(Icons.Filled.NotificationsNone, contentDescription = "Notifications", tint = TextSecondary)
@@ -380,8 +381,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "COMMUNITY",
+                    Text(t("COMMUNITY"),
                         style = MaterialTheme.typography.labelSmall,
                         color = AccentCyan,
                         fontWeight = FontWeight.Bold
@@ -478,8 +478,7 @@ fun HomeScreen(
         Spacer(Modifier.height(28.dp))
 
         // --- Recommended tools ---
-        Text(
-            "MarketScope AI Recommended Tools",
+        Text(t("MarketScope AI Recommended Tools"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
@@ -500,15 +499,13 @@ fun HomeScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Trade with real market conditions",
+                Text(t("Trade with real market conditions"),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    "Our recommended broker for testing MarketScope AI's analysis.",
+                Text(t("Our recommended broker for testing MarketScope AI's analysis."),
                     style = MaterialTheme.typography.labelMedium,
                     color = TextMuted
                 )

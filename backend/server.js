@@ -3227,6 +3227,24 @@ async function recentTradeLearningContext(userRow) {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Language: the app sends the device locale with every analyze request. When
+// it is something other than English, the AI writes its prose (thesis,
+// reasoning, summaries, educational notes) in that language. JSON keys,
+// tickers and symbols always stay unchanged so the app can still parse.
+// ----------------------------------------------------------------------------
+const AI_LANGUAGES = {
+  de: "German", es: "Spanish", fr: "French", pt: "Portuguese", it: "Italian",
+  nl: "Dutch", pl: "Polish", tr: "Turkish", ru: "Russian", ar: "Arabic",
+  hi: "Hindi", id: "Indonesian", sw: "Swahili"
+};
+function aiLanguageDirective(language) {
+  const code = String(language || "").trim().toLowerCase().slice(0, 2);
+  const name = AI_LANGUAGES[code];
+  if (!name) return "";
+  return ` Write every piece of natural-language prose (thesis, reasoning, explanations, summaries, educational notes, verdictLabels) entirely in ${name}. Keep JSON keys, ticker symbols, instrument names like EUR/USD, numbers and BUY/SELL/HOLD verdict values exactly as specified in English. Write naturally for a ${name}-speaking trader.`;
+}
+
 const SYSTEM_PROMPT = `You are a senior market analyst. You receive two real chart screenshots of the same instrument:
 - a 4H (higher timeframe) chart and a 15M (lower timeframe) chart.
 The trader picked Scalp mode (favor 15M entries, quicker targets) or Swing mode (favor 4H structure, wider targets).
@@ -3419,7 +3437,7 @@ Respond ONLY with JSON:
       reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: SYSTEM_PROMPT + aiLanguageDirective(req.body?.language) },
         {
           role: "user",
           content: [
@@ -3880,7 +3898,7 @@ app.post("/api/analyze/stock", requireAuth, async (req, res) => {
       reasoning: { effort: "low" },
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: ipoOffer ? IPO_SYSTEM_PROMPT : STOCK_SYSTEM_PROMPT },
+        { role: "system", content: (ipoOffer ? IPO_SYSTEM_PROMPT : STOCK_SYSTEM_PROMPT) + aiLanguageDirective(req.body?.language) },
         { role: "user", content: userContent }
       ]
     }, "stock-analysis", { premium, userId: userRow.id }).catch((err) => ({

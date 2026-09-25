@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -365,8 +367,7 @@ fun SubscribeScreen(
                 modifier = Modifier.size(48.dp)
             )
             Spacer(Modifier.height(10.dp))
-            Text(
-                "Go further with Premium",
+            Text(t("Go further with Premium"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -380,7 +381,7 @@ fun SubscribeScreen(
                 horizontalArrangement = Arrangement.spacedBy(28.dp)
             ) {
                 PlanTab(
-                    label = "Free plan",
+                    label = t("Free plan"),
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
                     modifier = Modifier.weight(1f)
@@ -479,8 +480,7 @@ fun SubscribeScreen(
                                     )
                                 }
                             } else {
-                                Text(
-                                    "Included with every account",
+                                Text(t("Included with every account"),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
@@ -514,8 +514,7 @@ fun SubscribeScreen(
                                 }
                             }
                             if (plan.id == "premium") {
-                                Text(
-                                    "Cancel anytime.",
+                                Text(t("Cancel anytime."),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = TextMuted,
                                     modifier = Modifier.padding(top = 10.dp)
@@ -527,8 +526,7 @@ fun SubscribeScreen(
 
                 // Honest positioning: MarketScope AI is market research and
                 // education — never financial advice, never guarantees.
-                Text(
-                    "MarketScope AI is a market-research and education tool. AI analysis is for informational purposes only and is not financial advice.",
+                Text(t("MarketScope AI is a market-research and education tool. AI analysis is for informational purposes only and is not financial advice."),
                     style = MaterialTheme.typography.labelMedium,
                     color = TextMuted,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,

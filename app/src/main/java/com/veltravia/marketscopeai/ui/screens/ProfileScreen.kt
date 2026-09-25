@@ -1,5 +1,7 @@
 package com.veltravia.marketscopeai.ui.screens
 
+import com.veltravia.marketscopeai.t
+
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -291,8 +293,7 @@ fun ProfileScreen(
             .padding(horizontal = 20.dp)
     ) {
         Spacer(Modifier.height(24.dp))
-        Text(
-            "Settings",
+        Text(t("Settings"),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
@@ -358,39 +359,39 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.Tune,
                 tint = BullGreen,
-                label = "Trading profile",
+                label = t("Trading profile"),
                 trailingText = SessionManager.questionnaireAnswers(context)?.style?.ifBlank { null } ?: "Not set",
                 onClick = onEditTradingProfile
             )
             SettingsRow(
                 icon = Icons.Filled.BookmarkBorder,
                 tint = AccentCyan,
-                label = "Saved trade plans",
+                label = t("Saved trade plans"),
                 trailingText = savedPlanCount?.let { if (it == 1) "1 saved" else "$it saved" },
                 onClick = onViewSavedTradePlans
             )
             SettingsRow(
                 icon = Icons.Filled.Bolt,
                 tint = GoldAmber,
-                label = "Risk calculator",
+                label = t("Risk calculator"),
                 onClick = onOpenRiskCalculator
             )
             SettingsRow(
                 icon = Icons.Filled.Book,
                 tint = BullGreen,
-                label = "Trade journal",
+                label = t("Trade journal"),
                 onClick = onOpenJournal
             )
             SettingsRow(
                 icon = Icons.Filled.NotificationsNone,
                 tint = AccentViolet,
-                label = "Notifications",
+                label = t("Notifications"),
                 onClick = onOpenNotifications
             )
             SettingsRow(
                 icon = Icons.Filled.CameraAlt,
                 tint = AccentCyan,
-                label = "Screenshot guide",
+                label = t("Screenshot guide"),
                 onClick = onOpenScreenshotGuide,
                 showDivider = false
             )
@@ -409,7 +410,7 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.PersonAddAlt,
                 tint = AccentViolet,
-                label = "Invite friends",
+                label = t("Invite friends"),
                 onClick = onOpenReferrals,
                 showDivider = false
             )
@@ -421,7 +422,7 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.MailOutline,
                 tint = AccentCyan,
-                label = "Help & support",
+                label = t("Help & support"),
                 onClick = {
                     val mail = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@marketscopeai.com"))
                     context.startActivity(mail)
@@ -430,19 +431,19 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.Forum,
                 tint = AccentViolet,
-                label = "Your Opinion",
+                label = t("Your Opinion"),
                 onClick = onOpenFeedback
             )
             SettingsRow(
                 icon = Icons.Filled.BugReport,
                 tint = AccentViolet,
-                label = "Report a bug",
+                label = t("Report a bug"),
                 onClick = onOpenBugReport
             )
             SettingsSwitchRow(
                 icon = Icons.Filled.Vibration,
                 tint = GoldAmber,
-                label = "Shake to report a bug",
+                label = t("Shake to report a bug"),
                 helper = "Off until you enable it. When on, a shake saves a screenshot to Photos, copies it, and opens bug reporting.",
                 checked = shakeToReport,
                 onChecked = { enabled ->
@@ -461,19 +462,19 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.Filled.Gavel,
                 tint = TextSecondary,
-                label = "Terms of service",
+                label = t("Terms of service"),
                 onClick = { uriHandler.openUri("${ApiConfig.BASE_URL}/terms") }
             )
             SettingsRow(
                 icon = Icons.Filled.PrivacyTip,
                 tint = TextSecondary,
-                label = "Privacy policy",
+                label = t("Privacy policy"),
                 onClick = { uriHandler.openUri("${ApiConfig.BASE_URL}/privacy") }
             )
             SettingsRow(
                 icon = Icons.Filled.Groups,
                 tint = TextSecondary,
-                label = "Community guidelines",
+                label = t("Community guidelines"),
                 onClick = { uriHandler.openUri("${ApiConfig.BASE_URL}/community-guidelines") },
                 showDivider = false
             )
@@ -485,14 +486,14 @@ fun ProfileScreen(
             SettingsRow(
                 icon = Icons.AutoMirrored.Filled.Login,
                 tint = BearRed,
-                label = "Sign out",
+                label = t("Sign out"),
                 onClick = { showSignOutConfirm = true }
             )
             if (deletionRequestedAt == null) {
                 SettingsRow(
                     icon = Icons.Filled.Shield,
                     tint = BearRed,
-                    label = "Delete my account",
+                    label = t("Delete my account"),
                     labelColor = BearRed,
                     onClick = { deleteError = null; showDeleteConfirm = true },
                     showDivider = false
@@ -594,15 +595,13 @@ private fun SignOutConfirmDialog(
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(24.dp)
         ) {
-            Text(
-                "Log out?",
+            Text(t("Log out?"),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
             Spacer(Modifier.height(14.dp))
-            Text(
-                "You'll need to sign back in to keep using MarketScope AI.",
+            Text(t("You'll need to sign back in to keep using MarketScope AI."),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
@@ -612,11 +611,11 @@ private fun SignOutConfirmDialog(
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("Cancel", fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Text(t("Cancel"), fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 }
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = onConfirm) {
-                    Text("Log out", fontWeight = FontWeight.SemiBold, color = BearRed)
+                    Text(t("Log out"), fontWeight = FontWeight.SemiBold, color = BearRed)
                 }
             }
         }
@@ -668,8 +667,7 @@ private fun DeleteAccountSheet(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 24.dp)
             ) {
-            Text(
-                "Permanently delete account?",
+            Text(t("Permanently delete account?"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -697,8 +695,7 @@ private fun DeleteAccountSheet(
                     colors = CheckboxDefaults.colors(checkedColor = BearRed)
                 )
                 Spacer(Modifier.width(4.dp))
-                Text(
-                    "I understand this action is permanent.",
+                Text(t("I understand this action is permanent."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextPrimary
                 )
@@ -895,12 +892,12 @@ private fun AccountSummaryCard(
         ) {
             StatTile(
                 modifier = Modifier.weight(1f),
-                label = "Analyses run",
+                label = t("Analyses run"),
                 value = analysesCount?.toString() ?: "—"
             )
             StatTile(
                 modifier = Modifier.weight(1f),
-                label = "Saved trades",
+                label = t("Saved trades"),
                 value = savedTradesCount?.toString() ?: "—"
             )
         }
@@ -939,15 +936,13 @@ private fun HandleEditDialog(
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(20.dp)
         ) {
-            Text(
-                "Your handle",
+            Text(t("Your handle"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                "3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle.",
+            Text(t("3-20 characters — lowercase letters, numbers, dots or underscores. Other traders will see it as @handle."),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )
@@ -956,7 +951,7 @@ private fun HandleEditDialog(
                 value = input,
                 onValueChange = onInput,
                 singleLine = true,
-                placeholder = { Text("e.g. euro.trader") },
+                placeholder = { Text(t("e.g. euro.trader")) },
                 modifier = Modifier.fillMaxWidth()
             )
             if (!current.isNullOrBlank()) {
@@ -969,7 +964,7 @@ private fun HandleEditDialog(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
+                OutlinedButton(onClick = onDismiss, enabled = !busy) { Text(t("Cancel")) }
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = onSave,
@@ -979,7 +974,7 @@ private fun HandleEditDialog(
                     if (busy) {
                         CircularProgressIndicator(strokeWidth = 1.5.dp, color = Color.White, modifier = Modifier.size(14.dp))
                     } else {
-                        Text("Save")
+                        Text(t("Save"))
                     }
                 }
             }
@@ -1043,11 +1038,11 @@ private fun DeletionPendingBanner(deletionRequestedAt: String?, busy: Boolean, o
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("Account deletion scheduled", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = BearRed)
+            Text(t("Account deletion scheduled"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = BearRed)
             Text("Your data will be erased on $dateLabel.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
         TextButton(onClick = onCancel, enabled = !busy) {
-            if (busy) CircularProgressIndicator(modifier = Modifier.size(14.dp)) else Text("Cancel")
+            if (busy) CircularProgressIndicator(modifier = Modifier.size(14.dp)) else Text(t("Cancel"))
         }
     }
 }
