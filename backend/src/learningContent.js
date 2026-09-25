@@ -20,10 +20,24 @@
  *    bullish }. Optional `zone` shades a rectangle behind the candles.
  */
 
+// Three learning tracks in one hub: chart/candlestick/SMC patterns apply to
+// any tradable market (Trading), while Crypto and Stocks each get their own
+// asset-specific fundamentals so a crypto-only or stock-only reader isn't
+// stuck reading pure forex/futures pattern lessons.
+const TRACKS = [
+  { id: "trading", label: "Trading" },
+  { id: "crypto", label: "Crypto" },
+  { id: "stocks", label: "Stocks" }
+];
+
 const CATEGORIES = [
-  { id: "chart", label: "Chart Patterns" },
-  { id: "candlestick", label: "Candlestick Patterns" },
-  { id: "smc", label: "Smart Money Concepts" }
+  { id: "chart", label: "Chart Patterns", track: "trading" },
+  { id: "candlestick", label: "Candlestick Patterns", track: "trading" },
+  { id: "smc", label: "Smart Money Concepts", track: "trading" },
+  { id: "crypto-fundamentals", label: "Crypto Fundamentals", track: "crypto" },
+  { id: "crypto-mechanics", label: "Crypto Trading Mechanics", track: "crypto" },
+  { id: "stock-fundamentals", label: "Stock Fundamentals", track: "stocks" },
+  { id: "stock-events", label: "Company Events", track: "stocks" }
 ];
 
 const PATTERNS = [
@@ -32,6 +46,7 @@ const PATTERNS = [
     slug: "head-and-shoulders",
     title: "Head and Shoulders",
     category: "chart",
+    track: "trading",
     accent: "violet",
     bias: "bearish",
     tagline: "Three peaks, the middle one tallest — a classic top reversal.",
@@ -79,6 +94,7 @@ const PATTERNS = [
     slug: "double-top-bottom",
     title: "Double Top / Double Bottom",
     category: "chart",
+    track: "trading",
     accent: "rose",
     bias: "bearish",
     tagline: "Two failed attempts at the same level — momentum giving up.",
@@ -124,6 +140,7 @@ const PATTERNS = [
     slug: "rising-wedge",
     title: "Rising Wedge",
     category: "chart",
+    track: "trading",
     accent: "rose",
     bias: "bearish",
     tagline: "Price grinds higher inside a narrowing, upward-sloping channel.",
@@ -167,6 +184,7 @@ const PATTERNS = [
     slug: "falling-wedge",
     title: "Falling Wedge",
     category: "chart",
+    track: "trading",
     accent: "emerald",
     bias: "bullish",
     tagline: "Price grinds lower inside a narrowing, downward-sloping channel.",
@@ -210,6 +228,7 @@ const PATTERNS = [
     slug: "symmetrical-triangle",
     title: "Symmetrical Triangle",
     category: "chart",
+    track: "trading",
     accent: "cyan",
     bias: "neutral",
     tagline: "Falling highs meet rising lows — a coiled spring, direction unknown.",
@@ -253,6 +272,7 @@ const PATTERNS = [
     slug: "ascending-triangle",
     title: "Ascending Triangle",
     category: "chart",
+    track: "trading",
     accent: "emerald",
     bias: "bullish",
     tagline: "A flat ceiling, a rising floor — buyers slowly winning the fight.",
@@ -298,6 +318,7 @@ const PATTERNS = [
     slug: "bullish-engulfing",
     title: "Bullish Engulfing",
     category: "candlestick",
+    track: "trading",
     accent: "emerald",
     bias: "bullish",
     tagline: "A big green candle completely swallows the red candle before it.",
@@ -341,6 +362,7 @@ const PATTERNS = [
     slug: "bearish-engulfing",
     title: "Bearish Engulfing",
     category: "candlestick",
+    track: "trading",
     accent: "rose",
     bias: "bearish",
     tagline: "A big red candle completely swallows the green candle before it.",
@@ -384,6 +406,7 @@ const PATTERNS = [
     slug: "bullish-pin-bar",
     title: "Bullish Pin Bar",
     category: "candlestick",
+    track: "trading",
     accent: "emerald",
     bias: "bullish",
     tagline: "A long lower wick, tiny body — sellers pushed down and got rejected.",
@@ -426,6 +449,7 @@ const PATTERNS = [
     slug: "bearish-pin-bar",
     title: "Bearish Pin Bar",
     category: "candlestick",
+    track: "trading",
     accent: "rose",
     bias: "bearish",
     tagline: "A long upper wick, tiny body — buyers pushed up and got rejected.",
@@ -468,6 +492,7 @@ const PATTERNS = [
     slug: "doji",
     title: "Doji",
     category: "candlestick",
+    track: "trading",
     accent: "cyan",
     bias: "neutral",
     tagline: "Open and close almost identical — a tug-of-war, nobody wins.",
@@ -510,6 +535,7 @@ const PATTERNS = [
     slug: "morning-star",
     title: "Morning Star",
     category: "candlestick",
+    track: "trading",
     accent: "emerald",
     bias: "bullish",
     tagline: "Big red candle, a small pause, then a big green candle — dawn breaking.",
@@ -554,6 +580,7 @@ const PATTERNS = [
     slug: "evening-star",
     title: "Evening Star",
     category: "candlestick",
+    track: "trading",
     accent: "rose",
     bias: "bearish",
     tagline: "Big green candle, a small pause, then a big red candle — dusk falling.",
@@ -600,6 +627,7 @@ const PATTERNS = [
     slug: "break-of-structure",
     title: "Break of Structure (BoS)",
     category: "smc",
+    track: "trading",
     accent: "violet",
     bias: "bullish",
     tagline: "Price takes out the last swing high or low — the trend confirming itself.",
@@ -642,6 +670,7 @@ const PATTERNS = [
     slug: "change-of-character",
     title: "Change of Character (ChoCH)",
     category: "smc",
+    track: "trading",
     accent: "amber",
     bias: "bearish",
     tagline: "The trend breaks structure against itself — the first sign it's flipping.",
@@ -684,6 +713,7 @@ const PATTERNS = [
     slug: "order-block",
     title: "Order Block",
     category: "smc",
+    track: "trading",
     accent: "slate",
     bias: "bullish",
     tagline: "The last candle before a sharp move — a footprint of heavy buying or selling.",
@@ -725,6 +755,7 @@ const PATTERNS = [
     slug: "fair-value-gap",
     title: "Fair Value Gap (Imbalance)",
     category: "smc",
+    track: "trading",
     accent: "lime",
     bias: "bullish",
     tagline: "A three-candle gap the market skipped over — often revisited later.",
@@ -770,6 +801,7 @@ const PATTERNS = [
     slug: "liquidity-grab",
     title: "Liquidity Grab",
     category: "smc",
+    track: "trading",
     accent: "slate",
     bias: "bearish",
     tagline: "A sharp poke above a high (or below a low) — then a fast reversal.",
@@ -807,13 +839,638 @@ const PATTERNS = [
       "Trading the spike direction itself, assuming it's a genuine breakout",
       "Entering the reversal before price actually confirms with a close back inside the range"
     ]
+  }  ,
+  // ------------------------------------------------------------ CRYPTO
+  {
+    slug: "market-cap-vs-price",
+    title: "Market Cap vs. Coin Price",
+    category: "crypto-fundamentals",
+    track: "crypto",
+    accent: "cyan",
+    bias: "neutral",
+    tagline: "A cheap-looking coin price tells you almost nothing on its own.",
+    whatItIs:
+      "A coin's price is just total value divided by however many coins exist — it says nothing about the size of the project. Market cap (price × circulating supply) is the number that actually tells you how big something is. A coin priced at $0.001 with 500 billion coins can be a bigger project than a $50,000 coin with only 20 million in existence.",
+    howToSpot: [
+      "Market cap = current price × circulating supply, not total/max supply",
+      "Two assets can have wildly different prices and the same market cap",
+      "A 'cheap' price with an enormous supply is not automatically a bargain",
+      "Compare market caps to judge relative size, never raw prices",
+      "Circulating supply can change over time as coins unlock or get burned"
+    ],
+    psychology:
+      "A low price per coin feels psychologically like more upside — '100x easier to 10x from $0.001 than from $50,000' — but that logic ignores supply entirely. Traders chasing cheap-looking coins are really just buying more units of the same total value, which is why so many low-price coins with huge supplies underperform coins that already look 'expensive' per unit.",
+    analogy: {
+      title: "Slices vs. the size of the pizza",
+      body:
+        "A large pizza cut into 1,000 tiny slices and a small pizza cut into 4 big slices can cost the same per slice by coincidence, but that tells you nothing about which pizza is actually bigger. Market cap is the size of the whole pizza. Price per coin is just the size of one slice — and slice count is arbitrary."
+    },
+    diagram: {
+      kind: "bars",
+      bars: [
+        { label: "Coin A\n$2 · 10B supply", value: 1.0, display: "$20B cap" },
+        { label: "Coin B\n$40,000 · 250K supply", value: 0.5, display: "$10B cap" }
+      ]
+    },
+    howToTrade: [
+      "Before buying anything because it 'looks cheap', check its market cap against projects you already understand",
+      "Rank a shortlist of coins by market cap, not by price, before deciding where size-adjusted upside actually sits",
+      "Watch circulating supply changes (unlocks, vesting cliffs) — a jump in supply can quietly dilute your share even if price holds",
+      "Use market cap to size position risk sensibly: a $50M-cap coin is far more volatile than a $500B-cap one"
+    ],
+    cheatSheet: {
+      entry: "Rank candidates by market cap, not sticker price",
+      stopLoss: "Cheap price + huge/inflating supply, with no real usage behind it",
+      target: "Pairs well with circulating-vs-total-supply and on-chain activity",
+      timeframes: "Recheck whenever a supply unlock or burn event is scheduled",
+      bias: "Sizing signal, not a buy/sell trigger on its own"
+    },
+    mistakes: [
+      "Assuming a lower price per coin means more room to grow",
+      "Comparing prices across two different coins as if that means anything",
+      "Ignoring scheduled token unlocks that will expand circulating supply later"
+    ]
+  },
+  {
+    slug: "circulating-vs-total-supply",
+    title: "Circulating vs. Total Supply",
+    category: "crypto-fundamentals",
+    track: "crypto",
+    accent: "violet",
+    bias: "neutral",
+    tagline: "The coins in the market today are rarely all the coins that will ever exist.",
+    whatItIs:
+      "Circulating supply is what's actually tradable right now. Total supply includes coins that exist but are locked, vested, or not yet released — think team allocations, treasury reserves, or staking rewards still to be unlocked. Max supply is the hard ceiling a protocol will ever mint, if it has one at all.",
+    howToSpot: [
+      "Circulating supply: what's freely tradable today",
+      "Total supply: circulating + everything minted but locked, reserved, or unvested",
+      "Max supply: the absolute cap the protocol will ever issue (some coins have no cap)",
+      "A big gap between circulating and total supply signals future dilution ahead",
+      "Vesting schedules and unlock calendars are usually published by the project itself"
+    ],
+    psychology:
+      "A small circulating supply relative to total supply can make demand look stronger than it really is, because there simply isn't much available to sell yet. When a large unlock hits and early holders (team, VCs) can finally sell, that hidden supply meets the market all at once — often catching latecomers who never looked past today's circulating number.",
+    analogy: {
+      title: "The full warehouse behind the storefront",
+      body:
+        "Circulating supply is what's on the shelves for sale today. Total supply is everything in the warehouse out back, some of it contractually locked until a future date. If you only look at what's on the shelves, you'll misjudge how much more could show up the day that warehouse door opens."
+    },
+    diagram: {
+      kind: "donut",
+      segments: [
+        { label: "Circulating (tradable now)", value: 0.55, color: "cyan" },
+        { label: "Locked / vesting", value: 0.30, color: "amber" },
+        { label: "Team & treasury reserve", value: 0.15, color: "slate" }
+      ]
+    },
+    howToTrade: [
+      "Before buying, find the project's unlock schedule and mark the next big date on your calendar",
+      "Treat a large upcoming unlock as a known supply-side headwind, not a surprise",
+      "Prefer projects with transparent, gradual vesting over cliff unlocks that dump supply all at once",
+      "Weigh circulating supply against real usage — a small float with real demand behaves very differently from a small float with none"
+    ],
+    cheatSheet: {
+      entry: "Check the unlock calendar before entering a position",
+      stopLoss: "A cliff unlock landing right around your planned exit window",
+      target: "Pairs well with market-cap-vs-price for full supply context",
+      timeframes: "Recheck monthly, and always right before a scheduled unlock",
+      bias: "Supply-side risk factor, not a standalone signal"
+    },
+    mistakes: [
+      "Only ever checking circulating supply and never total or max supply",
+      "Getting caught by a scheduled unlock that was public information the whole time",
+      "Confusing 'no max supply' with 'infinite dilution risk' — check actual issuance rate, not just the absence of a cap"
+    ]
+  },
+  {
+    slug: "halving-and-scarcity",
+    title: "Halving Cycles and Scarcity",
+    category: "crypto-fundamentals",
+    track: "crypto",
+    accent: "amber",
+    bias: "neutral",
+    tagline: "Some protocols cut new supply in half on a fixed schedule, on purpose.",
+    whatItIs:
+      "A halving (or similar scheduled supply cut) is a hard-coded, predictable reduction in how many new coins are created per block. It doesn't touch existing supply — it slows down how fast new supply gets added going forward, which is why it's discussed as a scarcity event rather than a price-moving switch by itself.",
+    howToSpot: [
+      "The event date and mechanism are usually written into the protocol's code, not decided by anyone",
+      "New-coin issuance rate drops sharply (commonly by half) at the event",
+      "Existing circulating supply is unaffected — only the pace of future issuance changes",
+      "Halvings are announced and counted down publicly well in advance",
+      "Miner/validator revenue from new issuance drops at the same moment, which matters for network security economics"
+    ],
+    psychology:
+      "Because the schedule is public and predictable, much of the anticipated scarcity gets priced in gradually beforehand rather than arriving as a shock on the day itself. The common mistake is treating the halving date as a guaranteed price-pump trigger — history shows reactions vary a lot, and demand still has to show up for scarcity to matter at all.",
+    analogy: {
+      title: "The tap gets turned down, not the pool drained",
+      body:
+        "Think of new supply as water flowing from a tap into a pool. A halving turns that tap down to half its flow rate — it doesn't remove a drop of water already in the pool. Whether the pool's water becomes more valuable depends entirely on whether people still want to keep filling their cups from it."
+    },
+    diagram: {
+      kind: "line",
+      points: [[0, 0.15], [0.24, 0.15], [0.25, 0.5], [0.49, 0.5], [0.5, 0.72], [0.74, 0.72], [0.75, 0.85], [1, 0.85]],
+      markers: [
+        { index: 2, label: "1st halving" },
+        { index: 4, label: "2nd halving" },
+        { index: 6, label: "3rd halving" }
+      ]
+    },
+    howToTrade: [
+      "Mark the next scheduled event date and treat it as a known catalyst, not a surprise",
+      "Watch issuance-rate and miner/validator economics around the event, not just spot price",
+      "Don't assume the reaction repeats the same way every cycle — check what's different this time (demand backdrop, macro conditions)",
+      "Zoom out: scarcity events play out over months, not the single day of the halving itself"
+    ],
+    cheatSheet: {
+      entry: "Track the countdown, position ahead of the crowd rushing in at the deadline",
+      stopLoss: "Assuming the date itself guarantees a pump",
+      target: "Pairs well with circulating-vs-total-supply for the full scarcity picture",
+      timeframes: "Multi-month view around the event, not intraday",
+      bias: "Long-run scarcity factor, not a short-term trade signal"
+    },
+    mistakes: [
+      "Buying purely because a halving is coming, with no view on actual demand",
+      "Expecting the exact same price pattern as the previous cycle",
+      "Forgetting that reduced issuance can also mean reduced network security budget for proof-of-work chains"
+    ]
+  },
+  {
+    slug: "funding-rate-and-perpetuals",
+    title: "Funding Rate on Perpetual Futures",
+    category: "crypto-mechanics",
+    track: "crypto",
+    accent: "rose",
+    bias: "neutral",
+    tagline: "A recurring fee that keeps a never-expiring futures contract tied to spot.",
+    whatItIs:
+      "A perpetual futures contract never expires, so exchanges use a periodic funding payment between longs and shorts to keep its price anchored to the real spot price. When the perpetual trades above spot, longs pay shorts (positive funding); when it trades below spot, shorts pay longs (negative funding).",
+    howToSpot: [
+      "Funding is paid directly between traders, not to or from the exchange itself",
+      "Positive funding: perpetual price > spot, longs are paying, sentiment is crowded bullish",
+      "Negative funding: perpetual price < spot, shorts are paying, sentiment is crowded bearish",
+      "Funding is charged on a fixed interval (commonly every 8 hours) and shown as an annualized-looking percentage",
+      "Extreme funding in either direction usually means one side of the trade is overcrowded"
+    ],
+    psychology:
+      "Very high positive funding means an unusually large number of traders are leveraged long and paying for the privilege — that crowding is exactly the fuel for a sharp downside flush if price stalls and those longs get squeezed out. The reverse is true for deeply negative funding and short squeezes. Funding is essentially a live read of how one-sided leveraged positioning has become.",
+    analogy: {
+      title: "A toll for tilting the seesaw",
+      body:
+        "Picture longs and shorts on a seesaw that's supposed to sit level with the spot price. When too many people pile onto the 'long' side and tilt it up, they pay a toll to the shorts holding the other end down — a small, constant nudge trying to bring the seesaw back level."
+    },
+    diagram: {
+      kind: "diverging-bars",
+      bars: [
+        { label: "Calm market", value: 0.15, display: "+0.01%" },
+        { label: "Crowded longs", value: 0.85, display: "+0.09%" },
+        { label: "Crowded shorts", value: -0.7, display: "-0.07%" }
+      ]
+    },
+    howToTrade: [
+      "Treat extreme positive funding as a warning that longs are crowded, not as a reason to short blindly",
+      "Treat extreme negative funding the same way in reverse for shorts",
+      "Combine funding with open interest — rising open interest plus extreme funding is the classic squeeze setup",
+      "Never ignore funding cost on a position you plan to hold across multiple funding intervals; it compounds"
+    ],
+    cheatSheet: {
+      entry: "Read funding as a crowding gauge before adding to a leveraged position",
+      stopLoss: "Holding a heavily-funded position through several payment intervals without accounting for the cost",
+      target: "Pairs well with open interest for spotting squeeze setups",
+      timeframes: "Checked every funding interval (commonly every 8 hours)",
+      bias: "Sentiment/crowding gauge, not a directional signal by itself"
+    },
+    mistakes: [
+      "Confusing funding rate with a trading fee owed to the exchange",
+      "Opening a large leveraged position without checking current funding cost first",
+      "Assuming extreme funding means an immediate reversal — crowded trades can stay crowded longer than expected"
+    ]
+  },
+  {
+    slug: "stablecoins-and-pegs",
+    title: "Stablecoins and the Peg",
+    category: "crypto-mechanics",
+    track: "crypto",
+    accent: "emerald",
+    bias: "neutral",
+    tagline: "Designed to hold a fixed value — but 'designed to' isn't a guarantee.",
+    whatItIs:
+      "A stablecoin is a crypto asset built to track a stable reference, almost always $1 USD. It holds that peg through backing reserves (cash/short-term assets), over-collateralized crypto collateral, or an algorithmic mechanism — and each approach has different failure modes if trust or liquidity breaks down.",
+    howToSpot: [
+      "Fiat-backed: reserves of cash/cash-equivalents meant to match tokens 1:1, redeemable through the issuer",
+      "Crypto-collateralized: over-collateralized by other crypto assets, managed by smart contracts",
+      "Algorithmic: relies on incentive mechanisms and arbitrage rather than hard reserves to hold the peg",
+      "A healthy stablecoin trades within a tight band around its $1 target almost all the time",
+      "A sustained gap from $1 (a 'depeg') signals the market doubts the backing or mechanism"
+    ],
+    psychology:
+      "Confidence is the actual peg mechanism for most designs — reserves and smart contracts only work if enough people believe redemption will be honored. The moment that belief cracks, even briefly, holders can rush to exit at once, which is exactly the kind of run that turns a small wobble into a real depeg.",
+    analogy: {
+      title: "A promise to always exchange $1 for $1",
+      body:
+        "A stablecoin is like a claim ticket that says 'redeemable for exactly $1, always.' As long as everyone trusts that ticket and doesn't all show up to cash it in on the same day, it trades like a dollar. Trust is the actual peg — the reserves are just what backs the promise up if trust is ever tested."
+    },
+    diagram: {
+      kind: "line",
+      points: [[0, 0.5], [0.2, 0.48], [0.4, 0.52], [0.55, 0.5], [0.65, 0.8], [0.78, 0.55], [1, 0.5]],
+      trend1: [[0, 0.5], [1, 0.5]],
+      markers: [{ index: 4, label: "Depeg event" }]
+    },
+    howToTrade: [
+      "Know which mechanism a stablecoin uses before holding it in size, not after something goes wrong",
+      "Watch for a sustained (not momentary) gap from $1 — brief wobbles happen even in healthy stablecoins",
+      "Diversify stablecoin exposure across issuers rather than parking everything with one",
+      "Understand your actual redemption path (who can redeem, at what minimum size, how fast) before you need it"
+    ],
+    cheatSheet: {
+      entry: "Check backing/audits before parking meaningful size in any stablecoin",
+      stopLoss: "A sustained trade away from $1 with no clear resolution timeline",
+      target: "Pairs well with on-chain-vs-exchange-custody for storage risk",
+      timeframes: "Recheck reserve reports/attestations periodically, not just once",
+      bias: "Risk-management topic, not a trading signal"
+    },
+    mistakes: [
+      "Treating every stablecoin as equally 'safe' regardless of its backing mechanism",
+      "Ignoring a slow, sustained depeg because it hasn't made headlines yet",
+      "Holding a very large stablecoin position with no idea how redemption actually works"
+    ]
+  },
+  {
+    slug: "on-chain-vs-exchange-custody",
+    title: "Self-Custody vs. Exchange Custody",
+    category: "crypto-mechanics",
+    track: "crypto",
+    accent: "slate",
+    bias: "neutral",
+    tagline: "Whoever holds the private keys is the one who actually controls the coins.",
+    whatItIs:
+      "Self-custody means you hold your own private keys (in a wallet you control), so only you can move your coins. Exchange custody means the exchange holds the keys on your behalf, and your account shows a balance they owe you — a claim against them, not coins in your own wallet, until you withdraw.",
+    howToSpot: [
+      "Self-custody: you personally control the private key or seed phrase",
+      "Exchange custody: the exchange's own wallets hold the actual coins; your app balance is a ledger entry",
+      "You can verify self-custodied holdings directly on-chain at any time",
+      "Exchange balances depend entirely on that exchange staying solvent and honest",
+      "Withdrawing from an exchange converts a custodial claim into a self-custodied holding"
+    ],
+    psychology:
+      "Leaving coins on an exchange feels convenient and 'safe' because the interface looks identical to genuine ownership — but it quietly shifts the actual holding risk onto a third party's solvency and security. Most people only think about that distinction after an exchange gets hacked or halts withdrawals, which is exactly the wrong time to learn it.",
+    analogy: {
+      title: "Cash under your mattress vs. cash in someone else's safe",
+      body:
+        "Self-custody is cash under your own mattress — nobody else can touch it, but you're also fully responsible for not losing it. Exchange custody is cash in someone else's safe with your name on a receipt. Convenient, and usually fine, but it's still their safe, their rules, and their solvency standing between you and your money."
+    },
+    diagram: {
+      kind: "donut",
+      segments: [
+        { label: "Self-custody (your wallet)", value: 0.5, color: "cyan" },
+        { label: "Exchange custody (their wallet)", value: 0.5, color: "slate" }
+      ]
+    },
+    howToTrade: [
+      "Keep active trading capital on the exchange you're actively using; move long-term holdings to self-custody",
+      "Never treat an exchange balance as equivalent to coins already in your own wallet",
+      "Understand withdrawal limits and processing times before you need to move funds urgently",
+      "Split large holdings across custody methods rather than concentrating everything in one place"
+    ],
+    cheatSheet: {
+      entry: "Move long-term holdings to self-custody once trading activity is done",
+      stopLoss: "Leaving your entire holdings on one exchange indefinitely with no plan",
+      target: "Pairs well with stablecoins-and-pegs for overall storage risk",
+      timeframes: "Review your custody split periodically, not just once",
+      bias: "Risk-management topic, not a trading signal"
+    },
+    mistakes: [
+      "Assuming an exchange balance is exactly as safe as a self-custodied wallet",
+      "Never testing a small withdrawal to confirm the process actually works before you need it at scale",
+      "Losing a self-custody seed phrase — with self-custody, there's no support line to call"
+    ]
+  },
+  // ------------------------------------------------------------ STOCKS
+  {
+    slug: "pe-ratio-explained",
+    title: "P/E Ratio Explained",
+    category: "stock-fundamentals",
+    track: "stocks",
+    accent: "violet",
+    bias: "neutral",
+    tagline: "How many years of current profit you're paying for, in one number.",
+    whatItIs:
+      "The price-to-earnings ratio divides a company's share price by its earnings per share. A P/E of 20 means investors are paying 20 times last year's (or next year's, for forward P/E) earnings for one share — roughly, 20 years of current profit to 'earn back' the price, if nothing ever changed.",
+    howToSpot: [
+      "Trailing P/E uses the last 12 months of reported earnings",
+      "Forward P/E uses analysts' earnings estimates for the year ahead",
+      "A high P/E usually means the market expects fast future growth",
+      "A low P/E can mean genuine undervaluation — or a real problem the market has already priced in",
+      "P/E only makes sense compared against something: the sector average, peers, or the company's own history"
+    ],
+    psychology:
+      "A 'cheap' low P/E stock feels safe and a 'pricey' high P/E stock feels risky, but P/E alone doesn't say which is true — it just reflects what the market currently expects. Growth companies often run high P/Es for years specifically because earnings keep growing into that price, while some low-P/E stocks stay cheap because the market rightly expects earnings to shrink.",
+    analogy: {
+      title: "The payback period on a rental property",
+      body:
+        "P/E is like judging a rental property by how many years of current rent it would take to pay back the purchase price. A property charging more per year needs fewer years to pay back — that's a 'lower P/E'. But you'd still want to know if the rent is about to rise, fall, or stay flat before deciding it's a good deal."
+    },
+    diagram: {
+      kind: "bars",
+      bars: [
+        { label: "Stock A", value: 0.45, display: "12x" },
+        { label: "Stock B", value: 0.9, display: "24x" },
+        { label: "Stock C", value: 0.68, display: "18x" }
+      ],
+      trend1: [[0, 0.32], [1, 0.32]]
+    },
+    howToTrade: [
+      "Always compare a stock's P/E to its own sector average, not to the market as a whole",
+      "Pair P/E with the earnings growth rate — a high P/E next to fast growth (a low PEG ratio) can still be reasonable",
+      "Be suspicious of a very low P/E with declining earnings — it may be 'cheap' for a real reason",
+      "Recheck P/E every earnings season since the 'E' in the ratio changes with each report"
+    ],
+    cheatSheet: {
+      entry: "Compare to the sector average, not in isolation",
+      stopLoss: "A P/E far above peers with no growth story to justify it",
+      target: "Pairs well with P/B ratio, PEG ratio, and the earnings growth trend",
+      timeframes: "Recheck each earnings season as the 'E' updates",
+      bias: "Valuation signal, not a standalone buy/sell trigger"
+    },
+    mistakes: [
+      "Judging a stock as 'cheap' or 'expensive' from P/E alone, with no peer comparison",
+      "Ignoring that a very high or very low P/E is usually pricing in a specific future expectation",
+      "Comparing P/E across totally different sectors, where 'normal' ranges vary a lot"
+    ]
+  },
+  {
+    slug: "market-cap-and-free-float",
+    title: "Market Cap and Free Float",
+    category: "stock-fundamentals",
+    track: "stocks",
+    accent: "cyan",
+    bias: "neutral",
+    tagline: "Not every issued share is actually available for you to trade.",
+    whatItIs:
+      "Market cap is share price times total shares outstanding — the company's total equity value. Free float is the subset of those shares actually available to trade publicly, excluding shares locked up by insiders, founders, or governments. A small free float relative to market cap means fewer shares chasing the same demand, which can make price swings sharper in both directions.",
+    howToSpot: [
+      "Market cap = share price × total shares outstanding",
+      "Free float = shares outstanding minus insider/founder/strategic locked holdings",
+      "A low free-float percentage means the tradable slice of the company is much smaller than its headline market cap",
+      "Index providers often weight companies by free-float market cap, not total market cap",
+      "Free float can change over time as lock-ups expire or insiders sell down stakes"
+    ],
+    psychology:
+      "A stock with a huge market cap but a tiny free float can move violently on modest trading volume, because there simply isn't much supply available to absorb buying or selling pressure. Traders who size positions off the headline market cap alone can badly misjudge how illiquid the actual tradable float really is.",
+    analogy: {
+      title: "The whole building vs. the units for rent",
+      body:
+        "Market cap is the value of an entire apartment building. Free float is only the units actually listed for rent, not the ones the owner lives in or keeps off the market. A tiny handful of available units can swing the 'going rate' far more than the size of the whole building would suggest."
+    },
+    diagram: {
+      kind: "donut",
+      segments: [
+        { label: "Free float (tradable)", value: 0.35, color: "cyan" },
+        { label: "Insider / founder holdings", value: 0.45, color: "slate" },
+        { label: "Strategic / government stake", value: 0.20, color: "amber" }
+      ]
+    },
+    howToTrade: [
+      "Check free-float percentage, not just market cap, before sizing a position in a smaller or newly-listed company",
+      "Expect sharper moves on lower-float stocks around news, earnings, or lock-up expiry dates",
+      "Watch upcoming lock-up expiries — a flood of newly-tradable shares can pressure price",
+      "Use average daily volume alongside float to judge how easily you could exit a position"
+    ],
+    cheatSheet: {
+      entry: "Check float percentage before sizing a position in smaller names",
+      stopLoss: "A lock-up expiry landing right around your planned exit window",
+      target: "Pairs well with average daily volume for a liquidity read",
+      timeframes: "Recheck around scheduled lock-up expiry dates",
+      bias: "Liquidity/risk-sizing factor, not a directional signal"
+    },
+    mistakes: [
+      "Sizing a position off total market cap while ignoring how small the free float actually is",
+      "Being surprised by a lock-up expiry that was public knowledge from the IPO prospectus",
+      "Assuming a 'big company' is automatically liquid — float size, not market cap, drives real tradability"
+    ]
+  },
+  {
+    slug: "earnings-season-and-eps",
+    title: "Earnings Season and EPS Surprises",
+    category: "stock-events",
+    track: "stocks",
+    accent: "amber",
+    bias: "neutral",
+    tagline: "The market reacts to the gap between expected and actual, not the number alone.",
+    whatItIs:
+      "Earnings per share (EPS) is a company's profit divided by its shares outstanding. Once a quarter, companies report actual results against what analysts collectively expected — a 'beat' means actual EPS came in above estimates, a 'miss' means it came in below. Price often reacts more to that surprise (and forward guidance) than to whether profit grew at all.",
+    howToSpot: [
+      "The consensus estimate is the average of professional analysts' EPS forecasts before the report",
+      "A 'beat' or 'miss' is measured against that consensus, not against last year's number",
+      "Forward guidance (management's outlook for the next quarter/year) often moves price more than the past quarter's actual result",
+      "Revenue beats/misses are reported alongside EPS and can tell a different story than earnings alone",
+      "After-hours/pre-market price moves right after a report reflect the market digesting the surprise in real time"
+    ],
+    psychology:
+      "A company can grow profit year-over-year and still see its stock fall hard, simply because it grew less than the market had already priced in. That's the core of why 'beat expectations' matters more short-term than the raw growth number — the market had already bet on a certain outcome, and the surprise relative to that bet is what gets traded.",
+    analogy: {
+      title: "Beating your own prediction, not last year's score",
+      body:
+        "Imagine you predicted you'd run a race in 20 minutes, and everyone bet based on that. If you actually finish in 19 minutes, that's a 'beat' even though it's a similar time to last year — because you did better than the specific number people were expecting. Finish in 21 minutes and it's a 'miss', even if that's still faster than you ran two years ago."
+    },
+    diagram: {
+      kind: "diverging-bars",
+      bars: [
+        { label: "Q1: beat", value: 0.6, display: "+8%" },
+        { label: "Q2: miss", value: -0.35, display: "-4%" },
+        { label: "Q3: beat", value: 0.8, display: "+11%" },
+        { label: "Q4: in-line", value: 0.05, display: "+0.5%" }
+      ]
+    },
+    howToTrade: [
+      "Check consensus estimates before the report, not just the prior quarter's actual number",
+      "Weigh forward guidance at least as heavily as the reported quarter itself",
+      "Separate EPS beats/misses from revenue beats/misses — they can tell conflicting stories",
+      "Be cautious trading directly into an earnings report; the initial reaction can reverse once the full call is digested"
+    ],
+    cheatSheet: {
+      entry: "Compare actual EPS/revenue to consensus, and weigh forward guidance",
+      stopLoss: "Trading size purely on last year's number, ignoring what was actually expected",
+      target: "Pairs well with P/E ratio for the valuation reaction afterward",
+      timeframes: "Quarterly, around each scheduled earnings date",
+      bias: "Event-driven volatility, not a standing directional signal"
+    },
+    mistakes: [
+      "Reacting to 'profit grew' headlines without checking whether it beat or missed consensus",
+      "Ignoring forward guidance, which often matters more than the quarter just reported",
+      "Holding a large position through an earnings date without sizing for the extra volatility"
+    ]
+  },
+  {
+    slug: "dividends-and-yield",
+    title: "Dividends and Dividend Yield",
+    category: "stock-fundamentals",
+    track: "stocks",
+    accent: "emerald",
+    bias: "neutral",
+    tagline: "A cash return to shareholders, expressed as a percentage of share price.",
+    whatItIs:
+      "A dividend is a portion of profit a company pays directly to shareholders, usually quarterly. Dividend yield is the annual dividend per share divided by the current share price, expressed as a percentage — it tells you the cash return relative to what you'd pay for the stock today, separate from any price appreciation.",
+    howToSpot: [
+      "Dividend yield = annual dividend per share ÷ current share price",
+      "Yield rises automatically if price falls and the dividend stays the same — and vice versa",
+      "The payout ratio (dividend ÷ earnings) shows how much of profit is being paid out versus retained",
+      "A dividend can be cut or suspended; past payments are not a guarantee of future ones",
+      "Ex-dividend date matters: buying after it means you won't receive that specific upcoming payment"
+    ],
+    psychology:
+      "An unusually high yield can look like a great deal, but yield rises when price falls — so a very high number is sometimes the market pricing in a dividend cut that hasn't been announced yet, not a genuine bargain. Chasing the highest yield on a list without checking payout ratio and earnings trend is a classic way to walk into exactly that trap.",
+    analogy: {
+      title: "Rental yield on a property that might need repairs",
+      body:
+        "Dividend yield is like rental yield on a property — the cash return relative to price. But if a landlord is paying out far more in rent than the property realistically earns, that's not a great sign for how long the payments can continue. The same caution applies to a company paying out more than its earnings comfortably support."
+    },
+    diagram: {
+      kind: "bars",
+      bars: [
+        { label: "Stock A", value: 0.4, display: "2.1%" },
+        { label: "Stock B", value: 0.7, display: "3.8%" },
+        { label: "Stock C", value: 1.0, display: "5.4%" }
+      ]
+    },
+    howToTrade: [
+      "Check payout ratio alongside yield — a yield paid from a small, sustainable slice of earnings is healthier than one paid from nearly all of it",
+      "Look at the dividend growth history, not just today's snapshot yield",
+      "Treat an unusually high yield versus peers as a flag to investigate, not automatically a bargain",
+      "Note the ex-dividend date if timing a purchase specifically to capture a payment"
+    ],
+    cheatSheet: {
+      entry: "Check payout ratio and dividend history before chasing a high yield",
+      stopLoss: "A yield far above sector peers with no clear explanation",
+      target: "Pairs well with P/E ratio and earnings trend for the full income picture",
+      timeframes: "Recheck each time a dividend is declared or earnings are reported",
+      bias: "Income/valuation factor, not a standalone signal"
+    },
+    mistakes: [
+      "Buying the highest-yielding stock on a screener without checking if the payout is sustainable",
+      "Forgetting that a falling share price alone can inflate yield with no real improvement underneath",
+      "Ignoring the ex-dividend date and being surprised by a small price adjustment around it"
+    ]
+  },
+  {
+    slug: "ipo-lifecycle",
+    title: "The IPO Lifecycle",
+    category: "stock-events",
+    track: "stocks",
+    accent: "rose",
+    bias: "neutral",
+    tagline: "From private company to public stock — and the lock-up cliff most new investors forget.",
+    whatItIs:
+      "An IPO (initial public offering) is when a private company sells shares to the public for the first time. The path typically runs from the priced offering, to a first-day 'pop' (or drop) as public trading begins, through a quiet period, and into a lock-up expiry date when early insiders and investors are finally allowed to sell — a moment that can bring a wave of new selling pressure.",
+    howToSpot: [
+      "Offer price: the price set before the stock starts public trading",
+      "First-day pop: the often-volatile jump (or fall) once trading opens",
+      "Lock-up period: typically 90-180 days where insiders/early investors cannot sell",
+      "Lock-up expiry: the date that restriction lifts, often watched closely for a supply-driven dip",
+      "Quiet period: a window with restrictions on company promotional communication right after listing"
+    ],
+    psychology:
+      "The first-day pop gets all the headlines, but a huge slice of a newly-public company's actual shares are still locked up and simply can't be sold yet — which means the stock's early trading behavior reflects a small floating supply, not the company's true long-run supply-demand balance. Many investors get excited by a strong debut without realizing the real test comes months later at lock-up expiry.",
+    analogy: {
+      title: "A grand opening with most of the inventory still in the back room",
+      body:
+        "An IPO's first trading day is like a store's grand opening where only a fraction of total inventory is actually out on the shelves — the rest is contractually stuck in the back room for months. Early demand can look dramatic against that thin available supply. The real supply-demand picture only shows up once everything in the back room is allowed onto the shelves."
+    },
+    diagram: {
+      kind: "line",
+      points: [[0, 0.75], [0.15, 0.2], [0.3, 0.3], [0.5, 0.25], [0.65, 0.28], [0.66, 0.68], [0.85, 0.6], [1, 0.55]],
+      markers: [
+        { index: 1, label: "IPO day pop" },
+        { index: 5, label: "Lock-up expiry" }
+      ]
+    },
+    howToTrade: [
+      "Mark the lock-up expiry date the moment a company IPOs — it's public information from the prospectus",
+      "Be cautious extrapolating long-term conviction from first-day trading with such a thin float",
+      "Watch trading volume and price action specifically around the lock-up expiry window",
+      "Read the actual prospectus for insider share counts rather than relying on headline enthusiasm"
+    ],
+    cheatSheet: {
+      entry: "Mark the lock-up expiry date from day one and revisit closer to it",
+      stopLoss: "Reading too much long-term signal into thin-float first-day trading",
+      target: "Pairs well with market-cap-and-free-float for the supply picture",
+      timeframes: "First trading day, then again near the 90-180 day lock-up expiry",
+      bias: "Event-driven volatility around two known dates"
+    },
+    mistakes: [
+      "Judging long-term prospects purely from first-day trading action",
+      "Being surprised by a lock-up-expiry sell-off that was scheduled from day one",
+      "Ignoring the quiet period and over-weighting sparse company commentary right after listing"
+    ]
+  },
+  {
+    slug: "sector-rotation",
+    title: "Sector Rotation",
+    category: "stock-fundamentals",
+    track: "stocks",
+    accent: "lime",
+    bias: "neutral",
+    tagline: "Money doesn't leave the market so much as it moves between sectors.",
+    whatItIs:
+      "Sector rotation describes how investor money shifts between industry groups (tech, financials, energy, healthcare, and others) as the economic cycle and interest-rate environment change. Different sectors tend to lead or lag at different stages — growth-heavy sectors often lead when conditions are easy, while defensive sectors often hold up better when conditions tighten.",
+    howToSpot: [
+      "Track relative performance of sector indices/ETFs against the broad market, not just their absolute price",
+      "Rate-sensitive growth sectors often lead in low-rate, easy-liquidity environments",
+      "Defensive sectors (utilities, staples, healthcare) often hold up better when growth expectations fall",
+      "Energy and materials often track commodity cycles more than the broad market's mood",
+      "A sector that's been the weakest for a while can become the next leader once conditions shift"
+    ],
+    psychology:
+      "It's tempting to keep chasing whichever sector already led the last stretch, but rotation exists precisely because leadership changes as conditions change — the crowd piling into last cycle's winner is often buying right as the next rotation begins. Recognizing that money is cyclical between sectors, not just between 'in the market' and 'out of the market', is the core of the concept.",
+    analogy: {
+      title: "Passengers moving between train carriages",
+      body:
+        "Picture the whole market as a moving train and sectors as its carriages. Passengers (money) don't get off the train each time conditions change — they mostly just walk to a different carriage that suits the ride better right now. The train's total passenger count barely changes; where everyone is sitting shifts a lot."
+    },
+    diagram: {
+      kind: "donut",
+      segments: [
+        { label: "Technology", value: 0.3, color: "violet" },
+        { label: "Financials", value: 0.22, color: "cyan" },
+        { label: "Energy", value: 0.18, color: "amber" },
+        { label: "Healthcare", value: 0.16, color: "emerald" },
+        { label: "Other sectors", value: 0.14, color: "slate" }
+      ]
+    },
+    howToTrade: [
+      "Track sector ETFs' relative strength against a broad index rather than watching sectors in isolation",
+      "Pay attention to interest-rate and economic-cycle signals that historically precede rotations",
+      "Avoid assuming last quarter's leading sector will automatically keep leading",
+      "Diversify across sectors so a rotation away from your biggest weighting doesn't dominate your results"
+    ],
+    cheatSheet: {
+      entry: "Watch relative sector strength against the broad index, not absolute price alone",
+      stopLoss: "Chasing last cycle's leading sector right as conditions are already shifting",
+      target: "Pairs well with market-cap-and-free-float for position sizing within a sector",
+      timeframes: "Multi-month/quarterly view, tracked alongside the economic cycle",
+      bias: "Portfolio-allocation concept, not a single-stock signal"
+    },
+    mistakes: [
+      "Treating one sector's strength as a signal for the whole market's direction",
+      "Ignoring how interest-rate changes tend to favor different sectors at different times",
+      "Overconcentrating in whichever sector performed best recently, right before it can rotate out of favor"
+    ]
   }
+
 ];
+
+function tracksPayload() {
+  return TRACKS.map((t) => ({
+    id: t.id,
+    label: t.label,
+    count: PATTERNS.filter((p) => p.track === t.id).length
+  }));
+}
 
 function categoriesPayload() {
   return CATEGORIES.map((c) => ({
     id: c.id,
     label: c.label,
+    track: c.track,
     count: PATTERNS.filter((p) => p.category === c.id).length
   }));
 }
@@ -823,6 +1480,7 @@ function summaryPayload() {
     slug: p.slug,
     title: p.title,
     category: p.category,
+    track: p.track,
     accent: p.accent,
     bias: p.bias,
     tagline: p.tagline
@@ -837,4 +1495,4 @@ function findBySlug(slug) {
   return PATTERNS.find((x) => x.slug === slug) || null;
 }
 
-module.exports = { CATEGORIES, categoriesPayload, summaryPayload, fullPayload, findBySlug };
+module.exports = { TRACKS, CATEGORIES, tracksPayload, categoriesPayload, summaryPayload, fullPayload, findBySlug };

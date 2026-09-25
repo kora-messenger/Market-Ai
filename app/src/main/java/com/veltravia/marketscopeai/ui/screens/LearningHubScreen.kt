@@ -16,15 +16,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,9 +80,17 @@ import org.json.JSONObject
 // our own original copy.
 // ===========================================================================
 
-data class LearningCategory(val id: String, val label: String, val count: Int)
+data class LearningTrack(val id: String, val label: String, val count: Int)
+
+data class LearningCategory(val id: String, val label: String, val track: String, val count: Int)
 
 data class LearningAnalogy(val title: String, val body: String)
+
+/** A single bar in a "bars" or "diverging-bars" diagram. */
+data class LearningBar(val label: String, val value: Double, val display: String? = null)
+
+/** A single ring slice in a "donut" diagram (values are fractions, ~summing to 1). */
+data class LearningDonutSegment(val label: String, val value: Double, val color: String)
 
 data class LearningCandle(
     val x: Double, val high: Double, val bodyTop: Double,
@@ -103,7 +112,9 @@ data class LearningDiagram(
     val trend1: List<List<Double>>? = null,
     val trend2: List<List<Double>>? = null,
     val zone: LearningZone? = null,
-    val markers: List<LearningMarker> = emptyList()
+    val markers: List<LearningMarker> = emptyList(),
+    val bars: List<LearningBar> = emptyList(),
+    val segments: List<LearningDonutSegment> = emptyList()
 )
 
 data class LearningCheatSheet(
@@ -115,6 +126,7 @@ data class LearningPattern(
     val slug: String,
     val title: String,
     val category: String,
+    val track: String,
     val accent: String,
     val bias: String,
     val tagline: String,
@@ -130,6 +142,7 @@ data class LearningPattern(
 
 /** In-memory cache shared between the hub grid and the lesson screen. */
 object LearningRepository {
+    var tracks: List<LearningTrack> = emptyList()
     var categories: List<LearningCategory> = emptyList()
     var patterns: List<LearningPattern> = emptyList()
     fun find(slug: String): LearningPattern? = patterns.firstOrNull { it.slug == slug }
@@ -174,6 +187,26 @@ private fun JSONObject.toDiagram(): LearningDiagram {
                 val m = arr.optJSONObject(i) ?: return@mapNotNull null
                 LearningMarker(index = m.optInt("index"), label = m.optString("label"))
             }
+        } ?: emptyList(),
+        bars = optJSONArray("bars")?.let { arr ->
+            (0 until arr.length()).mapNotNull { i ->
+                val b = arr.optJSONObject(i) ?: return@mapNotNull null
+                LearningBar(
+                    label = b.optString("label"),
+                    value = b.optDouble("value"),
+                    display = b.optString("display").takeIf { d -> d.isNotBlank() }
+                )
+            }
+        } ?: emptyList(),
+        segments = optJSONArray("segments")?.let { arr ->
+            (0 until arr.length()).mapNotNull { i ->
+                val s = arr.optJSONObject(i) ?: return@mapNotNull null
+                LearningDonutSegment(
+                    label = s.optString("label"),
+                    value = s.optDouble("value"),
+                    color = s.optString("color", "violet")
+                )
+            }
         } ?: emptyList()
     )
 }
@@ -182,6 +215,7 @@ private fun parsePattern(p: JSONObject): LearningPattern = LearningPattern(
     slug = p.optString("slug"),
     title = p.optString("title"),
     category = p.optString("category"),
+    track = p.optString("track", "trading"),
     accent = p.optString("accent", "violet"),
     bias = p.optString("bias", "neutral"),
     tagline = p.optString("tagline"),
@@ -242,6 +276,7 @@ fun LearningHubScreen(
 
     var loading by remember { mutableStateOf(LearningRepository.patterns.isEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var selectedTrack by remember { mutableStateOf("trading") }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
 
     fun load() {
@@ -255,13 +290,19 @@ fun LearningHubScreen(
         scope.launch {
             try {
                 val res = ApiClient.fetchLearningPatterns(token)
+                val trks = res.optJSONArray("tracks") ?: JSONArray()
                 val cats = res.optJSONArray("categories") ?: JSONArray()
                 val pats = res.optJSONArray("patterns") ?: JSONArray()
+                LearningRepository.tracks = (0 until trks.length()).map { i ->
+                    val t = trks.getJSONObject(i)
+                    LearningTrack(id = t.optString("id"), label = t.optString("label"), count = t.optInt("count"))
+                }
                 LearningRepository.categories = (0 until cats.length()).map { i ->
                     val c = cats.getJSONObject(i)
                     LearningCategory(
                         id = c.optString("id"),
                         label = c.optString("label"),
+                        track = c.optString("track", "trading"),
                         count = c.optInt("count")
                     )
                 }
@@ -282,8 +323,16 @@ fun LearningHubScreen(
     LaunchedEffect(Unit) { if (LearningRepository.patterns.isEmpty()) load() }
 
     val all = LearningRepository.patterns
-    val visible = if (selectedCategory == null) all else all.filter { it.category == selectedCategory }
+    val inTrack = all.filter { it.track == selectedTrack }
+    val visible = if (selectedCategory == null) inTrack else inTrack.filter { it.category == selectedCategory }
+    val trackCategories = LearningRepository.categories.filter { it.track == selectedTrack }
     val categoryLabel = { id: String -> LearningRepository.categories.firstOrNull { it.id == id }?.label ?: id }
+    // Short, friendly subtitle per track — same header, different framing.
+    val trackSubtitle = when (selectedTrack) {
+        "crypto" -> "How crypto markets actually work, in plain English"
+        "stocks" -> "The fundamentals behind every stock move"
+        else -> "Read the setups the market repeats every week"
+    }
 
     Column(
         modifier = Modifier
@@ -304,10 +353,33 @@ fun LearningHubScreen(
                     color = TextPrimary
                 )
                 Text(
-                    "Read the setups the market repeats every week",
+                    trackSubtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+
+        // Three-in-one: Trading / Crypto / Stocks. Switching tracks resets
+        // the category filter since each track has its own category set.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LearningRepository.tracks.ifEmpty {
+                listOf(LearningTrack("trading", "Trading", 0), LearningTrack("crypto", "Crypto", 0), LearningTrack("stocks", "Stocks", 0))
+            }.forEach { t ->
+                TrackTab(
+                    label = t.label,
+                    selected = selectedTrack == t.id,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (selectedTrack != t.id) {
+                        selectedTrack = t.id
+                        selectedCategory = null
+                    }
+                }
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -330,13 +402,15 @@ fun LearningHubScreen(
                 }
             }
             else -> {
-                // Category filter chips
+                // Category filter chips — scoped to the selected track only.
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    FilterChip("All", all.size, selectedCategory == null) { selectedCategory = null }
-                    LearningRepository.categories.forEach { c ->
+                    FilterChip("All", inTrack.size, selectedCategory == null) { selectedCategory = null }
+                    trackCategories.forEach { c ->
                         FilterChip(c.label, c.count, selectedCategory == c.id) {
                             selectedCategory = if (selectedCategory == c.id) null else c.id
                         }
@@ -344,20 +418,46 @@ fun LearningHubScreen(
                 }
                 Spacer(Modifier.height(14.dp))
 
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 20.dp)
-                ) {
-                    items(visible, key = { it.slug }) { p ->
-                        PatternCard(p, categoryLabel(p.category)) { onOpenPattern(p.slug) }
+                if (visible.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No lessons in this category yet.", color = TextMuted)
+                    }
+                } else {
+                    // Compact, single-column list — a fixed-square grid card leaves
+                    // a lot of dead space for short lesson taglines, which is the
+                    // "awkward" gap this replaces.
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = 20.dp)
+                    ) {
+                        items(visible, key = { it.slug }) { p ->
+                            PatternCard(p, categoryLabel(p.category)) { onOpenPattern(p.slug) }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TrackTab(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) AccentViolet else SurfaceLight)
+            .clickable { onClick() }
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = if (selected) Color.White else TextSecondary
+        )
     }
 }
 
@@ -382,57 +482,68 @@ private fun FilterChip(label: String, count: Int, selected: Boolean, onClick: ()
 @Composable
 private fun PatternCard(p: LearningPattern, categoryLabel: String, onClick: () -> Unit) {
     val accent = accentColor(p.accent)
-    Column(
+    // Compact, pastel-tinted row card — height follows content instead of a
+    // fixed square, so a short one-line tagline never leaves a dead gap.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .border(1.dp, BorderSubtle, RoundedCornerShape(16.dp))
+            .background(accent.copy(alpha = 0.10f))
+            .border(1.dp, accent.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
             .clickable { onClick() }
-            .padding(14.dp)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(accent)
-            )
-            Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(accent)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    categoryLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    biasLabel(p.bias),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = biasColor(p.bias),
+                    maxLines = 1
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
-                categoryLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = accent,
-                fontWeight = FontWeight.SemiBold,
+                p.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                p.tagline,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            p.title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            p.tagline,
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            biasLabel(p.bias),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = biasColor(p.bias)
+        Spacer(Modifier.width(10.dp))
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -902,6 +1013,136 @@ private fun PatternDiagram(diagram: LearningDiagram, accent: Color) {
                     if (above) off.y - 9.dp.toPx() else off.y + 17.dp.toPx(),
                     labelPaint
                 )
+            }
+        } else if (diagram.kind == "donut" && diagram.segments.isNotEmpty()) {
+            // Proportion donut: slices sized by value, labelled with %.
+            val ringCol = Color(0xFFE2E8F0)
+            val ringW = 22.dp.toPx()
+            val strokeW = 16.dp.toPx()
+            val radius = (minOf(w, h * 1.4f) / 2f) * 0.62f - ringW
+            val center = Offset(w * 0.32f, h / 2f)
+            // soft backing ring
+            drawCircle(color = ringCol, radius = radius + strokeW / 2 + 2, center = center, style = Stroke(strokeW + 4))
+            var start = -90f
+            val total = diagram.segments.map { it.value }.sum().takeIf { it > 0 } ?: 1.0
+            diagram.segments.forEach { seg ->
+                val sweep = (seg.value / total * 360.0).toFloat()
+                drawArc(
+                    color = accentColor(seg.color),
+                    startAngle = start,
+                    sweepAngle = sweep,
+                    useCenter = false,
+                    topLeft = Offset(center.x - radius, center.y - radius),
+                    size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2),
+                    style = Stroke(strokeW)
+                )
+                start += sweep
+            }
+            // centre caption + legend on the right
+            labelPaint.textAlign = android.graphics.Paint.Align.CENTER
+            drawContext.canvas.nativeCanvas.drawText(
+                "100%",
+                center.x,
+                center.y + 4.dp.toPx(),
+                labelPaint
+            )
+            labelPaint.textAlign = android.graphics.Paint.Align.CENTER
+            val legendX = center.x + radius + 18.dp.toPx()
+            var legendY = center.y - (diagram.segments.size - 1) * 11.dp.toPx()
+            diagram.segments.forEachIndexed { i, seg ->
+                val segColor = accentColor(seg.color)
+                drawCircle(color = segColor, radius = 3.dp.toPx(), center = Offset(legendX, legendY - 3.dp.toPx()))
+                val legendPaint = android.graphics.Paint(labelPaint).apply {
+                    textAlign = android.graphics.Paint.Align.LEFT
+                    textSize = 8.5.sp.toPx()
+                }
+                val pct = Math.round(seg.value / total * 100.0).toInt()
+                drawContext.canvas.nativeCanvas.drawText(
+                    "$pct%  " + seg.label,
+                    legendX + 8.dp.toPx(),
+                    legendY,
+                    legendPaint
+                )
+                legendY += 22.dp.toPx()
+            }
+            labelPaint.textAlign = android.graphics.Paint.Align.CENTER
+        } else if (diagram.kind == "bars" && diagram.bars.isNotEmpty()) {
+            // Horizontal comparison bars, each labelled with its display value.
+            val barH = ((ch / diagram.bars.size) * 0.52f).coerceIn(14.dp.toPx(), 26.dp.toPx())
+            val gapY = ch / diagram.bars.size
+            val maxAbs = diagram.bars.maxOfOrNull { kotlin.math.abs(it.value) }?.takeIf { it > 0 } ?: 1.0
+            val barAreaW = cw * 0.62f
+            diagram.bars.forEachIndexed { i, bar ->
+                val cy = padY + gapY * i + gapY / 2f
+                val namePaint = android.graphics.Paint(labelPaint).apply {
+                    textAlign = android.graphics.Paint.Align.LEFT
+                    textSize = 9.sp.toPx()
+                }
+                drawContext.canvas.nativeCanvas.drawText(bar.label, padX, cy + 3.dp.toPx(), namePaint)
+                val bw = (bar.value / maxAbs).toFloat() * barAreaW
+                drawRoundRect(
+                    color = accent,
+                    topLeft = Offset(padX + cw * 0.30f, cy - barH / 2),
+                    size = androidx.compose.ui.geometry.Size(bw.coerceAtLeast(3f), barH),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
+                )
+                val valPaint = android.graphics.Paint(labelPaint).apply {
+                    textAlign = android.graphics.Paint.Align.LEFT
+                    textSize = 10.sp.toPx()
+                    isFakeBoldText = true
+                }
+                drawContext.canvas.nativeCanvas.drawText(
+                    bar.display ?: "",
+                    padX + cw * 0.30f + bw + 8.dp.toPx(),
+                    cy + 3.5.dp.toPx(),
+                    valPaint
+                )
+            }
+        } else if (diagram.kind == "diverging-bars" && diagram.bars.isNotEmpty()) {
+            // Bars diverging left (negative) / right (positive) of a zero line.
+            val barH = ((ch / diagram.bars.size) * 0.5f).coerceIn(13.dp.toPx(), 24.dp.toPx())
+            val gapY = ch / diagram.bars.size
+            val maxAbs = diagram.bars.maxOfOrNull { kotlin.math.abs(it.value) }?.takeIf { it > 0 } ?: 1.0
+            val zeroX = padX + cw * 0.55f
+            val halfW = cw * 0.38f
+            drawLine(
+                color = Color(0xFFCBD5E1),
+                start = Offset(zeroX, padY * 0.6f),
+                end = Offset(zeroX, h - padY * 0.6f),
+                strokeWidth = 1.25.dp.toPx()
+            )
+            diagram.bars.forEachIndexed { i, bar ->
+                val cy = padY + gapY * i + gapY / 2f
+                val namePaint = android.graphics.Paint(labelPaint).apply {
+                    textAlign = android.graphics.Paint.Align.LEFT
+                    textSize = 9.sp.toPx()
+                }
+                drawContext.canvas.nativeCanvas.drawText(bar.label, padX, cy + 3.dp.toPx(), namePaint)
+                val ratio = (kotlin.math.abs(bar.value) / maxAbs).toFloat()
+                val bw = ratio * halfW
+                val col = if (bar.value >= 0) BullGreen else BearRed
+                if (bar.value >= 0) {
+                    drawRoundRect(
+                        color = col,
+                        topLeft = Offset(zeroX, cy - barH / 2),
+                        size = androidx.compose.ui.geometry.Size(bw.coerceAtLeast(3f), barH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
+                    )
+                } else {
+                    drawRoundRect(
+                        color = col,
+                        topLeft = Offset(zeroX - bw, cy - barH / 2),
+                        size = androidx.compose.ui.geometry.Size(bw.coerceAtLeast(3f), barH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
+                    )
+                }
+                val valPaint = android.graphics.Paint(labelPaint).apply {
+                    textAlign = if (bar.value >= 0) android.graphics.Paint.Align.LEFT else android.graphics.Paint.Align.RIGHT
+                    textSize = 10.sp.toPx()
+                    isFakeBoldText = true
+                }
+                val vx = if (bar.value >= 0) zeroX + bw + 8.dp.toPx() else zeroX - bw - 8.dp.toPx()
+                drawContext.canvas.nativeCanvas.drawText(bar.display ?: "", vx, cy + 3.5.dp.toPx(), valPaint)
             }
         }
     }

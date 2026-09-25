@@ -1369,6 +1369,7 @@ app.post("/api/profile/username", requireAuth, async (req, res) => {
 const learningContent = require("./src/learningContent");
 app.get("/api/learning/patterns", requireAuth, (req, res) => {
   res.json({
+    tracks: learningContent.tracksPayload(),
     categories: learningContent.categoriesPayload(),
     patterns: learningContent.fullPayload()
   });
