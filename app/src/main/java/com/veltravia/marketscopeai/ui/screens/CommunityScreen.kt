@@ -1507,6 +1507,12 @@ private fun PostCard(
                         }
                         if (post.imageCount > 0) {
                             Spacer(Modifier.height(8.dp))
+                            // Reference-style image grid: big, generous rows.
+                            // 2-image posts get one tall 260dp row; everything
+                            // else uses 250dp rows, small 8dp gaps, and every
+                            // image opens the paged fullscreen viewer at its
+                            // own index.
+                            val rowHeight = if (post.imageCount == 2) 260.dp else 250.dp
                             if (post.imageCount == 1) {
                                 coil.compose.AsyncImage(
                                     model = ApiClient.communityImageUrl(post.id, 0),
@@ -1514,15 +1520,15 @@ private fun PostCard(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(220.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .height(250.dp)
+                                        .clip(RoundedCornerShape(14.dp))
                                         .clickable { onOpenImage(0) }
                                 )
                             } else {
                                 val rows = (post.imageCount + 1) / 2
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     (0 until rows).forEach { row ->
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             (0 until 2).forEach { col ->
                                                 val idx = row * 2 + col
                                                 if (idx < post.imageCount) {
@@ -1532,8 +1538,8 @@ private fun PostCard(
                                                         contentScale = ContentScale.Crop,
                                                         modifier = Modifier
                                                             .weight(1f)
-                                                            .height(110.dp)
-                                                            .clip(RoundedCornerShape(10.dp))
+                                                            .height(rowHeight)
+                                                            .clip(RoundedCornerShape(14.dp))
                                                             .clickable { onOpenImage(idx) }
                                                     )
                                                 } else {
