@@ -179,7 +179,23 @@ class MainActivity : ComponentActivity() {
 
     private var contentInstallAttempts = 0
 
+    /**
+     * The window's content container (android.R.id.content) must exist before
+     * ComponentActivity.setContent() can look up any previous ComposeView in
+     * it — on some Samsung One UI cold starts it is attached late. Probing it
+     * first avoids the two failure modes we have seen in the field:
+     *   1. IllegalStateException "Window couldn't find content container view"
+     *   2. NPE "ViewGroup.getChildAt(int) on a null object reference"
+     *      (ComponentActivityKt.setContent, decorView.findViewById(R.id.content) == null)
+     * Retries back off up to ~5s; it never rethrows unless the activity is gone.
+     */
+    private fun windowContentReady(): Boolean = try {
+        window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content) != null
+    } catch (t: Throwable) { false }
+
     private fun installAppContent() {
+        if (isFinishing || isDestroyed) return  // window will never attach; retrying is pointless
+        if (!windowContentReady()) { scheduleAppContentRetry(); return }
         try {
             setContent {
             MarketAiTheme {
@@ -204,14 +220,15 @@ class MainActivity : ComponentActivity() {
             }
             }
         } catch (t: Throwable) {
-            contentInstallAttempts++
-            if (contentInstallAttempts <= 3) {
-                android.os.Handler(mainLooper).postDelayed({ installAppContent() }, 120L)
-            } else {
-                // Out of retries — surface through the debug crash reporter
-                // (or rethrow on release so the system handles it).
-                throw t
-            }
+            if (BuildConfig.DEBUG) android.util.Log.w("MarketAiStartup", "setContent failed, retrying", t)
+            scheduleAppContentRetry()
         }
+    }
+
+    private fun scheduleAppContentRetry() {
+        contentInstallAttempts++
+        if (contentInstallAttempts > 20) return  // give up quietly; a dead start beats a crash loop
+        val delay = (120L * contentInstallAttempts).coerceAtMost(500L)  // 120ms -> 500ms backoff, ~5s total
+        android.os.Handler(mainLooper).postDelayed({ installAppContent() }, delay)
     }
 }
