@@ -371,7 +371,6 @@ private fun parseTopProofs(leaderboard: JSONObject): List<ProofPost> {
 
 @Composable
 fun CommunityScreen(
-    onOpenLeaderboard: () -> Unit = {},
     onOpenDms: () -> Unit = {},
     onOpenDmChat: (String) -> Unit = {}
 ) {
@@ -412,6 +411,7 @@ fun CommunityScreen(
     var pinnedPosts by remember { mutableStateOf<List<PinnedPost>>(emptyList()) }
     var pinnedIndex by remember { mutableStateOf(0) }
     var showPinnedList by remember { mutableStateOf(false) }
+    var showLeaderboard by remember { mutableStateOf(false) }
     var proofPosts by remember { mutableStateOf<List<ProofPost>>(emptyList()) }
     val viewedPostIds = remember { mutableStateOf(mutableSetOf<String>()) }
 
@@ -794,7 +794,7 @@ fun CommunityScreen(
                     ) {
                         if (joined) {
                             item {
-                                WeeklyCompetitionCard(onOpen = onOpenLeaderboard)
+                                WeeklyCompetitionCard(onOpen = { showLeaderboard = true })
                             }
                             item {
                                 postComposerBlock()
@@ -908,7 +908,7 @@ fun CommunityScreen(
                         }
                         // Info panels follow the older posts in the DSL, so in
                         // reverseLayout they sit above the chat-like feed.
-                        item { WeeklyCompetitionCard(onOpen = onOpenLeaderboard) }
+                        item { WeeklyCompetitionCard(onOpen = { showLeaderboard = true }) }
                         if (pinnedPosts.isNotEmpty()) {
                             item {
                                 PinnedPostsWidget(
@@ -917,7 +917,7 @@ fun CommunityScreen(
                                     onIndexChange = { pinnedIndex = it },
                                     expanded = showPinnedList,
                                     onToggleExpanded = { showPinnedList = !showPinnedList },
-                                    onOpenTop5 = onOpenLeaderboard,
+                                    onOpenTop5 = { showLeaderboard = true },
                                     onOpenPinned = { pinnedId ->
                                         showPinnedList = false
                                         val idx = posts.indexOfFirst { it.id == pinnedId }
@@ -1087,6 +1087,12 @@ fun CommunityScreen(
             }
         )
     }
+
+    // Top Contributors — a bottom sheet over the feed, same as FxLens's
+    // "Top 5 this week" trophy chip, not a separate screen.
+    if (showLeaderboard) {
+        LeaderboardSheet(onDismiss = { showLeaderboard = false })
+    }
 }
 
 // --- pinned posts widget + featured proofs ---------------------------------------------
@@ -1161,11 +1167,14 @@ private fun PinnedPostsWidget(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text(t("Top 5"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFB45309))
+                    Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Column {
+                        Text(t("TOP 5"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                        Text(t("This week"), fontSize = 9.5.sp, color = Color(0xFFB45309).copy(alpha = 0.75f))
+                    }
                 }
             }
         }

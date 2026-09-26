@@ -73,7 +73,6 @@ import com.veltravia.marketscopeai.ui.screens.BrokerSetupIntroScreen
 import com.veltravia.marketscopeai.ui.screens.CommunityScreen
 import com.veltravia.marketscopeai.ui.screens.DmThreadsScreen
 import com.veltravia.marketscopeai.ui.screens.DmChatScreen
-import com.veltravia.marketscopeai.ui.screens.LeaderboardScreen
 import com.veltravia.marketscopeai.ui.screens.LearningHubScreen
 import com.veltravia.marketscopeai.ui.screens.NewsOutlookScreen
 import com.veltravia.marketscopeai.ui.screens.LearningPatternScreen
@@ -584,9 +583,6 @@ fun MarketAiApp() {
                 onBack = { navController.popBackStack() }
             )
         }
-        composable("leaderboard") {
-            LeaderboardScreen(onBack = { navController.popBackStack() })
-        }
         composable("signals_admin") {
             AdminSignalsScreen(onBack = { navController.popBackStack() })
         }
@@ -795,7 +791,6 @@ private fun MainTabs(navController: NavHostController) {
                     onOpenSignal = { id -> navController.navigate("daily_signal/$id") }
                 )
                 2 -> CommunityScreen(
-                    onOpenLeaderboard = { navController.navigate("leaderboard") },
                     onOpenDms = { navController.navigate("dm_threads") },
                     onOpenDmChat = { id -> navController.navigate("dm_chat/$id") }
                 )
