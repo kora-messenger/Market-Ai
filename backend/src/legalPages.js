@@ -146,7 +146,7 @@ const PRIVACY_SECTIONS = [
     heading: "2. Advertising Data & Your Choices",
     blocks: [
       { type: "p", text: "The free tier of the App is funded by advertising. On first use you are shown Google's official consent form (User Messaging Platform), where you choose whether ads may be personalized using your device's advertising identifier and whether measurement data may be shared with Google's ad partners. Your choice is respected: if you decline, you still see ads, but they are not personalized with your identifiers." },
-      { type: "p", text: "You can change or withdraw your ad-consent choice at any time from the App's settings (Ad privacy) or by resetting your device's advertising ID in Android settings. Pro subscribers never see ads, and no advertising identifier is used for them." },
+      { type: "p", text: "You can withdraw your personalization choice at any time by resetting or deleting your device's advertising ID in Android settings — ads keep showing on the free tier, but stop using your identifier. There is no in-app setting that removes ads: the free tier is ad-funded, and the only way to stop seeing ads is a Premium subscription. Premium subscribers never see ads, and no advertising identifier is used for them." },
       { type: "p", text: "For more about how Google processes ad data, see Google's \"How Google uses information when you use our partners' sites or apps\" page and the Ads settings available at adssettings.google.com while signed in to your Google account." }
     ]
   },
