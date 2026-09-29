@@ -4,7 +4,6 @@ import com.veltravia.marketscopeai.t
 
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -223,10 +222,6 @@ fun HomeScreen(
                 return Velocity.Zero
             }
         }
-    }
-
-    fun comingSoon(feature: String) {
-        Toast.makeText(context, "$feature is coming soon", Toast.LENGTH_SHORT).show()
     }
 
     // Prioritize real, working features in the collapsed row; the three

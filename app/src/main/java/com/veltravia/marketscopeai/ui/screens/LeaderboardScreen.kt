@@ -86,7 +86,7 @@ private fun parseStandings(json: JSONObject): List<StandingsEntry> {
         val o = arr.getJSONObject(i)
         StandingsEntry(
             rank = o.optInt("rank"),
-            name = o.optString("name").ifBlank { "Trader" },
+            name = o.optString("name").ifBlank { t("Trader") },
             username = o.optStringOrNull("username"),
             picture = o.optStringOrNull("picture"),
             email = o.optString("email"),
@@ -147,7 +147,7 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                     val o = winners.getJSONObject(i)
                     StandingsEntry(
                         rank = o.optInt("rank"),
-                        name = o.optString("name").ifBlank { "Trader" },
+                        name = o.optString("name").ifBlank { t("Trader") },
                         email = o.optString("email"),
                         score = o.optInt("score"),
                         username = o.optStringOrNull("username"),
@@ -235,12 +235,12 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "\u2022 Post \u2014 5 points\n\u2022 Comment \u2014 2 points\n\u2022 Reaction given or received \u2014 1 point\n\u2022 Poll vote \u2014 1 point",
+                                t("\u2022 Post \u2014 5 points\n\u2022 Comment \u2014 2 points\n\u2022 Reaction given or received \u2014 1 point\n\u2022 Poll vote \u2014 1 point"),
                                 fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onBackground
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                "Rewards: last week's top 5 carry the \uD83C\uDFC6 Top Contributor badge by their name for the whole week.",
+                                t("Rewards: last week's top 5 carry the \uD83C\uDFC6 Top Contributor badge by their name for the whole week."),
                                 fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
@@ -318,7 +318,7 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            handle(e.name, e.username) + if (isMe) " (you)" else "",
+                                            handle(e.name, e.username) + if (isMe) " " + t("(you)") else "",
                                             fontSize = 13.5.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onBackground,
@@ -331,7 +331,10 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                                         }
                                     }
                                     Text(
-                                        "${e.posts} posts \u00B7 ${e.comments} comments \u00B7 ${e.reactionsReceived} reactions",
+                                        t("{posts} posts \u00B7 {comments} comments \u00B7 {reactions} reactions")
+                                            .replace("{posts}", e.posts.toString())
+                                            .replace("{comments}", e.comments.toString())
+                                            .replace("{reactions}", e.reactionsReceived.toString()),
                                         fontSize = 10.5.sp, color = TextMuted,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis
                                     )
@@ -342,7 +345,7 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                                     shape = RoundedCornerShape(999.dp)
                                 ) {
                                     Text(
-                                        "${e.score} pts",
+                                        t("{n} pts").replace("{n}", e.score.toString()),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = BullGreen,
@@ -362,7 +365,9 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                "You're ranked #$myRank this week with $myScore points — the climb continues.",
+                                t("You're ranked #{rank} this week with {score} points \u2014 the climb continues.")
+                                    .replace("{rank}", myRank.toString())
+                                    .replace("{score}", myScore.toString()),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = AccentCyan,
@@ -389,7 +394,7 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                         ) {
                             Column(Modifier.padding(14.dp)) {
                                 Text(
-                                    "Weekly Proof \uD83D\uDCC8 \u2014 featured trader proof from the week",
+                                    t("Weekly Proof \uD83D\uDCC8 \u2014 featured trader proof from the week"),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onBackground
@@ -407,15 +412,15 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                                 Spacer(Modifier.height(8.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        pr.optString("authorName").ifBlank { "Trader" },
+                                        pr.optString("authorName").ifBlank { t("Trader") },
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onBackground,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
-                                        if (pr.optInt("weekReactions", 0) == 1) "1 reaction this week"
-                                        else "${pr.optInt("weekReactions", 0)} reactions this week",
+                                        if (pr.optInt("weekReactions", 0) == 1) t("1 reaction this week")
+                                        else t("{n} reactions this week").replace("{n}", pr.optInt("weekReactions", 0).toString()),
                                         fontSize = 11.sp,
                                         color = TextMuted
                                     )
@@ -464,7 +469,7 @@ fun LeaderboardSheet(onDismiss: () -> Unit) {
                                 }
                                 Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("${w.score} pts", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
+                                Text(t("{n} pts").replace("{n}", w.score.toString()), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextMuted)
                             }
                         }
                     }
