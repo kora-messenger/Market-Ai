@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -1596,11 +1597,14 @@ private fun PostCard(
                 }
             }
 
-            // --- under-bubble engagement strip, FxLens-style: reaction
-            // pills + comments live on their OWN row (never sharing scroll
-            // space with Share/Views), so a growing reaction count can never
-            // push the Comments button off-screen again. Share/Views/mod
-            // tools sit on a second row, right-aligned.
+            // --- under-bubble engagement strip, FxLens-style: THREE
+            // independent rows so none of them can ever steal width from
+            // another. Row 1 = reaction pills + add-reaction (its own
+            // horizontalScroll — only reactions scroll, nothing else).
+            // Row 2 = Comments, alone, with the full card width available —
+            // this is what kept getting clipped to "Com" when it shared
+            // space with a growing reaction row. Row 3 = Share/Views/mod
+            // tools, right-aligned.
             Spacer(Modifier.height(8.dp))
             Box {
                 Column {
@@ -1611,7 +1615,7 @@ private fun PostCard(
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState())
                     ) {
-                        post.reactions.take(4).forEach { reaction ->
+                        post.reactions.take(6).forEach { reaction ->
                             Surface(
                                 color = if (reaction.mine) AccentCyan.copy(alpha = 0.12f) else Color(0xFFF1F5F9),
                                 shape = RoundedCornerShape(50),
@@ -1641,43 +1645,46 @@ private fun PostCard(
                                 )
                             }
                         }
-                        if (post.allowComments) {
-                            Surface(
-                                color = Color(0xFFF1F5F9),
-                                shape = RoundedCornerShape(50),
-                                onClick = onOpenComments
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-                                ) {
-                                    Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(13.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Comments \u00B7 ${post.commentCount}", fontSize = 11.5.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
-                                }
-                            }
-                        } else if (isMentorAuthor || roleMeta != null) {
-                            // Roled posts with comments off carry a quiet label —
-                            // "Mentor post" for mentors, "Team post" for the desk.
-                            Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(50)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-                                ) {
-                                    Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        if (isMentorAuthor) "Mentor post" else "Team post",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFF94A3B8),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                            }
-                        }
                     }
                     Spacer(Modifier.height(6.dp))
+                    if (post.allowComments) {
+                        Surface(
+                            color = Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(50),
+                            onClick = onOpenComments,
+                            modifier = Modifier.wrapContentWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                            ) {
+                                Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Comments \u00B7 ${post.commentCount}", fontSize = 11.5.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    } else if (isMentorAuthor || roleMeta != null) {
+                        // Roled posts with comments off carry a quiet label —
+                        // "Mentor post" for mentors, "Team post" for the desk.
+                        Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(50), modifier = Modifier.wrapContentWidth()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                            ) {
+                                Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    if (isMentorAuthor) "Mentor post" else "Team post",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF94A3B8),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Spacer(Modifier.weight(1f))
                         Surface(
