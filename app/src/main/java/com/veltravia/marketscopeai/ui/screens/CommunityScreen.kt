@@ -91,6 +91,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1595,178 +1596,193 @@ private fun PostCard(
                 }
             }
 
-            // --- under-bubble engagement strip: reactions, comments, then the
-            // quieter share / views / moderation tools anchored right.
+            // --- under-bubble engagement strip, FxLens-style: reaction
+            // pills + comments live on their OWN row (never sharing scroll
+            // space with Share/Views), so a growing reaction count can never
+            // push the Comments button off-screen again. Share/Views/mod
+            // tools sit on a second row, right-aligned.
             Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .horizontalScroll(rememberScrollState())
-                ) {
-                    post.reactions.take(4).forEach { reaction ->
-                        Surface(
-                            color = if (reaction.mine) AccentCyan.copy(alpha = 0.12f) else Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(50),
-                            onClick = { onReact(reaction.emoji) }
-                        ) {
-                            Text(
-                                "${reaction.emoji} ${reaction.count}",
-                                fontSize = 11.5.sp,
-                                color = if (reaction.mine) AccentCyan else MaterialTheme.colorScheme.onBackground,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                    Surface(
-                        color = if (showReactionRow) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
-                        shape = CircleShape,
-                        border = BorderStroke(1.dp, if (showReactionRow) Color(0xFF5EEAD4) else Color(0xFFEEF1F5)),
-                        onClick = { showReactionRow = !showReactionRow },
-                        modifier = Modifier.size(30.dp)
+            Box {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Filled.Add,
-                                contentDescription = if (showReactionRow) "Hide reactions" else "Add reaction",
-                                tint = if (showReactionRow) Color(0xFF0F766E) else Color(0xFF94A3B8),
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-                    if (post.allowComments) {
-                        Surface(
-                            color = Color(0xFFF1F5F9),
-                            shape = RoundedCornerShape(50),
-                            onClick = onOpenComments
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                        post.reactions.take(4).forEach { reaction ->
+                            Surface(
+                                color = if (reaction.mine) AccentCyan.copy(alpha = 0.12f) else Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(50),
+                                onClick = { onReact(reaction.emoji) }
                             ) {
-                                Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(13.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Comments \u00B7 ${post.commentCount}", fontSize = 11.5.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
+                                Text(
+                                    "${reaction.emoji} ${reaction.count}",
+                                    fontSize = 11.5.sp,
+                                    color = if (reaction.mine) AccentCyan else MaterialTheme.colorScheme.onBackground,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
                             }
                         }
-                    } else if (isMentorAuthor || roleMeta != null) {
-                        // Roled posts with comments off carry a quiet label —
-                        // "Mentor post" for mentors, "Team post" for the desk.
-                        Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(50)) {
+                        Surface(
+                            color = if (showReactionRow) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, if (showReactionRow) Color(0xFF5EEAD4) else Color(0xFFEEF1F5)),
+                            onClick = { showReactionRow = !showReactionRow },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Add,
+                                    contentDescription = if (showReactionRow) "Hide reactions" else "Add reaction",
+                                    tint = if (showReactionRow) Color(0xFF0F766E) else Color(0xFF94A3B8),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                        if (post.allowComments) {
+                            Surface(
+                                color = Color(0xFFF1F5F9),
+                                shape = RoundedCornerShape(50),
+                                onClick = onOpenComments
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                                ) {
+                                    Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF0F766E), modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Comments \u00B7 ${post.commentCount}", fontSize = 11.5.sp, color = Color(0xFF475569), maxLines = 1, softWrap = false)
+                                }
+                            }
+                        } else if (isMentorAuthor || roleMeta != null) {
+                            // Roled posts with comments off carry a quiet label —
+                            // "Mentor post" for mentors, "Team post" for the desk.
+                            Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(50)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                                ) {
+                                    Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        if (isMentorAuthor) "Mentor post" else "Team post",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF94A3B8),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(Modifier.weight(1f))
+                        Surface(
+                            color = Color.White,
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            onClick = {
+                                val shared = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(
+                                        android.content.Intent.EXTRA_TEXT,
+                                        "${displayHandle(post.authorName, post.authorUsername)} on MarketScope AI Community:\n\n${post.body}"
+                                    )
+                                }
+                                context.startActivity(android.content.Intent.createChooser(shared, "Share post"))
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.Share, contentDescription = "Share post", tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                             ) {
-                                Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    if (isMentorAuthor) "Mentor post" else "Team post",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF94A3B8),
-                                    maxLines = 1,
-                                    softWrap = false
+                                Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text(compactCount(post.viewCount), fontSize = 11.sp, color = Color(0xFF94A3B8))
+                            }
+                        }
+                        if (canDelete) {
+                            Spacer(Modifier.width(2.dp))
+                            IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "Delete post",
+                                    tint = Color(0xFFDC2626),
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                        }
+                        if (isAdmin) {
+                            Spacer(Modifier.width(2.dp))
+                            IconButton(onClick = onPin, modifier = Modifier.size(26.dp)) {
+                                Icon(
+                                    Icons.Filled.PushPin,
+                                    contentDescription = if (post.isPinned) "Unpin post" else "Pin post",
+                                    tint = if (post.isPinned) AccentViolet else TextMuted,
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
                     }
                 }
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    color = Color.White,
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    onClick = {
-                        val shared = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(
-                                android.content.Intent.EXTRA_TEXT,
-                                "${displayHandle(post.authorName, post.authorUsername)} on MarketScope AI Community:\n\n${post.body}"
-                            )
-                        }
-                        context.startActivity(android.content.Intent.createChooser(shared, "Share post"))
-                    },
-                    modifier = Modifier.size(34.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share post", tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
-                    }
-                }
-                Spacer(Modifier.width(4.dp))
-                Surface(
-                    color = Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                    ) {
-                        Icon(Icons.Filled.Visibility, contentDescription = "Views", tint = Color(0xFF94A3B8), modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text(compactCount(post.viewCount), fontSize = 11.sp, color = Color(0xFF94A3B8))
-                    }
-                }
-                if (canDelete) {
-                    Spacer(Modifier.width(2.dp))
-                    IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = "Delete post",
-                            tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-                }
-                if (isAdmin) {
-                    Spacer(Modifier.width(2.dp))
-                    IconButton(onClick = onPin, modifier = Modifier.size(26.dp)) {
-                        Icon(
-                            Icons.Filled.PushPin,
-                            contentDescription = if (post.isPinned) "Unpin post" else "Pin post",
-                            tint = if (post.isPinned) AccentViolet else TextMuted,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
-                }
-            }
 
-            // Reaction picker — a floating rounded panel with a soft border
-            // that springs in; tapping an emoji reacts and closes it.
-            if (showReactionRow) {
-                Spacer(Modifier.height(8.dp))
-                val pickerScale by animateFloatAsState(
-                    targetValue = if (showReactionRow) 1f else 0.85f,
-                    animationSpec = spring(dampingRatio = 0.72f),
-                    label = "reactionPickerScale"
-                )
-                Surface(
-                    color = Color.White,
-                    shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, Color(0xFFEEF1F5)),
-                    shadowElevation = 8.dp,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = pickerScale
-                        scaleY = pickerScale
-                    }
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier.padding(8.dp)
+                // Reaction picker — FxLens-style: a floating panel that pops up
+                // ABOVE the reaction row (anchored top, offset upward) instead of
+                // pushing the rest of the card down. It never participates in
+                // layout flow, so opening it can't shift or hide anything below
+                // (the bug that made the Comments row disappear when a post
+                // picked up several distinct reactions).
+                if (showReactionRow) {
+                    val pickerScale by animateFloatAsState(
+                        targetValue = if (showReactionRow) 1f else 0.85f,
+                        animationSpec = spring(dampingRatio = 0.72f),
+                        label = "reactionPickerScale"
+                    )
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, Color(0xFFEEF1F5)),
+                        shadowElevation = 8.dp,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(y = (-52).dp)
+                            .graphicsLayer {
+                                scaleX = pickerScale
+                                scaleY = pickerScale
+                            }
+                            .zIndex(10f)
                     ) {
-                        REACTION_SET.forEach { emoji ->
-                            Text(
-                                emoji,
-                                fontSize = 20.sp,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        onReact(emoji)
-                                        showReactionRow = false
-                                    }
-                                    .padding(6.dp)
-                            )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            modifier = Modifier.padding(8.dp)
+                        ) {
+                            REACTION_SET.forEach { emoji ->
+                                Text(
+                                    emoji,
+                                    fontSize = 20.sp,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            onReact(emoji)
+                                            showReactionRow = false
+                                        }
+                                        .padding(6.dp)
+                                )
+                            }
                         }
                     }
                 }
