@@ -41,6 +41,8 @@ object L10n {
 fun t(en: String): String = L10n.t(en)
 
 private val de = mapOf(
+    "Sign-in is temporarily unavailable. Please try again in a moment." to "Die Anmeldung ist vorübergehend nicht verfügbar. Bitte versuche es gleich noch einmal.",
+    "Sign-in failed. Please try again." to "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
     "TOP 5" to "TOP 5",
     "This week" to "Diese Woche",
     "Weekly competition" to "Wochenwettbewerb",
@@ -478,6 +480,8 @@ private val de = mapOf(
 )
 
 private val es = mapOf(
+    "Sign-in is temporarily unavailable. Please try again in a moment." to "El inicio de sesión no está disponible temporalmente. Inténtalo de nuevo en un momento.",
+    "Sign-in failed. Please try again." to "No se pudo iniciar sesión. Inténtalo de nuevo.",
     "TOP 5" to "TOP 5",
     "This week" to "Esta semana",
     "Weekly competition" to "Competencia semanal",
@@ -915,6 +919,8 @@ private val es = mapOf(
 )
 
 private val fr = mapOf(
+    "Sign-in is temporarily unavailable. Please try again in a moment." to "La connexion est momentanément indisponible. Réessayez dans un instant.",
+    "Sign-in failed. Please try again." to "Échec de la connexion. Réessayez.",
     "TOP 5" to "TOP 5",
     "This week" to "Cette semaine",
     "Weekly competition" to "Compétition hebdomadaire",
@@ -1352,6 +1358,8 @@ private val fr = mapOf(
 )
 
 private val pt = mapOf(
+    "Sign-in is temporarily unavailable. Please try again in a moment." to "O início de sessão está temporariamente indisponível. Tente novamente em instantes.",
+    "Sign-in failed. Please try again." to "Falha ao iniciar sessão. Tente novamente.",
     "TOP 5" to "TOP 5",
     "This week" to "Esta semana",
     "Weekly competition" to "Competição semanal",
@@ -1789,6 +1797,8 @@ private val pt = mapOf(
 )
 
 private val it = mapOf(
+    "Sign-in is temporarily unavailable. Please try again in a moment." to "L'accesso è temporaneamente non disponibile. Riprova tra un momento.",
+    "Sign-in failed. Please try again." to "Accesso non riuscito. Riprova.",
     "TOP 5" to "TOP 5",
     "This week" to "Questa settimana",
     "Weekly competition" to "Concorso settimanale",

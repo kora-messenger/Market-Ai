@@ -1152,7 +1152,7 @@ app.post("/api/auth/google", googleLoginIpLimit, async (req, res) => {
       } catch (dbErr) {
         console.error("[auth/google] database error:", String(dbErr && dbErr.message || dbErr));
         return res.status(503).json({
-          error: "Sign-in is temporarily unavailable — the server can't reach its database. Please try again shortly.",
+          error: "Sign-in is temporarily unavailable. Please try again in a moment.",
           retryable: true
         });
       }

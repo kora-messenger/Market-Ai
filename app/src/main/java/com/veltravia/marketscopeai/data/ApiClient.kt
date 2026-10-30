@@ -32,12 +32,19 @@ object ApiClient {
 
     class MarketAiException(message: String) : Exception(message)
 
+    /** Server is up but a dependency is down (503 + retryable). Screens show
+     *  their own localized copy instead of leaking backend wording. */
+    class ServiceUnavailableException(message: String) : Exception(message)
+
     private fun request(request: Request): JSONObject {
         client.newCall(request).execute().use { response ->
             val body = response.body?.string() ?: "{}"
             val json = JSONObject(body)
             if (!response.isSuccessful) {
                 val baseError = json.optString("error", "Request failed (${response.code})")
+                if (response.code == 503 && json.optBoolean("retryable", false)) {
+                    throw ServiceUnavailableException(baseError)
+                }
                 val reason = json.optString("reason", "")
                 throw MarketAiException(
                     if (reason.isNotBlank()) "$baseError: $reason" else baseError

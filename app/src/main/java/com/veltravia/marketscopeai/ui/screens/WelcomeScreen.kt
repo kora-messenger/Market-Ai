@@ -188,8 +188,12 @@ fun WelcomeScreen(onSignedIn: (alreadyOnboarded: Boolean) -> Unit) {
                                         )
                                     }
                                 onSignedIn(alreadyOnboarded)
+                            } catch (e: ApiClient.ServiceUnavailableException) {
+                                // Keep the wording ours (and localized), not the
+                                // raw backend text.
+                                error = t("Sign-in is temporarily unavailable. Please try again in a moment.")
                             } catch (e: Exception) {
-                                error = e.message ?: "Login failed. Please try again."
+                                error = e.message ?: t("Sign-in failed. Please try again.")
                             } finally {
                                 signingIn = false
                             }
