@@ -1104,7 +1104,12 @@ app.post("/api/auth/google", googleLoginIpLimit, async (req, res) => {
     };
     let isNewUser = false;
 
+    // The token is already verified at this point, so a database failure is
+    // an outage, not a bad credential. Reporting it as "token verification
+    // failed" sent users chasing their Google account while the real problem
+    // was the server's own database.
     if (pool) {
+      try {
       const { rows } = await pool.query(
         `INSERT INTO users (google_sub, email, name, picture)
          VALUES ($1, $2, $3, $4)
@@ -1144,6 +1149,13 @@ app.post("/api/auth/google", googleLoginIpLimit, async (req, res) => {
         isNewUser,
         ...trialInfo(rows[0])
       };
+      } catch (dbErr) {
+        console.error("[auth/google] database error:", String(dbErr && dbErr.message || dbErr));
+        return res.status(503).json({
+          error: "Sign-in is temporarily unavailable — the server can't reach its database. Please try again shortly.",
+          retryable: true
+        });
+      }
     }
 
     const sessionToken = JWT_SECRET
