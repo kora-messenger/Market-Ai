@@ -41,20 +41,31 @@ const {
   IpRateLimiter,
   createAccountLockout,
   ipRateLimit,
+  createDbRateLimiter,
   sendAccountLocked
 } = require("./src/loginGuard");
 
 // Per-IP budgets, per endpoint (one bucket per route so a burst on one login
 // route cannot exhaust another). Generous enough for a real retry loop on a
 // flaky connection, tight enough that scripted guessing is stopped.
+// Shared across instances through Postgres: one budget per IP no matter how
+// many instances Render is running. Each route keeps its own bucket.
+const sharedIpCounters = createDbRateLimiter({
+  query: (...args) => {
+    if (!pool) return Promise.reject(new Error("Database is not configured."));
+    return pool.query(...args);
+  },
+  onError: (msg, err) => console.warn(`[login-guard] ${msg}:`, String((err && err.message) || err))
+});
+
 const googleLoginIpLimit = ipRateLimit(
-  new IpRateLimiter({ limit: 20, windowMs: 10 * 60 * 1000 }), "auth-google"
+  new IpRateLimiter({ limit: 20, windowMs: 10 * 60 * 1000 }), "auth-google", sharedIpCounters
 );
 const ownerCodeRequestIpLimit = ipRateLimit(
-  new IpRateLimiter({ limit: 10, windowMs: 15 * 60 * 1000 }), "owner-request-code"
+  new IpRateLimiter({ limit: 10, windowMs: 15 * 60 * 1000 }), "owner-request-code", sharedIpCounters
 );
 const ownerCodeVerifyIpLimit = ipRateLimit(
-  new IpRateLimiter({ limit: 10, windowMs: 15 * 60 * 1000 }), "owner-verify-code"
+  new IpRateLimiter({ limit: 10, windowMs: 15 * 60 * 1000 }), "owner-verify-code", sharedIpCounters
 );
 
 // Account lockout: persisted in Postgres so a lock survives restarts, cold
@@ -377,6 +388,7 @@ async function initDb() {
   // Login protection needs its own table; creating it here keeps a fresh
   // database correct without a separate migration step.
   await accountLockout.ensureTable();
+  await sharedIpCounters.ensureTable();
   // One-time migration: when questionnaire_completed_at is being introduced,
   // every user who already signed up has, by construction, gone through the
   // mandatory onboarding questionnaire (the app cannot reach the main tabs

@@ -294,20 +294,118 @@ function createAccountLockout({ query, now = () => Date.now(), onError = () => {
  * @param {IpRateLimiter} limiter
  * @param {string} bucket  label used in the response, e.g. "login"
  */
-function ipRateLimit(limiter, bucket) {
-  return function enforceIpLimit(req, res, next) {
+
+/**
+ * Shared IP counters, so the budget is the SAME across every instance.
+ *
+ * The in-memory limiter above stops a single instance cheaply, but Render runs
+ * more than one instance: each keeps its own Map, so a scripted client gets
+ * (limit x instances) before it is stopped. These counters live in Postgres,
+ * which every instance shares, so the limit is the real limit.
+ *
+ * Fixed window (not sliding) because it is a single atomic upsert. The cost is
+ * that a client can burst up to 2x across a window boundary; for login
+ * throttling that is a fine trade for one round-trip instead of a read+write.
+ */
+const RATE_LIMIT_TABLE = `
+  CREATE TABLE IF NOT EXISTS rate_limit_counters (
+    bucket TEXT NOT NULL,
+    key TEXT NOT NULL,
+    window_start TIMESTAMPTZ NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bucket, key)
+  );
+  CREATE INDEX IF NOT EXISTS rate_limit_counters_window_idx
+    ON rate_limit_counters (window_start);
+`;
+
+function createDbRateLimiter({ query, now = () => Date.now(), onError = () => {} } = {}) {
+  return {
+    async ensureTable() {
+      if (!query) return;
+      await query(RATE_LIMIT_TABLE);
+    },
+
+    /**
+     * Count one hit and decide whether it is allowed.
+     * Fails open (returns null) when the database is unreachable, so a DB
+     * hiccup can never lock every user out of signing in.
+     */
+    async hit({ bucket, key, limit, windowMs }) {
+      const at = now();
+      const windowStart = new Date(Math.floor(at / windowMs) * windowMs);
+      try {
+        const { rows } = await query(
+          `INSERT INTO rate_limit_counters (bucket, key, window_start, count)
+           VALUES ($1, $2, $3, 1)
+           ON CONFLICT (bucket, key) DO UPDATE
+             SET count = CASE
+                   WHEN rate_limit_counters.window_start = EXCLUDED.window_start
+                   THEN rate_limit_counters.count + 1
+                   ELSE 1
+                 END,
+                 window_start = EXCLUDED.window_start
+           RETURNING count, window_start`,
+          [bucket, key, windowStart]
+        );
+        const count = Number(rows[0]?.count || 1);
+        const start = rows[0]?.window_start ? new Date(rows[0].window_start).getTime()
+                                             : windowStart.getTime();
+        const retryAfterSec = Math.max(1, Math.ceil((start + windowMs - at) / 1000));
+        return {
+          allowed: count <= limit,
+          remaining: Math.max(0, limit - count),
+          retryAfterSec: count <= limit ? 0 : retryAfterSec
+        };
+      } catch (err) {
+        onError("shared rate limiter unavailable", err);
+        return null;
+      }
+    },
+
+    /** Housekeeping: drop windows that can no longer matter. */
+    async prune() {
+      if (!query) return;
+      try {
+        await query(`DELETE FROM rate_limit_counters WHERE window_start < now() - interval '1 day'`);
+      } catch (err) {
+        onError("rate limit prune failed", err);
+      }
+    }
+  };
+}
+
+function ipRateLimit(limiter, bucket, shared = null) {
+  return async function enforceIpLimit(req, res, next) {
     // req.ip respects "trust proxy", so on Render this is the real client IP
     // (X-Forwarded-For), never a client-supplied value.
     const key = req.ip || req.socket?.remoteAddress || "unknown";
-    const result = limiter.hit(key);
+
+    // 1. Cheap local check first: stops a flood on this instance without a
+    //    database round-trip.
+    const local = limiter.hit(key);
+
+    // 2. Authoritative shared budget, identical on every instance. Falls back
+    //    to the local verdict when the database is unavailable.
+    let verdict = local;
+    if (shared) {
+      const remote = await shared.hit({
+        bucket,
+        key,
+        limit: limiter.limit,
+        windowMs: limiter.windowMs
+      });
+      if (remote) verdict = remote;
+    }
+
     res.set("X-RateLimit-Limit", String(limiter.limit));
-    res.set("X-RateLimit-Remaining", String(result.remaining));
-    if (!result.allowed) {
-      res.set("Retry-After", String(result.retryAfterSec));
+    res.set("X-RateLimit-Remaining", String(verdict.remaining));
+    if (!verdict.allowed) {
+      res.set("Retry-After", String(verdict.retryAfterSec));
       return res.status(429).json({
         error: "Too many attempts from this network. Please wait and try again.",
         bucket,
-        retryAfterSec: result.retryAfterSec
+        retryAfterSec: verdict.retryAfterSec
       });
     }
     return next();
@@ -336,5 +434,6 @@ module.exports = {
   normalizeIdentifier,
   createAccountLockout,
   ipRateLimit,
+  createDbRateLimiter,
   sendAccountLocked
 };

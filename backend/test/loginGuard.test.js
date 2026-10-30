@@ -5,6 +5,7 @@ const {
   lockDurationFor,
   evaluateLock,
   createAccountLockout,
+  createDbRateLimiter,
   LOCKOUT_TIERS,
   ipRateLimit,
   sendAccountLocked
@@ -289,4 +290,105 @@ test('sendAccountLocked replies 429 without revealing account existence', () => 
   assert.equal(res.body.retryAfterSec, 42);
   assert.match(res.body.error, /Too many failed attempts/i);
   assert.doesNotMatch(res.body.error, /exist|unknown|not found/i);
+});
+
+// --- shared (Postgres-backed) IP counters -------------------------------------
+
+/** Minimal stand-in for the atomic upsert in createDbRateLimiter. */
+function fakeCounterDb(clock) {
+  const rows = new Map();
+  let failMode = null;
+  const query = async (sql, params) => {
+    if (failMode) throw new Error(failMode);
+    if (typeof sql === "string" && sql.includes("INSERT INTO rate_limit_counters")) {
+      const [bucket, key, windowStart] = params;
+      const k = `${bucket}|${key}`;
+      const startMs = new Date(windowStart).getTime();
+      const row = rows.get(k);
+      if (row && row.window_start === startMs) row.count += 1;
+      else rows.set(k, { window_start: startMs, count: 1 });
+      const now = rows.get(k);
+      return { rows: [{ count: now.count, window_start: new Date(now.window_start) }] };
+    }
+    return { rows: [] };
+  };
+  return { query, rows, breakIt: (m) => { failMode = m; }, fixIt: () => { failMode = null; } };
+}
+
+test('shared limiter enforces one budget across instances', async () => {
+  const db = fakeCounterDb();
+  const instanceA = createDbRateLimiter({ query: db.query });
+  const instanceB = createDbRateLimiter({ query: db.query }); // separate process, same DB
+  const opts = { bucket: "auth-google", key: "203.0.113.9", limit: 3, windowMs: 60000 };
+
+  assert.equal((await instanceA.hit(opts)).allowed, true);   // 1
+  assert.equal((await instanceB.hit(opts)).allowed, true);   // 2
+  assert.equal((await instanceA.hit(opts)).allowed, true);   // 3
+  const blocked = await instanceB.hit(opts);                 // 4 — blocked on the other instance too
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.remaining, 0);
+  assert.ok(blocked.retryAfterSec > 0 && blocked.retryAfterSec <= 60);
+});
+
+test('shared limiter keeps separate budgets per IP and per bucket', async () => {
+  const db = fakeCounterDb();
+  const limiter = createDbRateLimiter({ query: db.query });
+  const base = { limit: 1, windowMs: 60000 };
+  assert.equal((await limiter.hit({ ...base, bucket: "auth-google", key: "1.1.1.1" })).allowed, true);
+  assert.equal((await limiter.hit({ ...base, bucket: "auth-google", key: "2.2.2.2" })).allowed, true);
+  assert.equal((await limiter.hit({ ...base, bucket: "owner-verify-code", key: "1.1.1.1" })).allowed, true);
+  assert.equal((await limiter.hit({ ...base, bucket: "auth-google", key: "1.1.1.1" })).allowed, false);
+});
+
+test('shared limiter starts a fresh window instead of counting forever', async () => {
+  const db = fakeCounterDb();
+  let clock = 1_000_000;
+  const limiter = createDbRateLimiter({ query: db.query, now: () => clock });
+  const opts = { bucket: "auth-google", key: "9.9.9.9", limit: 1, windowMs: 60000 };
+  assert.equal((await limiter.hit(opts)).allowed, true);
+  assert.equal((await limiter.hit(opts)).allowed, false);
+  clock += 61000; // next window
+  const fresh = await limiter.hit(opts);
+  assert.equal(fresh.allowed, true);
+  assert.equal(fresh.remaining, 0);
+});
+
+test('shared limiter fails open when the database is down', async () => {
+  const db = fakeCounterDb();
+  const errors = [];
+  const limiter = createDbRateLimiter({ query: db.query, onError: (m) => errors.push(m) });
+  db.breakIt("connection refused");
+  const verdict = await limiter.hit({ bucket: "auth-google", key: "1.2.3.4", limit: 5, windowMs: 60000 });
+  assert.equal(verdict, null);           // caller falls back to the local limiter
+  assert.equal(errors.length, 1);
+});
+
+test('a second instance is blocked by the shared budget, not its own empty memory', async () => {
+  const db = fakeCounterDb();
+  const shared = createDbRateLimiter({ query: db.query });
+  const makeRes = () => ({
+    headers: {}, statusCode: 0, body: null,
+    set(k, v) { this.headers[k] = v; },
+    status(c) { this.statusCode = c; return this; },
+    json(b) { this.body = b; return this; }
+  });
+  const req = { ip: "198.51.100.7", socket: {} };
+
+  // Instance A takes the whole budget.
+  const mwA = ipRateLimit(new IpRateLimiter({ limit: 20, windowMs: 60000 }), "auth-google", shared);
+  let passedA = 0;
+  for (let i = 0; i < 20; i += 1) await mwA(req, makeRes(), () => { passedA += 1; });
+  assert.equal(passedA, 20);
+
+  // Instance B has seen none of that traffic locally, but the shared counter
+  // says the budget is spent — so B refuses it too.
+  const mwB = ipRateLimit(new IpRateLimiter({ limit: 20, windowMs: 60000 }), "auth-google", shared);
+  let passedB = 0;
+  const res = makeRes();
+  await mwB(req, res, () => { passedB += 1; });
+  assert.equal(passedB, 0);
+  assert.equal(res.statusCode, 429);
+  assert.equal(res.body.bucket, "auth-google");
+  assert.equal(res.headers["X-RateLimit-Remaining"], "0");
+  assert.ok(Number(res.headers["Retry-After"]) > 0);
 });
