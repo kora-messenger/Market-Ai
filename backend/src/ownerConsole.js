@@ -5,6 +5,7 @@
 const crypto = require("crypto");
 const path = require("path");
 const jwt = require("jsonwebtoken");
+const { sendAccountLocked } = require("./loginGuard");
 
 const COOKIE = "market_owner";
 const AUDIENCE = "marketscope-owner-console";
@@ -22,10 +23,22 @@ function parseCookie(header, name) {
   return item ? item.slice(name.length + 1) : null;
 }
 
-function installOwnerConsole(app, { pool, jwtSecret, adminEmails, r2, sendCode, origin = DEFAULT_ORIGIN }) {
+function installOwnerConsole(app, {
+  pool, jwtSecret, adminEmails, r2, sendCode, origin = DEFAULT_ORIGIN,
+  // Login protection, injected from server.js so one policy governs every
+  // credential-accepting route. Both are optional: the console still works
+  // without them, it is simply less defended.
+  ipLimits = {},
+  accountLockout = null,
+  scopes = {}
+}) {
+  const ownsLockout = Boolean(accountLockout);
+  const requestScope = scopes.requestCode || "owner-request-code";
+  const verifyScope = scopes.verifyCode || "owner-verify-code";
+  const guardRequest = ipLimits.requestCode || ((req, res, next) => next());
+  const guardVerify = ipLimits.verifyCode || ((req, res, next) => next());
   const root = path.join(__dirname, "..", "public", "owner");
   const ownerEmails = new Set(adminEmails.map(e => String(e).toLowerCase()));
-  const bursts = new Map();
   const noStore = (_req, res, next) => {
     res.set("Cache-Control", "no-store, private");
     res.set("Referrer-Policy", "no-referrer");
@@ -72,24 +85,22 @@ function installOwnerConsole(app, { pool, jwtSecret, adminEmails, r2, sendCode, 
   app.get("/owner/console.css", noStore, (_req, res) => res.type("text/css").sendFile(path.join(root, "console.css")));
   app.use("/api/owner", noStore);
 
-  app.post("/api/owner/request-code", sameOriginPost, async (req, res) => {
+  app.post("/api/owner/request-code", guardRequest, sameOriginPost, async (req, res) => {
     if (!pool || !jwtSecret || ownerEmails.size === 0) return res.status(503).json({ error: "Owner console is unavailable." });
     const email = String(req.body?.email || "").trim().toLowerCase();
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: "Enter a valid email address." });
     }
-    // Bound abusive requests without trusting a client-supplied IP header.
-    const ip = req.ip || "unknown";
-    const now = Date.now();
-    for (const [key, state] of bursts) if (now - state.start > 900000) bursts.delete(key);
-    const state = bursts.get(ip);
-    if (state && now - state.start < 900000 && state.count >= 30) {
-      return res.status(429).json({ error: "Too many attempts. Try again later." });
-    }
-    bursts.set(ip, { start: state && now - state.start < 900000 ? state.start : now,
-      count: state && now - state.start < 900000 ? state.count + 1 : 1 });
+    // Request volume is bounded by the injected per-IP limiter (guardRequest)
+    // above; this route no longer keeps its own ad-hoc counter.
     const generic = { ok: true, message: "If this is an owner account, check its email for a sign-in code." };
     if (!ownerEmails.has(email)) return res.json(generic);
+    // A locked account stops receiving codes until the lock lapses. The reply
+    // stays generic so a lock cannot be used to enumerate owner addresses.
+    if (accountLockout) {
+      const lock = await accountLockout.check(requestScope, email);
+      if (lock.locked) return res.json(generic);
+    }
     try {
       const { rows: members } = await pool.query(
         `SELECT id FROM users WHERE lower(email) = $1 LIMIT 1`, [email]
@@ -122,11 +133,20 @@ function installOwnerConsole(app, { pool, jwtSecret, adminEmails, r2, sendCode, 
     }
   });
 
-  app.post("/api/owner/verify-code", sameOriginPost, async (req, res) => {
+  app.post("/api/owner/verify-code", guardVerify, sameOriginPost, async (req, res) => {
     if (!pool || !jwtSecret || ownerEmails.size === 0) return res.status(503).json({ error: "Owner console is unavailable." });
     const email = String(req.body?.email || "").trim().toLowerCase();
     const code = String(req.body?.code || "").trim();
     if (!ownerEmails.has(email) || !/^\d{6}$/.test(code)) return res.status(401).json({ error: "Invalid or expired code." });
+
+    // Account lockout comes BEFORE any code comparison: once five consecutive
+    // attempts fail, this address is refused outright for 15 minutes and then
+    // on an escalating schedule, from any IP.
+    if (accountLockout) {
+      const lock = await accountLockout.check(verifyScope, email);
+      if (lock.locked) return sendAccountLocked(res, lock.retryAfterSec);
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -137,6 +157,7 @@ function installOwnerConsole(app, { pool, jwtSecret, adminEmails, r2, sendCode, 
       const attempt = rows[0];
       if (!attempt || new Date(attempt.expires_at).getTime() <= Date.now() || attempt.attempts >= 5) {
         await client.query("COMMIT");
+        if (accountLockout) await accountLockout.fail(verifyScope, email);
         return res.status(401).json({ error: "Invalid or expired code." });
       }
       const expected = Buffer.from(attempt.code_hash, "hex");
@@ -144,6 +165,13 @@ function installOwnerConsole(app, { pool, jwtSecret, adminEmails, r2, sendCode, 
       if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
         await client.query(`UPDATE owner_console_codes SET attempts = attempts + 1 WHERE id = $1`, [attempt.id]);
         await client.query("COMMIT");
+        // Wrong code: count it against the account. The response also reports
+        // the lock immediately so a legitimate owner is not left guessing why
+        // correct codes stop working.
+        if (accountLockout) {
+          const result = await accountLockout.fail(verifyScope, email);
+          if (result.locked) return sendAccountLocked(res, result.retryAfterSec);
+        }
         return res.status(401).json({ error: "Invalid or expired code." });
       }
       const { rows: accounts } = await client.query(
@@ -155,6 +183,7 @@ function installOwnerConsole(app, { pool, jwtSecret, adminEmails, r2, sendCode, 
       }
       await client.query(`UPDATE owner_console_codes SET used_at = now() WHERE id = $1`, [attempt.id]);
       await client.query("COMMIT");
+      if (accountLockout) await accountLockout.clear(verifyScope, email);
       const token = jwt.sign({ kind: "owner-console", email, sub: accounts[0].google_sub }, jwtSecret,
         { expiresIn: SESSION_SECONDS, audience: AUDIENCE });
       res.set("Set-Cookie", secureCookie(token, SESSION_SECONDS));

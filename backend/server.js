@@ -28,6 +28,51 @@ const referrals = require("./src/referrals");
 
 const app = express();
 
+// Render terminates TLS in front of this service, so the socket address is the
+// proxy, not the client. With exactly one trusted hop Express reads the real
+// client IP from X-Forwarded-For (ignoreing anything the client appended).
+// This is required for per-IP login rate limiting to mean anything.
+app.set("trust proxy", 1);
+
+// --- Login protection: IP rate limiting + account lockout ----------------
+// Two independent controls, wired into every endpoint that accepts or checks
+// a credential. See src/loginGuard.js for the policy and the reasoning.
+const {
+  IpRateLimiter,
+  createAccountLockout,
+  ipRateLimit,
+  sendAccountLocked
+} = require("./src/loginGuard");
+
+// Per-IP budgets, per endpoint (one bucket per route so a burst on one login
+// route cannot exhaust another). Generous enough for a real retry loop on a
+// flaky connection, tight enough that scripted guessing is stopped.
+const googleLoginIpLimit = ipRateLimit(
+  new IpRateLimiter({ limit: 20, windowMs: 10 * 60 * 1000 }), "auth-google"
+);
+const ownerCodeRequestIpLimit = ipRateLimit(
+  new IpRateLimiter({ limit: 10, windowMs: 15 * 60 * 1000 }), "owner-request-code"
+);
+const ownerCodeVerifyIpLimit = ipRateLimit(
+  new IpRateLimiter({ limit: 10, windowMs: 15 * 60 * 1000 }), "owner-verify-code"
+);
+
+// Account lockout: persisted in Postgres so a lock survives restarts, cold
+// starts and multiple instances (an in-memory counter would not).
+const accountLockout = createAccountLockout({
+  query: (...args) => {
+    if (!pool) return Promise.reject(new Error("Database is not configured."));
+    return pool.query(...args);
+  },
+  onError: (msg, err) => console.warn(`[login-guard] ${msg}:`, String((err && err.message) || err))
+});
+
+// Lockout applies per account, not per IP: it keyed on the email that is
+// being signed into, so rotating IPs does not reset it.
+const GOOGLE_SCOPE = "auth-google";
+const OWNER_REQUEST_SCOPE = "owner-request-code";
+const OWNER_VERIFY_SCOPE = "owner-verify-code";
+
 // --- Subscriptions: Google Play Billing is the only payment method. ---
 const SUB_CURRENCY = (process.env.SUB_CURRENCY || "USD").toUpperCase();
 const SUB_PRICE = Number(process.env.SUB_PRICE || "9.99"); // price per month, 2 decimals
@@ -329,6 +374,9 @@ const pool = process.env.DATABASE_URL
 
 async function initDb() {
   if (!pool) return;
+  // Login protection needs its own table; creating it here keeps a fresh
+  // database correct without a separate migration step.
+  await accountLockout.ensureTable();
   // One-time migration: when questionnaire_completed_at is being introduced,
   // every user who already signed up has, by construction, gone through the
   // mandatory onboarding questionnaire (the app cannot reach the main tabs
@@ -1007,7 +1055,7 @@ app.get("/api/instruments", (_req, res) => {
 });
 
 // --- Google auth: verify ID token, upsert user, issue session JWT ---
-app.post("/api/auth/google", async (req, res) => {
+app.post("/api/auth/google", googleLoginIpLimit, async (req, res) => {
   if (!GOOGLE_WEB_CLIENT_ID) {
     return res.status(503).json({
       error: "Google sign-in is not configured yet. Add GOOGLE_WEB_CLIENT_ID."
@@ -1029,6 +1077,12 @@ app.post("/api/auth/google", async (req, res) => {
     if (!payload || !payload.sub) {
       return res.status(401).json({ error: "Invalid Google ID token" });
     }
+
+    // The token is genuine, so we know which account this is. A locked
+    // account stays locked no matter which network tries it.
+    const accountKey = String(payload.email || payload.sub || "").toLowerCase();
+    const lock = await accountLockout.check(GOOGLE_SCOPE, accountKey);
+    if (lock.locked) return sendAccountLocked(res, lock.retryAfterSec);
 
     let user = {
       googleSub: payload.sub,
@@ -1099,9 +1153,15 @@ app.post("/api/auth/google", async (req, res) => {
       }
     })();
 
+    // Real credential accepted — clear any accumulated failures.
+    await accountLockout.clear(GOOGLE_SCOPE, accountKey);
+
     return res.json({ user, sessionToken });
   } catch (err) {
     console.error("[auth/google] verification failed:", err && err.message, err && err.stack);
+    // A rejected token is a failed sign-in attempt. We cannot attribute it to
+    // an account (the token did not verify), so the per-IP limiter is what
+    // bounds these; the error stays deliberately vague either way.
     return res.status(401).json({
       error: "Google token verification failed",
       reason: err && err.message ? String(err.message) : "unknown"
@@ -8233,7 +8293,15 @@ app.post("/api/community/posts/:id/comments", requireAuth, async (req, res) => {
 // Deprecated Bearer admin-inbox endpoints intentionally no longer exist.
 installOwnerConsole(app, {
   pool, jwtSecret: JWT_SECRET, adminEmails: ADMIN_EMAILS, r2,
-  sendCode: sendOwnerConsoleCode
+  sendCode: sendOwnerConsoleCode,
+  // Same login protection policy as /api/auth/google: per-IP budgets plus a
+  // persisted per-account lockout that stops 6-digit code guessing.
+  ipLimits: {
+    requestCode: ownerCodeRequestIpLimit,
+    verifyCode: ownerCodeVerifyIpLimit
+  },
+  accountLockout,
+  scopes: { requestCode: OWNER_REQUEST_SCOPE, verifyCode: OWNER_VERIFY_SCOPE }
 });
 
 initDb()
